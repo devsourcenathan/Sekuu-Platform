@@ -1,8 +1,10 @@
 # Sekuu Platform API Guidelines
 
-> **Version :** 1.0
-> **Statut :** Draft
+> **Version :** 1.1
+> **Statut :** Standard applicable
 > **Dernière mise à jour :** Août 2026
+
+Documents liés : [Sécurité & Tokens](security.md) · [Catalogue des codes d'erreur](error-codes.md) · [ADR-0002 — Versionnement](../04-decisions/adr-0002-api-versioning.md)
 
 ---
 
@@ -154,7 +156,9 @@ Les identifiants auto-incrémentés ne doivent jamais être exposés.
 
 # 8. Format des données
 
-Les clés JSON utilisent le format **snake_case**.
+Les clés JSON utilisent le format **snake_case**, sans exception.
+
+Cette règle s'applique également aux colonnes de base de données : `first_name`, jamais `firstname`.
 
 Exemple :
 
@@ -254,6 +258,8 @@ Exemple :
 ```http
 Authorization: Bearer eyJhbGciOi...
 ```
+
+Le format des tokens, leurs claims, leur durée de vie et leur révocation sont définis dans [security.md](security.md).
 
 ---
 
@@ -358,15 +364,17 @@ Serveur :
 
 # 19. Pagination
 
-Toutes les listes sont paginées.
+Toutes les listes sont paginées. Aucune API ne renvoie une collection complète.
 
-Paramètres :
+## 19.1 Pagination par page (défaut)
 
 ```http
 ?page=1
 
 &per_page=20
 ```
+
+`per_page` vaut 20 par défaut et ne peut pas dépasser **100**.
 
 Réponse :
 
@@ -383,6 +391,33 @@ Réponse :
   }
 }
 ```
+
+## 19.2 Pagination par curseur
+
+Les collections volumineuses ou fortement écrites (`audit_logs`, `notification_logs`, événements, exports) utilisent un curseur.
+
+La pagination par offset y devient coûteuse et produit des doublons ou des oublis lorsque des lignes sont insérées pendant le parcours.
+
+```http
+?cursor=eyJpZCI6IjU1MGU4...&per_page=50
+```
+
+Réponse :
+
+```json
+{
+  "success": true,
+  "data": [],
+  "meta": {
+    "per_page": 50,
+    "next_cursor": "eyJpZCI6IjU1MGU4...",
+    "has_more": true,
+    "request_id": "req_8b94d7d0"
+  }
+}
+```
+
+Le curseur est opaque. Les consommateurs ne doivent jamais le décoder ni le construire.
 
 ---
 
@@ -402,13 +437,15 @@ Le préfixe "-" indique un ordre décroissant.
 
 # 21. Recherche
 
-Toutes les ressources doivent supporter :
+Les ressources pour lesquelles une recherche textuelle a du sens exposent :
 
 ```http
 ?search=nathan
 ```
 
-Le comportement exact dépend du domaine métier.
+Ce paramètre n'est pas obligatoire sur toutes les ressources. Lorsqu'il existe, la documentation OpenAPI précise les champs couverts.
+
+Une ressource qui ne le supporte pas doit répondre `400` avec le code `UNSUPPORTED_PARAMETER` plutôt que d'ignorer silencieusement le paramètre.
 
 ---
 
@@ -448,6 +485,13 @@ Les relations peuvent être chargées explicitement.
 ?include=subscription
 ```
 
+Contraintes obligatoires :
+
+* chaque endpoint déclare une **liste blanche** des relations incluables ; une relation inconnue renvoie `400` / `UNSUPPORTED_PARAMETER` ;
+* profondeur maximale : **2 niveaux** (`organization.owner` est accepté, `organization.owner.memberships` ne l'est pas) ;
+* maximum **3** relations par requête ;
+* le chargement doit être *eager* — aucune relation incluse ne doit produire de requête par ligne (N+1).
+
 ---
 
 # 25. Format des erreurs
@@ -474,9 +518,109 @@ Toutes les erreurs suivent la même structure.
 
 Les consommateurs de l'API doivent utiliser le champ `code` comme référence stable et ne jamais baser leur logique sur le texte du message, qui peut être traduit selon la langue demandée.
 
+La liste des codes autorisés est centralisée dans [error-codes.md](error-codes.md). Aucun module ne peut inventer un code hors de ce catalogue.
+
 ---
 
-# 26. Dépréciation
+# 26. Limitation de débit (rate limiting)
+
+Toutes les API publiques sont limitées en débit.
+
+## 26.1 Portée
+
+La limite s'applique par **organisation** pour les tokens utilisateur, et par **clé d'API** pour les intégrations serveur. Elle n'est jamais appliquée par adresse IP seule, sauf sur les routes non authentifiées.
+
+## 26.2 Quotas par défaut
+
+| Catégorie de route | Limite |
+| --- | --- |
+| Lecture (`GET`) | 1 000 req / min |
+| Écriture (`POST`, `PATCH`, `DELETE`) | 300 req / min |
+| Authentification (`/auth/login`, `/auth/forgot-password`) | 10 req / min et par adresse IP |
+| Endpoints coûteux (AI, OCR, exports) | 60 req / min |
+
+Un plan Billing peut relever ces quotas. Les valeurs effectives sont exposées dans les headers.
+
+## 26.3 Headers
+
+Toute réponse inclut :
+
+```http
+X-RateLimit-Limit: 1000
+X-RateLimit-Remaining: 987
+X-RateLimit-Reset: 1754225400
+```
+
+Au dépassement, l'API répond `429` avec le code `RATE_LIMIT_EXCEEDED` et le header :
+
+```http
+Retry-After: 42
+```
+
+---
+
+# 27. Idempotence
+
+Toute requête `POST` qui crée une ressource ou déclenche un effet de bord non réversible (paiement, envoi de message, activation de produit) doit accepter :
+
+```http
+Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+```
+
+Règles :
+
+* la clé est générée par le client, unique par opération métier ;
+* elle est conservée **24 heures** ;
+* une seconde requête avec la même clé et le même corps renvoie la **réponse d'origine**, sans réexécuter l'opération ;
+* une même clé réutilisée avec un corps différent renvoie `409` / `IDEMPOTENCY_KEY_REUSED`.
+
+Les consommateurs d'événements internes doivent appliquer la même garantie : un événement peut être livré plusieurs fois.
+
+---
+
+# 28. Webhooks
+
+Les services qui notifient l'extérieur (Verify, Billing, Notify) émettent des webhooks.
+
+## 28.1 Format
+
+```json
+{
+  "id": "evt_9f1c2b7a",
+  "type": "verification.completed",
+  "created_at": "2026-08-03T13:42:51Z",
+  "data": {}
+}
+```
+
+Le champ `type` suit la convention `ressource.action`.
+
+## 28.2 Signature
+
+Chaque livraison est signée avec le secret du endpoint :
+
+```http
+Sekuu-Signature: t=1754225400,v1=5257a869e7ecebeda32affa62cdca3fa...
+```
+
+La signature est un HMAC-SHA256 de `{timestamp}.{corps brut}`.
+
+Le consommateur doit :
+
+* recalculer la signature sur le corps **brut**, avant tout parsing JSON ;
+* comparer en temps constant ;
+* rejeter tout événement dont l'horodatage dépasse **5 minutes** (protection contre le rejeu).
+
+## 28.3 Livraison
+
+* Une réponse `2xx` vaut acquittement. Tout autre code déclenche un réessai.
+* Réessais avec backoff exponentiel : 1 min, 5 min, 30 min, 2 h, 6 h, 24 h.
+* Après 6 échecs, le endpoint est désactivé et une notification est envoyée à l'organisation.
+* La livraison est **au moins une fois** : le consommateur doit dédupliquer sur `id`.
+
+---
+
+# 29. Dépréciation
 
 Lorsqu'une version devient obsolète :
 
@@ -488,7 +632,7 @@ Aucune rupture de compatibilité ne doit être introduite dans une version majeu
 
 ---
 
-# 27. Documentation
+# 30. Documentation
 
 Chaque API doit disposer d'un contrat OpenAPI (`openapi.yaml`) versionné avec le code.
 
@@ -498,7 +642,7 @@ La documentation interactive (Swagger ou Redoc) est générée automatiquement �
 
 ---
 
-# 28. Évolution
+# 31. Évolution
 
 Les API doivent être conçues pour évoluer.
 
@@ -508,7 +652,7 @@ Les suppressions ou modifications incompatibles nécessitent une nouvelle versio
 
 ---
 
-# 29. Résumé
+# 32. Résumé
 
 Toutes les API Sekuu respectent les règles suivantes :
 
@@ -520,8 +664,12 @@ Toutes les API Sekuu respectent les règles suivantes :
 * Dates ISO8601 en UTC
 * `snake_case` pour les propriétés JSON
 * Format de réponse uniforme
-* Pagination, tri et filtres standardisés
+* Pagination (page ou curseur), tri et filtres standardisés
 * OpenAPI comme contrat officiel
+* Codes d'erreur issus du catalogue commun
 * Messages internationalisables
 * `request_id` présent dans chaque réponse
+* Rate limiting exposé dans les headers
+* `Idempotency-Key` sur les écritures non réversibles
+* Webhooks signés et rejouables
 * Compatibilité ascendante garantie au sein d'une même version majeure

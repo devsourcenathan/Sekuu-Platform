@@ -1,7 +1,11 @@
-# Architecture de déploiement de Sekuu Platform
+# Architecture de Sekuu Platform
 
-> **Version :** 1.0
+> **Version :** 2.0
 > **Statut :** Architecture de référence
+> **Dernière mise à jour :** Août 2026
+
+Ce document décrit l'architecture technique et de déploiement de Sekuu Platform.
+Pour la vision produit et le périmètre fonctionnel de chaque domaine, voir [vision.md](vision.md).
 
 ---
 
@@ -12,7 +16,7 @@ L'objectif de cette architecture est de permettre à Sekuu Platform d'évoluer p
 * sans créer une infrastructure complexe dès le départ ;
 * tout en gardant la possibilité d'extraire certains services dans le futur sans modifier les produits consommateurs.
 
-Cette approche suit le principe du **Modular Monolith First**.
+Cette approche suit le principe du **Modular Monolith First** (voir [ADR-0001](../04-decisions/adr-0001-modular-monolith.md)).
 
 ---
 
@@ -47,13 +51,8 @@ Tous les modules partagent :
 
  ┌──────────────────────────────────────────────────────┐
  │                                                      │
- │  Identity                                             │
- │  Verify                                               │
- │  Notify                                               │
- │  Billing                                              │
- │  Storage                                              │
- │  Search                                               │
- │  Analytics                                            │
+ │  Identity    Verify    Notify    Billing             │
+ │  Storage     AI        Search    Analytics           │
  │                                                      │
  └──────────────────────────────────────────────────────┘
                      │
@@ -102,6 +101,8 @@ Billing/
 
 Storage/
 
+AI/
+
 Search/
 
 Analytics/
@@ -133,11 +134,49 @@ Identity/
 
 ---
 
-# 6. Gestion des sous-domaines
+# 6. Le module AI
+
+L'intelligence artificielle est un domaine de la plateforme au même titre qu'Identity ou Verify.
+
+Le module **AI** fournit des capacités génériques d'intelligence artificielle à tous les produits.
+Il n'implémente jamais la logique métier d'un produit.
+
+## 6.1 Responsabilités
+
+* Génération de texte
+* Résumé de contenu
+* Traduction
+* Génération de quiz
+* Génération de documents
+* Analyse de documents
+* OCR
+* Recherche sémantique (RAG)
+* Classification
+* Modération
+* Embeddings
+* Génération de titres et de descriptions
+* Suggestions intelligentes
+* Intégration avec plusieurs fournisseurs (Anthropic, OpenAI, Google Gemini, Mistral, modèles locaux, etc.)
+
+## 6.2 Consommation
+
+Le module AI est consommé par tous les produits via son API versionnée.
+
+Exemples :
+
+* Sekuu Learn → génération de cours, quiz et corrigés.
+* DealerOS → génération de descriptions produits.
+* Stock → prédictions de stock et aide à la recherche.
+* ClinicFlow → résumé de consultations (selon les contraintes réglementaires).
+* ImmigraFlow → aide à la préparation des dossiers.
+
+L'objectif est qu'un changement de fournisseur d'IA ne nécessite **aucune** modification dans les produits.
+
+---
+
+# 7. Gestion des sous-domaines
 
 Même si une seule application Laravel est déployée, chaque module est exposé via un sous-domaine dédié.
-
-Exemple :
 
 ```text
 identity.sekuu.com
@@ -149,6 +188,12 @@ notify.sekuu.com
 billing.sekuu.com
 
 storage.sekuu.com
+
+ai.sekuu.com
+
+search.sekuu.com
+
+analytics.sekuu.com
 ```
 
 Tous ces sous-domaines pointent vers la même application Laravel.
@@ -157,24 +202,24 @@ Le routage interne dirige ensuite la requête vers le bon module.
 
 ---
 
-# 7. Routage
+# 8. Routage
 
 Chaque module enregistre ses propres routes.
 
-Exemple :
+Toutes les routes publiques sont versionnées dès la première version — voir [ADR-0002](../04-decisions/adr-0002-api-versioning.md) et les [API Guidelines](../02-standards/api-guidelines.md).
 
 Identity
 
 ```text
 identity.sekuu.com
 
-/api/auth/login
+/api/v1/auth/login
 
-/api/auth/logout
+/api/v1/auth/logout
 
-/api/users
+/api/v1/users
 
-/api/organizations
+/api/v1/organizations
 ```
 
 Verify
@@ -182,11 +227,11 @@ Verify
 ```text
 verify.sekuu.com
 
-/api/verifications
+/api/v1/verifications
 
-/api/providers
+/api/v1/providers
 
-/api/webhooks
+/api/v1/webhooks
 ```
 
 Notify
@@ -194,18 +239,38 @@ Notify
 ```text
 notify.sekuu.com
 
-/api/emails
+/api/v1/emails
 
-/api/sms
+/api/v1/sms
 
-/api/push
+/api/v1/push
+```
+
+AI
+
+```text
+ai.sekuu.com
+
+/api/v1/chat
+
+/api/v1/completions
+
+/api/v1/summarize
+
+/api/v1/translate
+
+/api/v1/embeddings
+
+/api/v1/documents/analyze
+
+/api/v1/ocr
 ```
 
 Le client pense communiquer avec plusieurs services alors que l'infrastructure n'en exécute qu'un seul.
 
 ---
 
-# 8. Architecture réseau
+# 9. Architecture réseau
 
 ```text
                    Internet
@@ -230,17 +295,24 @@ Le reverse proxy (Nginx, Caddy, Traefik ou Cloudflare) redirige les sous-domaine
 
 ---
 
-# 9. Base de données
+# 10. Base de données
 
-Une seule base est utilisée au démarrage.
+## 10.1 Deux niveaux de bases
 
-Exemple :
+Il faut distinguer deux périmètres, souvent confondus :
 
-```text
-sekuu_platform
-```
+| Périmètre | Bases | Contenu |
+| --- | --- | --- |
+| **Sekuu Platform** | **Une seule** base (`sekuu_platform`) | Les données de tous les modules de la plateforme (Identity, Verify, Notify, Billing…) |
+| **Produits SaaS** | **Une base par produit** | Les données métier de chaque produit (patients, véhicules, cours…) |
 
-Les tables sont regroupées par domaine fonctionnel.
+Autrement dit : la plateforme est mono-base, l'écosystème est multi-base.
+
+Un produit n'accède jamais à la base de la plateforme ni à celle d'un autre produit — uniquement à leurs API.
+
+## 10.2 Organisation de la base plateforme
+
+Les tables sont regroupées par domaine fonctionnel. Chaque module est **propriétaire exclusif** de ses tables.
 
 Identity
 
@@ -251,13 +323,31 @@ organizations
 
 memberships
 
+membership_roles
+
+workspaces
+
+workspace_members
+
 global_roles
 
 global_permissions
 
+role_permissions
+
+products
+
+organization_products
+
+invitations
+
 sessions
 
+refresh_tokens
+
 oauth_accounts
+
+audit_logs
 ```
 
 Verify
@@ -294,15 +384,57 @@ invoices
 transactions
 ```
 
-Chaque module est propriétaire de ses tables.
+Un module ne doit **jamais** lire ni modifier directement les tables d'un autre module.
 
-Un module ne doit jamais modifier directement les tables d'un autre module.
-
-Les échanges passent par les services du domaine concerné.
+Les échanges passent par les services du domaine concerné (section 11).
 
 ---
 
-# 10. Évolution vers des services indépendants
+# 11. Communication entre modules
+
+Deux mécanismes, et deux seulement.
+
+## 11.1 Appel synchrone via le contrat du domaine
+
+Un module appelle un autre module à travers une **interface de service publique** exposée par le domaine propriétaire — jamais son modèle Eloquent, jamais sa table.
+
+```text
+Billing  ──►  BillingContract::activateProduct(orgId, productId)
+
+Identity ──►  IdentityContract::getOrganization(orgId)
+```
+
+Ces interfaces vivent dans une couche partagée. Le jour où un module est extrait, seule l'implémentation change : l'appel local devient un appel HTTP vers l'API versionnée du service. Les appelants ne sont pas modifiés.
+
+Règle : un appel synchrone n'est autorisé que pour une **lecture**, ou pour une opération dont l'appelant a besoin du résultat immédiat.
+
+## 11.2 Événements de domaine (asynchrone)
+
+Pour tout le reste — et notamment les effets de bord — les modules publient des événements.
+
+```text
+Identity  publie  UserRegistered          →  Notify   envoie l'email de bienvenue
+
+Identity  publie  InvitationSent          →  Notify   envoie l'invitation
+
+Billing   publie  SubscriptionActivated   →  Identity active les produits de l'organisation
+
+Billing   publie  SubscriptionExpired     →  Identity suspend les produits de l'organisation
+```
+
+Les événements sont traités via des queues (Redis au démarrage).
+
+Un consommateur doit être **idempotent** : le même événement peut être livré plusieurs fois.
+
+## 11.3 Ce qui est interdit
+
+* Lire la table d'un autre module (jointure SQL inter-domaines).
+* Instancier le modèle Eloquent d'un autre module.
+* Appeler directement un fournisseur externe qui relève d'un autre domaine — par exemple Identity qui appellerait un fournisseur SMTP au lieu de passer par Notify.
+
+---
+
+# 12. Évolution vers des services indépendants
 
 L'un des principaux objectifs est de permettre une extraction progressive.
 
@@ -364,7 +496,7 @@ Le consommateur ne voit aucune différence.
 
 ---
 
-# 11. Pourquoi conserver les sous-domaines dès le début ?
+# 13. Pourquoi conserver les sous-domaines dès le début ?
 
 Même lorsqu'un module est interne, il est exposé via son propre domaine.
 
@@ -377,7 +509,7 @@ Cela présente plusieurs avantages :
 
 ---
 
-# 12. Déploiement
+# 14. Déploiement
 
 Version initiale
 
@@ -419,7 +551,7 @@ Services totalement indépendants
 
 ---
 
-# 13. Philosophie
+# 15. Philosophie
 
 Sekuu Platform ne doit pas être pensé comme une collection de microservices dès sa création.
 
@@ -433,7 +565,7 @@ Cette approche permet d'obtenir le meilleur compromis entre simplicité, évolut
 
 ---
 
-# 14. Vision à long terme
+# 16. Vision à long terme
 
 À terme, Sekuu Platform deviendra une véritable plateforme de services partagés.
 

@@ -1,9 +1,16 @@
-# Sekuu Identity — Spécifications Techniques
+# Sekuu Identity — Vision & Périmètre
 
-> **Version :** 1.0
-> **Statut :** Draft Architecture
+> **Version :** 1.1
+> **Statut :** Spécification de référence
 > **Projet :** Sekuu Ecosystem
 > **Composant :** Sekuu Identity Service
+> **Dernière mise à jour :** Août 2026
+
+Ce document décrit **le rôle et les frontières** de Sekuu Identity.
+
+* Le modèle de données fait autorité dans [02-data-model.md](02-data-model.md).
+* L'API fait autorité dans [03-api.md](03-api.md).
+* L'authentification et les tokens sont définis dans [security.md](../../02-standards/security.md).
 
 ---
 
@@ -37,7 +44,7 @@ Un utilisateur doit pouvoir :
 * utiliser les mêmes informations personnelles ;
 * gérer ses organisations ;
 * recevoir des invitations ;
-* utiliser un abonnement commun.
+* bénéficier des produits couverts par l'abonnement de son organisation.
 
 Exemple :
 
@@ -64,19 +71,31 @@ Sekuu Identity doit gérer :
 
 * Les utilisateurs.
 * Les organisations.
-* Les workspaces.
+* Les workspaces et leurs membres.
 * Les invitations.
 * Les sessions.
 * Les authentifications.
-* Les accès aux produits.
+* Les accès aux produits (`organization_products`).
 * Les rôles globaux.
 * Les permissions plateforme.
-* Les abonnements.
-* Les connexions externes.
+* Les connexions externes (OAuth).
 
 ---
 
-## 3.2 Objectifs techniques
+## 3.2 Ce qu'Identity ne gère pas
+
+| Domaine | Responsable | Rôle d'Identity |
+| --- | --- | --- |
+| Plans, abonnements, paiements, factures | **Billing** | Identity **consomme** l'information et en dérive l'accès aux produits |
+| Envoi d'emails, SMS, push | **Notify** | Identity **déclenche** des notifications, il n'en envoie aucune |
+| Vérification d'identité (KYC/KYB) | **Verify** | Identity référence le statut de vérification |
+| Permissions métier | **Chaque produit** | Identity ne les connaît pas |
+
+Cette frontière est le point le plus important de la spécification. Elle est détaillée en section 14.
+
+---
+
+## 3.3 Objectifs techniques
 
 Le service doit être :
 
@@ -151,23 +170,23 @@ Identity est responsable de :
 * récupération mot de passe ;
 * sessions.
 
-Données :
+Données principales :
 
 ```
 User
 
 id
 email
-password
-firstname
-lastname
+first_name
+last_name
 phone
 avatar
 language
 timezone
-created_at
-updated_at
+status
 ```
+
+> Ce bloc est indicatif. Le modèle complet et faisant autorité — colonnes, types, contraintes et index — se trouve dans [02-data-model.md](02-data-model.md).
 
 ---
 
@@ -250,6 +269,18 @@ name
 slug
 settings
 ```
+
+L'appartenance à un workspace est **explicite** : être membre d'une organisation ne donne pas automatiquement accès à tous ses workspaces.
+
+```
+workspace_members
+
+id
+workspace_id
+user_id
+```
+
+Exemple : un médecin rattaché au workspace Douala ne voit pas les données du workspace Yaoundé, bien qu'il soit membre de la même organisation.
 
 ---
 
@@ -402,7 +433,7 @@ ClinicFlow
 
       |
       |
-GET /identity/me
+GET https://identity.sekuu.com/api/v1/auth/me
 
       |
 
@@ -412,6 +443,8 @@ Sekuu Identity
 
 Utilisateur connecté
 ```
+
+Toutes les routes sont versionnées. L'inventaire complet des endpoints se trouve dans [03-api.md](03-api.md).
 
 ---
 
@@ -451,14 +484,18 @@ Authentification :
 ```
 OAuth 2.0
 
-JWT
+JWT (RS256)
 
 Refresh Tokens
 ```
 
+Le format des tokens, leurs claims, leur durée de vie, la rotation des clés et la révocation sont spécifiés dans [security.md](../../02-standards/security.md).
+
 ---
 
 # 14. Hors périmètre
+
+## 14.1 Données métier des produits
 
 Sekuu Identity ne doit pas gérer :
 
@@ -472,6 +509,40 @@ Sekuu Identity ne doit pas gérer :
 
 Ces données appartiennent aux applications concernées.
 
+## 14.2 Abonnements et facturation → Billing
+
+Identity ne possède ni les plans, ni les abonnements, ni les paiements, ni les factures. Ces tables appartiennent au module **Billing**.
+
+Identity possède uniquement `organization_products`, qui répond à une seule question :
+
+> Cette organisation peut-elle utiliser ce produit, aujourd'hui ?
+
+Cette table est un **cache de droits d'accès**, alimenté par les événements émis par Billing :
+
+```text
+Billing   publie  SubscriptionActivated  →  Identity  active   les produits du plan
+Billing   publie  SubscriptionExpired    →  Identity  suspend  les produits du plan
+Billing   publie  SubscriptionUpgraded   →  Identity  ajuste   les produits du plan
+```
+
+En cas de désaccord entre les deux, **Billing fait foi**. Une commande de réconciliation permet de reconstruire `organization_products` à partir des abonnements.
+
+Conséquence : Identity n'expose **aucun** endpoint `/subscriptions` ni `/plans`. Ces routes vivent sur `billing.sekuu.com`.
+
+## 14.3 Envoi de messages → Notify
+
+Identity doit provoquer l'envoi de plusieurs messages :
+
+* bienvenue après inscription ;
+* vérification d'adresse email ;
+* mot de passe oublié ;
+* invitation à rejoindre une organisation ;
+* alerte de connexion depuis un nouvel appareil.
+
+Dans tous les cas, Identity **publie un événement** ; c'est Notify qui possède les templates, les canaux, les files d'attente et les fournisseurs.
+
+Identity ne contient aucune configuration SMTP, aucun compte SMS, aucun template de message.
+
 ---
 
 # Résumé
@@ -482,12 +553,18 @@ Il fournit :
 
 ✓ Une identité unique
 ✓ Un système SSO
-✓ Les organisations
-✓ Les accès produits
-✓ Les rôles plateforme
-✓ Les abonnements
+✓ Les organisations et les workspaces
+✓ Les droits d'accès aux produits
+✓ Les rôles et permissions plateforme
+✓ Les sessions et les tokens
 
-Mais chaque produit reste responsable de :
+Mais il ne gère pas :
+
+✗ Les abonnements et la facturation (Billing)
+✗ L'envoi des notifications (Notify)
+✗ La vérification d'identité (Verify)
+
+Et chaque produit reste responsable de :
 
 ✓ Sa base métier
 ✓ Ses données

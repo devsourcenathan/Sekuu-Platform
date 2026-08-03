@@ -1,476 +1,382 @@
-# Sekuu Platform - Vision & Architecture
+# Sekuu Platform
 
-> **Version :** 1.0
-> **Auteur :** Nathan Tchinda
-> **Statut :** Draft
+## Vision Globale de la Plateforme
 
----
+> **Version :** 2.0
+> **Statut :** Vision & Architecture
+> **Projet :** Sekuu Ecosystem
+> **Dernière mise à jour :** Août 2026
 
-# Vision
-
-L'objectif de **Sekuu Platform** est de construire une plateforme de développement permettant de créer rapidement des applications SaaS professionnelles.
-
-Contrairement à une simple suite d'applications, Sekuu Platform est composée de deux parties :
-
-* une **plateforme technique interne** (Core) réutilisable ;
-* plusieurs **produits SaaS** destinés à différents marchés.
-
-L'objectif est de ne jamais repartir de zéro lors de la création d'un nouveau produit.
+Ce document décrit la vision et le périmètre fonctionnel de la plateforme.
+Pour les détails techniques et de déploiement, voir [architecture.md](architecture.md).
 
 ---
 
-# Philosophie
+# 1. Vision
 
-## Construire une seule fois
+Sekuu est une plateforme d'ingénierie logicielle conçue pour accélérer la création, le déploiement et l'évolution de produits SaaS.
 
-Toutes les fonctionnalités communes doivent être développées une seule fois.
+L'objectif est de mutualiser toutes les fonctionnalités communes afin que chaque nouveau produit puisse se concentrer uniquement sur sa logique métier.
+
+Chaque produit développé au sein de l'écosystème Sekuu doit pouvoir bénéficier immédiatement :
+
+* d'une authentification centralisée ;
+* d'un système de vérification (KYC/KYB) ;
+* d'un système de notifications ;
+* d'un moteur d'intelligence artificielle ;
+* d'un stockage partagé ;
+* d'une architecture standardisée ;
+* d'un SDK commun ;
+* d'une interface utilisateur homogène.
+
+---
+
+# 2. Objectifs
+
+Sekuu Platform poursuit plusieurs objectifs.
+
+## Réduction du temps de développement
+
+Créer un nouveau SaaS ne doit plus nécessiter de reconstruire :
+
+* l'authentification ;
+* les notifications ;
+* la gestion des organisations ;
+* les abonnements ;
+* les composants UI ;
+* les appels API ;
+* les traductions.
+
+Ces fonctionnalités sont fournies par la plateforme.
+
+---
+
+## Standardisation
+
+Tous les produits doivent partager :
+
+* les mêmes conventions ;
+* les mêmes composants ;
+* les mêmes API ;
+* les mêmes pratiques de développement.
+
+Cela garantit une expérience cohérente pour les développeurs comme pour les utilisateurs.
+
+---
+
+## Évolutivité
+
+L'architecture doit permettre :
+
+* d'ajouter facilement de nouveaux modules ;
+* d'introduire de nouveaux produits ;
+* d'extraire certains modules en services indépendants lorsque cela devient nécessaire.
+
+---
+
+# 3. Architecture générale
+
+```text
+                          SEKUU ECOSYSTEM
+
+ ┌────────────────────────────────────────────────────────────┐
+ │                     Sekuu Platform                         │
+ │                                                            │
+ │  Identity   Verify   Notify   Billing   Storage   AI       │
+ │  Search     Analytics                                     │
+ └────────────────────────────────────────────────────────────┘
+                            ▲
+                            │
+                SDK & Design System
+                            ▲
+                            │
+ ┌────────────────────────────────────────────────────────────┐
+ │                     Produits SaaS                         │
+ │                                                            │
+ │  Sekuu Learn                                               │
+ │  DealerOS                                                  │
+ │  Stock Manager                                             │
+ │  Tontines                                                  │
+ │  ClinicFlow                                                │
+ │  ImmigraFlow                                               │
+ │  Futurs produits                                           │
+ └────────────────────────────────────────────────────────────┘
+```
+
+La plateforme fournit les services transverses.
+
+Les produits implémentent uniquement leur logique métier.
+
+---
+
+# 4. Les domaines de Sekuu Platform
+
+Chaque domaine possède une responsabilité clairement définie.
+
+## Identity
+
+Responsable de :
+
+* authentification ;
+* SSO ;
+* utilisateurs ;
+* organisations ;
+* workspaces ;
+* rôles globaux ;
+* accès aux produits.
+
+Identity ne gère ni la facturation et les abonnements (**Billing**), ni l'envoi des messages (**Notify**). Il consomme ces domaines.
+
+Spécification détaillée : [Sekuu Identity](../03-services/identity/01-overview.md).
+
+---
+
+## Verify
+
+Responsable de :
+
+* KYC ;
+* KYB ;
+* vérification documentaire ;
+* licences professionnelles ;
+* intégration avec plusieurs fournisseurs.
+
+---
+
+## Notify
+
+Responsable de :
+
+* emails ;
+* SMS ;
+* notifications push ;
+* WhatsApp ;
+* templates ;
+* files d'attente.
+
+---
+
+## Billing
+
+Responsable de :
+
+* abonnements ;
+* plans ;
+* paiements ;
+* facturation ;
+* gestion des licences.
+
+---
+
+## Storage
+
+Responsable de :
+
+* fichiers ;
+* images ;
+* vidéos ;
+* documents ;
+* gestion des pièces jointes.
+
+---
+
+## AI
+
+Responsable de :
+
+* génération de texte ;
+* traduction ;
+* OCR ;
+* RAG ;
+* embeddings ;
+* analyse documentaire ;
+* génération de quiz ;
+* assistants conversationnels.
+
+---
+
+## Search
+
+Responsable de :
+
+* recherche globale ;
+* indexation ;
+* recherche plein texte ;
+* recherche sémantique.
+
+---
+
+## Analytics
+
+Responsable de :
+
+* métriques ;
+* tableaux de bord ;
+* événements ;
+* rapports.
+
+---
+
+# 5. Architecture de développement
+
+Sekuu Platform est développé sous la forme d'un **Modular Monolith**.
+
+Au démarrage :
+
+* une seule application Laravel ;
+* une seule base PostgreSQL ;
+* plusieurs modules indépendants.
+
+Chaque module possède :
+
+* ses routes ;
+* ses services ;
+* ses migrations ;
+* ses modèles ;
+* ses tests.
+
+Cette approche permet de limiter la complexité tout en préparant une éventuelle extraction en microservices.
+
+---
+
+# 6. Architecture de déploiement
+
+Chaque domaine est exposé via un sous-domaine dédié.
+
+Exemples :
+
+```text
+identity.sekuu.com/api/v1/...
+
+verify.sekuu.com/api/v1/...
+
+notify.sekuu.com/api/v1/...
+
+billing.sekuu.com/api/v1/...
+
+storage.sekuu.com/api/v1/...
+
+ai.sekuu.com/api/v1/...
+
+search.sekuu.com/api/v1/...
+
+analytics.sekuu.com/api/v1/...
+```
+
+Toutes les routes publiques sont versionnées dès la première version. Aucune API n'est exposée sans numéro de version.
+
+Au départ, tous ces sous-domaines pointent vers la même application Laravel.
+
+Si un module devient suffisamment important, il peut être déployé séparément sans modifier les URL publiques.
+
+---
+
+# 7. Base de données
+
+Il faut distinguer deux périmètres :
+
+* **Sekuu Platform** possède **une seule** base de données, partagée par tous ses modules (Identity, Verify, Notify, Billing…). Chaque module y est propriétaire exclusif de ses tables.
+* **Chaque produit SaaS** possède **sa propre** base de données, totalement séparée.
+
+Un module n'accède jamais aux tables d'un autre module, et un produit n'accède jamais à la base de la plateforme ni à celle d'un autre produit.
+
+Toutes les communications passent par des API ou des événements de domaine.
+
+---
+
+# 8. Les packages
+
+En complément des services, Sekuu fournit plusieurs bibliothèques réutilisables.
+
+## SDK
+
+Le SDK encapsule toutes les communications avec Sekuu Platform.
+
+Les produits n'appellent jamais directement les API.
+
+Ils utilisent les méthodes du SDK.
 
 Exemples :
 
 * Authentification
-* Gestion des utilisateurs
-* Paiements
+* Vérifications
 * Notifications
-* Permissions
-* Internationalisation
-* Dashboard
-* Upload de fichiers
-* Emails
-* Logging
-
-Tous les produits utiliseront ces fonctionnalités.
+* Intelligence artificielle
 
 ---
 
-# Objectifs
+## UI
 
-* Réduire le temps de développement.
-* Standardiser les applications.
-* Mutualiser le code.
-* Simplifier la maintenance.
-* Faciliter l'ajout de nouveaux SaaS.
-* Offrir une expérience utilisateur cohérente.
-* Permettre à chaque produit d'être totalement indépendant.
+Le Design System fournit :
 
----
+* composants React ;
+* composants React Native ;
+* thème ;
+* icônes ;
+* formulaires ;
+* tableaux ;
+* navigation.
 
-# Architecture générale
-
-```
-                    Sekuu Platform
-                           │
-      ┌────────────────────┴────────────────────┐
-      │                                         │
-  Sekuu Core                               Sekuu UI
-      │                                         │
-      ├──────────────┬──────────────────────────┤
-      │              │                          │
- Sekuu SDK     Shared Services             Mobile SDK
-      │
-      ├───────────────────────────────────────────────┐
-      │                                               │
- Sekuu Learn                                   Sekuu Suite
-                                                    │
-                                              ├── Invoice
-                                              ├── Stock
-                                              ├── CRM
-                                              ├── HR
-                                              ├── Booking
-                                              ├── Support
-                                              └── Forms
-
-      │
-      ├───────────────────────────────────────────────┐
-      │                                               │
- DealerOS     Stock Manager     Tontines     ClinicFlow
-```
+Tous les produits partagent la même identité visuelle.
 
 ---
 
-# Les couches
+## Starters
 
-## 1. Sekuu Core
+Des starters permettent de créer rapidement de nouveaux projets.
 
-Le Core est le moteur de tous les produits.
+Exemples :
 
-Il ne contient **aucune logique métier spécifique**.
+* Laravel Starter
+* Next.js Starter
+* React Starter
+* React Native Starter
 
-### Modules
+Chaque starter est déjà configuré avec :
 
-* Authentication
-* Organizations
-* Users
-* Teams
-* Workspaces
-* Roles
-* Permissions
-* Billing
-* Subscription
-* Notifications
-* Emails
-* File Storage
-* Settings
-* Audit Logs
-* API Keys
-* Webhooks
-* Jobs
-* Queue
-* Search
-* Feature Flags
-* Internationalization
+* l'authentification ;
+* le SDK ;
+* le Design System ;
+* l'internationalisation ;
+* les conventions de développement.
 
 ---
 
-## 2. Sekuu UI
+# 9. Principes d'architecture
 
-Bibliothèque de composants réutilisables.
+Tous les développements doivent respecter les principes suivants :
 
-### Composants
-
-* Button
-* Input
-* Select
-* Checkbox
-* Modal
-* Drawer
-* Tabs
-* Card
-* Badge
-* Avatar
-* Alert
-* Toast
-* Loader
-* Empty State
-
-### Composants métier
-
-* DataTable
-* ResourceTable
-* ResourceForm
-* ResourceDetails
-* Filters
-* Search
-* Pagination
-* CSV Import
-* Excel Export
-* PDF Export
-* Charts
-* File Upload
+* une responsabilité par domaine ;
+* une API versionnée ;
+* des contrats OpenAPI ;
+* une internationalisation native ;
+* une architecture orientée domaines ;
+* des conventions communes ;
+* des composants réutilisables ;
+* une documentation systématique.
 
 ---
 
-## 3. Sekuu SDK
+# 10. Philosophie
 
-Bibliothèque TypeScript commune.
+Sekuu Platform privilégie la simplicité.
 
-Elle contient :
+Les fonctionnalités communes sont développées une seule fois et réutilisées partout.
 
-* API Client
-* Authentication
-* Validators
-* Money Helpers
-* Date Helpers
-* Notification Client
-* Storage Client
-* Utilities
+Les produits restent indépendants.
 
-Tous les projets React utiliseront cette bibliothèque.
+Les services de la plateforme évoluent progressivement.
+
+Aucun module n'est extrait en microservice tant qu'un besoin réel ne le justifie.
 
 ---
 
-## 4. Shared Services
+# 11. Vision à long terme
 
-Services partagés entre tous les produits.
+À terme, Sekuu doit permettre à un développeur de créer un nouveau produit SaaS en quelques heures.
 
-* Email
-* SMS
-* WhatsApp
-* Push Notifications
-* PDF
-* Search
-* OCR
-* AI Services (plus tard)
-* Payments
-* Monitoring
+Le développeur choisit un starter, configure son domaine métier et bénéficie immédiatement de tous les services de la plateforme.
 
----
+L'objectif n'est pas seulement de construire des applications, mais de bâtir un écosystème cohérent où chaque nouveau produit profite automatiquement des capacités de la plateforme et contribue à son évolution.
 
-# Internationalisation
-
-Tous les produits doivent être internationaux dès leur création.
-
-## Langues
-
-* Français
-* Anglais
-* Espagnol
-* Portugais
-
-Ajout d'autres langues sans modification du code métier.
-
----
-
-## Devises
-
-* EUR
-* USD
-* CAD
-* GBP
-* XAF
-
-Toutes les devises doivent être configurables.
-
----
-
-## Formats
-
-* Date
-* Heure
-* Fuseau horaire
-* Nombre
-* Monnaie
-
-Aucune valeur ne doit être codée en dur.
-
----
-
-# Multi-tenant
-
-Chaque entreprise possède :
-
-* ses utilisateurs
-* ses rôles
-* ses données
-* ses paramètres
-* son abonnement
-* sa devise
-* sa langue
-* son fuseau horaire
-
-Les données des entreprises sont totalement isolées.
-
----
-
-# Authentification
-
-Prévoir :
-
-* Email / Password
-* Google
-* Microsoft
-* GitHub
-* 2FA
-* Magic Link (plus tard)
-
-À terme, mise en place d'un **SSO** pour permettre à un utilisateur d'accéder à plusieurs produits Sekuu avec une seule connexion.
-
----
-
-# Produits
-
-## Sekuu Learn
-
-Plateforme de formation.
-
-Fonctionnalités :
-
-* Cours
-* Quiz
-* Certificats
-* Paiements
-* Progression
-
----
-
-## Sekuu Suite
-
-Suite destinée aux PME.
-
-Modules :
-
-* Facturation
-* Stock
-* CRM
-* RH
-* Booking
-* Support
-* Forms
-
-Tous les modules utilisent le même workspace.
-
----
-
-## Produits indépendants
-
-Les produits suivants restent autonomes.
-
-### DealerOS
-
-Gestion de revendeurs.
-
-Technologie actuelle :
-
-* Laravel
-* React + Vite
-
-Migration progressive vers les composants communs.
-
----
-
-### Stock Manager
-
-Gestion de stock.
-
-Technologie actuelle :
-
-* NestJS
-* React + Vite
-
-Aucune migration immédiate.
-
-Réutilisation progressive de :
-
-* Sekuu UI
-* Sekuu SDK
-* Shared Services
-
----
-
-### Tontines
-
-Technologie actuelle :
-
-* Supabase
-* React + Vite
-
-Migration uniquement si elle apporte une vraie valeur métier.
-
----
-
-## Futurs produits
-
-* ClinicFlow
-* ImmigraFlow
-* GarageFlow
-* SchoolFlow
-* VetFlow
-
-Tous utiliseront directement Sekuu Core.
-
----
-
-# Principe de migration
-
-Les produits existants ne seront pas réécrits immédiatement.
-
-Règles :
-
-* Ne migrer que lorsqu'un gain réel est identifié.
-* Prioriser le partage des composants et services plutôt que la réécriture complète.
-* Maintenir la compatibilité avec les technologies existantes.
-
----
-
-# Technologies
-
-## Backend
-
-* Laravel (référence pour les nouveaux projets)
-* NestJS (projets existants)
-* Supabase (projets existants)
-
----
-
-## Frontend
-
-* React
-* Next.js
-* Vite
-
----
-
-## Mobile
-
-* React Native
-* Expo
-
----
-
-## Infrastructure
-
-* Docker
-* GitHub Actions
-* Cloudflare
-* PostgreSQL / MySQL
-* Redis
-* Object Storage (S3 compatible)
-
----
-
-# Règles du Core
-
-Une fonctionnalité entre dans le Core uniquement si :
-
-* elle est utilisée par au moins deux produits ;
-* elle est générique ;
-* elle n'est pas liée à un métier spécifique.
-
-Sinon, elle reste dans le produit concerné.
-
----
-
-# Roadmap
-
-## Phase 1
-
-* Sekuu Core
-* Sekuu UI
-* Sekuu SDK
-
----
-
-## Phase 2
-
-* Amélioration de Sekuu Learn
-* Développement de Sekuu Suite
-* Module Facturation
-
----
-
-## Phase 3
-
-* CRM
-* Stock
-* Booking
-
----
-
-## Phase 4
-
-* Shared Services
-* SSO
-* Marketplace de modules
-
----
-
-## Phase 5
-
-Migration progressive des produits existants.
-
-* DealerOS
-* Stock Manager
-* Tontines
-
----
-
-# Vision à 5 ans
-
-Créer un écosystème de produits SaaS capables de partager :
-
-* la même identité visuelle ;
-* les mêmes composants ;
-* les mêmes services ;
-* la même authentification ;
-* les mêmes standards de qualité.
-
-Chaque produit reste indépendant, peut être commercialisé séparément et évoluer à son propre rythme, tout en bénéficiant de la puissance de **Sekuu Platform**.
+Sekuu Platform devient ainsi le socle technique commun de l'ensemble de l'écosystème Sekuu.

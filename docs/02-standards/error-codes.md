@@ -1,0 +1,224 @@
+# Catalogue des codes d'erreur
+
+> **Version :** 1.0
+> **Statut :** Standard applicable
+> **Dernière mise à jour :** Août 2026
+
+Les [API Guidelines](api-guidelines.md) imposent aux consommateurs de baser leur logique sur le champ `error.code`, jamais sur `error.message` qui est traduit.
+
+Ce document est la **liste de référence** de ces codes. Un code absent de ce catalogue ne peut pas être renvoyé par une API Sekuu.
+
+---
+
+# 1. Règles
+
+* Format : `MAJUSCULES_AVEC_UNDERSCORES`.
+* Un code est **stable à vie**. On n'en change jamais le sens ; on en ajoute un nouveau.
+* Un code décrit une **cause**, pas un message. `USER_NOT_FOUND`, pas `SOMETHING_WENT_WRONG`.
+* Les codes transverses (section 3) sont communs à tous les modules.
+* Les codes propres à un domaine sont préfixés par ce domaine (section 4) et déclarés par le module qui les émet.
+* Ajouter un code est un changement **compatible**. Le supprimer ou le renommer exige une nouvelle version majeure.
+
+---
+
+# 2. Structure de la réponse
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Validation failed.",
+    "details": {
+      "email": [
+        "The email field is required."
+      ]
+    }
+  },
+  "meta": {
+    "request_id": "req_8b94d7d0"
+  }
+}
+```
+
+`details` n'est présent que lorsqu'il apporte une information exploitable par le client (erreurs de validation champ par champ, principalement).
+
+---
+
+# 3. Codes transverses
+
+## 3.1 Requête — 400
+
+| Code | Description |
+| --- | --- |
+| `BAD_REQUEST` | Requête malformée, non couverte par un code plus précis |
+| `INVALID_JSON` | Corps de requête JSON illisible |
+| `UNSUPPORTED_PARAMETER` | Paramètre de requête inconnu ou non supporté par cet endpoint |
+| `INVALID_CURSOR` | Curseur de pagination invalide ou expiré |
+| `INVALID_FILTER` | Filtre inconnu ou valeur de filtre invalide |
+| `INVALID_SORT` | Champ de tri non autorisé |
+| `INVALID_INCLUDE` | Relation non incluable, ou profondeur dépassée |
+
+## 3.2 Authentification — 401
+
+| Code | Description |
+| --- | --- |
+| `UNAUTHENTICATED` | Aucun token fourni |
+| `INVALID_TOKEN` | Token illisible, mal signé ou destiné à une autre audience |
+| `TOKEN_EXPIRED` | Token expiré — l'appelant doit le rafraîchir |
+| `TOKEN_REVOKED` | Token révoqué (déconnexion, changement de mot de passe, suspension) |
+| `INVALID_CREDENTIALS` | Email ou mot de passe incorrect |
+| `MFA_REQUIRED` | Second facteur nécessaire pour terminer l'authentification |
+| `MFA_INVALID` | Code de second facteur incorrect |
+
+## 3.3 Autorisation — 403
+
+| Code | Description |
+| --- | --- |
+| `FORBIDDEN` | Accès refusé, sans détail supplémentaire |
+| `INSUFFICIENT_PERMISSIONS` | Le rôle global de l'appelant ne couvre pas cette action |
+| `ORGANIZATION_MISMATCH` | La ressource appartient à une autre organisation que celle du token |
+| `PRODUCT_NOT_ACTIVATED` | Le produit n'est pas actif pour cette organisation |
+| `SUBSCRIPTION_REQUIRED` | Aucun abonnement actif ne couvre cette fonctionnalité |
+| `EMAIL_NOT_VERIFIED` | Adresse email non vérifiée |
+| `ACCOUNT_SUSPENDED` | Compte utilisateur suspendu |
+| `ORGANIZATION_SUSPENDED` | Organisation suspendue |
+
+## 3.4 Ressource — 404 / 409 / 410
+
+| Code | HTTP | Description |
+| --- | --- | --- |
+| `RESOURCE_NOT_FOUND` | 404 | Ressource inexistante ou invisible pour l'appelant |
+| `ENDPOINT_NOT_FOUND` | 404 | Route inconnue |
+| `RESOURCE_CONFLICT` | 409 | Conflit d'état générique |
+| `DUPLICATE_RESOURCE` | 409 | Violation d'unicité (email, slug…) |
+| `IDEMPOTENCY_KEY_REUSED` | 409 | Clé d'idempotence réutilisée avec un corps différent |
+| `RESOURCE_GONE` | 410 | Ressource définitivement supprimée |
+
+Une erreur `404` ne doit jamais permettre de deviner l'existence d'une ressource appartenant à une autre organisation : dans ce cas, `RESOURCE_NOT_FOUND` est préféré à `ORGANIZATION_MISMATCH`.
+
+## 3.5 Validation — 422
+
+| Code | Description |
+| --- | --- |
+| `VALIDATION_ERROR` | Une ou plusieurs règles de validation ont échoué — voir `details` |
+| `UNPROCESSABLE_STATE` | La ressource n'est pas dans un état permettant cette action |
+
+## 3.6 Débit — 429
+
+| Code | Description |
+| --- | --- |
+| `RATE_LIMIT_EXCEEDED` | Quota de requêtes dépassé — voir `Retry-After` |
+| `QUOTA_EXCEEDED` | Quota du plan épuisé (crédits AI, volume de stockage, SMS…) |
+
+## 3.7 Serveur — 500 / 503
+
+| Code | HTTP | Description |
+| --- | --- | --- |
+| `INTERNAL_ERROR` | 500 | Erreur interne — `request_id` à fournir au support |
+| `SERVICE_UNAVAILABLE` | 503 | Service temporairement indisponible |
+| `UPSTREAM_ERROR` | 503 | Un fournisseur externe est en échec |
+| `UPSTREAM_TIMEOUT` | 503 | Un fournisseur externe n'a pas répondu à temps |
+
+Un `INTERNAL_ERROR` ne doit jamais exposer de trace, de requête SQL ou de nom de classe dans `message`.
+
+---
+
+# 4. Codes par domaine
+
+## 4.1 Identity
+
+| Code | HTTP | Description |
+| --- | --- | --- |
+| `USER_NOT_FOUND` | 404 | Utilisateur inexistant |
+| `EMAIL_ALREADY_USED` | 409 | Cette adresse est déjà rattachée à un compte |
+| `PASSWORD_TOO_WEAK` | 422 | Mot de passe non conforme à la politique |
+| `PASSWORD_RECENTLY_USED` | 422 | Mot de passe déjà utilisé récemment |
+| `RESET_TOKEN_INVALID` | 400 | Jeton de réinitialisation invalide ou expiré |
+| `ORGANIZATION_NOT_FOUND` | 404 | Organisation inexistante |
+| `ORGANIZATION_SLUG_TAKEN` | 409 | Slug d'organisation déjà pris |
+| `MEMBERSHIP_NOT_FOUND` | 404 | L'utilisateur n'appartient pas à cette organisation |
+| `ALREADY_MEMBER` | 409 | L'utilisateur est déjà membre de l'organisation |
+| `LAST_OWNER_CANNOT_LEAVE` | 409 | Une organisation doit conserver au moins un `Owner` |
+| `INVITATION_NOT_FOUND` | 404 | Invitation inexistante |
+| `INVITATION_EXPIRED` | 410 | Invitation expirée |
+| `INVITATION_ALREADY_ACCEPTED` | 409 | Invitation déjà acceptée |
+| `WORKSPACE_NOT_FOUND` | 404 | Workspace inexistant |
+| `WORKSPACE_ACCESS_DENIED` | 403 | L'utilisateur n'est pas membre de ce workspace |
+| `PRODUCT_NOT_FOUND` | 404 | Produit inconnu de la plateforme |
+| `OAUTH_ACCOUNT_ALREADY_LINKED` | 409 | Ce compte externe est déjà rattaché à un utilisateur |
+| `OAUTH_PROVIDER_ERROR` | 503 | Le fournisseur OAuth a répondu en erreur |
+
+## 4.2 Verify
+
+| Code | HTTP | Description |
+| --- | --- | --- |
+| `VERIFICATION_NOT_FOUND` | 404 | Demande de vérification inexistante |
+| `VERIFICATION_ALREADY_COMPLETED` | 409 | Vérification déjà finalisée |
+| `VERIFICATION_PROVIDER_ERROR` | 503 | Le fournisseur KYC/KYB est en échec |
+| `DOCUMENT_UNREADABLE` | 422 | Document illisible ou de qualité insuffisante |
+| `DOCUMENT_TYPE_UNSUPPORTED` | 422 | Type de document non pris en charge |
+| `WEBHOOK_SIGNATURE_INVALID` | 401 | Signature du webhook entrant invalide |
+
+## 4.3 Notify
+
+| Code | HTTP | Description |
+| --- | --- | --- |
+| `TEMPLATE_NOT_FOUND` | 404 | Template de notification inexistant |
+| `TEMPLATE_VARIABLE_MISSING` | 422 | Variable obligatoire absente du payload |
+| `CHANNEL_NOT_AVAILABLE` | 422 | Canal indisponible pour ce destinataire |
+| `RECIPIENT_INVALID` | 422 | Adresse email ou numéro invalide |
+| `RECIPIENT_OPTED_OUT` | 403 | Le destinataire s'est désabonné de ce type de message |
+| `PROVIDER_ERROR` | 503 | Le fournisseur d'envoi est en échec |
+
+## 4.4 Billing
+
+| Code | HTTP | Description |
+| --- | --- | --- |
+| `PLAN_NOT_FOUND` | 404 | Plan inexistant |
+| `SUBSCRIPTION_NOT_FOUND` | 404 | Abonnement inexistant |
+| `SUBSCRIPTION_ALREADY_ACTIVE` | 409 | Un abonnement actif existe déjà pour cette organisation |
+| `SUBSCRIPTION_EXPIRED` | 403 | Abonnement expiré |
+| `PAYMENT_FAILED` | 402 | Paiement refusé |
+| `PAYMENT_METHOD_REQUIRED` | 422 | Aucun moyen de paiement enregistré |
+| `CURRENCY_NOT_SUPPORTED` | 422 | Devise non prise en charge |
+| `DOWNGRADE_NOT_ALLOWED` | 409 | L'usage courant dépasse les limites du plan visé |
+
+## 4.5 Storage
+
+| Code | HTTP | Description |
+| --- | --- | --- |
+| `FILE_NOT_FOUND` | 404 | Fichier inexistant |
+| `FILE_TOO_LARGE` | 422 | Taille supérieure à la limite autorisée |
+| `MIME_TYPE_NOT_ALLOWED` | 422 | Type de fichier interdit |
+| `UPLOAD_INCOMPLETE` | 422 | Upload interrompu ou incomplet |
+| `STORAGE_QUOTA_EXCEEDED` | 429 | Quota de stockage de l'organisation atteint |
+
+## 4.6 AI
+
+| Code | HTTP | Description |
+| --- | --- | --- |
+| `MODEL_NOT_AVAILABLE` | 422 | Modèle demandé indisponible |
+| `CONTEXT_LENGTH_EXCEEDED` | 422 | Entrée trop longue pour le modèle |
+| `CONTENT_FLAGGED` | 422 | Contenu rejeté par la modération |
+| `AI_QUOTA_EXCEEDED` | 429 | Crédits IA de l'organisation épuisés |
+| `AI_PROVIDER_ERROR` | 503 | Le fournisseur d'IA est en échec |
+| `AI_PROVIDER_TIMEOUT` | 503 | Le fournisseur d'IA n'a pas répondu à temps |
+
+## 4.7 Search
+
+| Code | HTTP | Description |
+| --- | --- | --- |
+| `QUERY_INVALID` | 400 | Requête de recherche mal formée |
+| `INDEX_NOT_READY` | 503 | Index en cours de reconstruction |
+
+---
+
+# 5. Ajouter un code
+
+1. Vérifier qu'aucun code transverse existant ne couvre déjà le cas.
+2. Ajouter la ligne dans la section du domaine concerné.
+3. Déclarer le code dans le contrat `openapi.yaml` du service.
+4. Ajouter la traduction du message dans les langues supportées.
+
+Le catalogue est versionné avec le code. Toute divergence entre ce document et une implémentation est un bug de l'implémentation.
