@@ -163,6 +163,14 @@ GET /api/v1/auth/revocations?since=1754225400
 
 Les modules de la plateforme consultent Redis directement. Les produits externes interrogent cet endpoint toutes les 60 secondes.
 
+> **État de l'implémentation.** Tant que Redis n'est pas déployé, la table
+> `user_sessions` tient ce rôle : chaque requête authentifiée vérifie que la
+> session portée par le claim `sid` n'est ni révoquée ni expirée. La sémantique
+> est identique — et la révocation est même immédiate plutôt que différée de
+> 60 secondes — mais elle coûte une lecture par requête, ce qui n'est
+> soutenable que parce que la plateforme est encore un monolithe. Le passage à
+> Redis devient obligatoire à la première extraction d'un module.
+
 ## 7.3 Événements déclenchant une révocation
 
 | Événement | Portée |
@@ -242,6 +250,15 @@ Les API keys ne doivent jamais être utilisées depuis un client web ou mobile.
 | Serveur | Mémoire ou cache chiffré | Gestionnaire de secrets |
 
 Jamais de token dans `localStorage`, ni dans une URL, ni dans un log.
+
+> **État de l'implémentation.** `/auth/login`, `/auth/register` et
+> `/auth/refresh` posent le refresh token en cookie `HttpOnly` **et** le
+> renvoient dans le corps, faute de signal fiable permettant de distinguer un
+> client web d'un client natif. Un client web doit donc ignorer le champ
+> `refresh_token` du corps et s'appuyer uniquement sur le cookie — que
+> `/auth/refresh` lit en priorité. Restreindre le corps aux clients natifs
+> suppose de les identifier explicitement (en-tête dédié ou client_id) ; c'est
+> la prochaine évolution prévue sur ce point.
 
 ---
 

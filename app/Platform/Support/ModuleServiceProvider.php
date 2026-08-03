@@ -33,6 +33,8 @@ abstract class ModuleServiceProvider extends ServiceProvider
 
     protected function registerRoutes(): void
     {
+        $this->registerRootRoutes();
+
         foreach ($this->apiVersions() as $version) {
             $file = $this->modulePath().'/Routes/api_'.$version.'.php';
 
@@ -46,6 +48,25 @@ abstract class ModuleServiceProvider extends ServiceProvider
                 ->name($this->moduleSlug().'.'.$version.'.')
                 ->group($file);
         }
+    }
+
+    /**
+     * Routes servies à la racine du domaine, hors préfixe de version : les
+     * chemins normalisés comme `/.well-known/…` ou `/health` ne peuvent pas
+     * être versionnés.
+     */
+    protected function registerRootRoutes(): void
+    {
+        $file = $this->modulePath().'/Routes/root.php';
+
+        if (! is_file($file)) {
+            return;
+        }
+
+        Route::domain($this->domain())
+            ->middleware('api')
+            ->name($this->moduleSlug().'.')
+            ->group($file);
     }
 
     protected function registerMigrations(): void

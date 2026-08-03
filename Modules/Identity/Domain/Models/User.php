@@ -8,6 +8,7 @@ use Illuminate\Auth\Authenticatable;
 use Illuminate\Contracts\Auth\Authenticatable as AuthenticatableContract;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\Access\Authorizable;
 
@@ -49,6 +50,16 @@ final class User extends Model implements AuthenticatableContract
         ];
     }
 
+    public function memberships(): HasMany
+    {
+        return $this->hasMany(Membership::class);
+    }
+
+    public function sessions(): HasMany
+    {
+        return $this->hasMany(UserSession::class);
+    }
+
     public function getAuthPassword(): string
     {
         return (string) $this->password_hash;
@@ -57,5 +68,28 @@ final class User extends Model implements AuthenticatableContract
     public function getAuthPasswordName(): string
     {
         return 'password_hash';
+    }
+
+    public function isActive(): bool
+    {
+        return $this->status === 'active';
+    }
+
+    public function fullName(): string
+    {
+        return trim($this->first_name.' '.$this->last_name);
+    }
+
+    /**
+     * Membership actif dans une organisation donnée, rôles et permissions
+     * chargés — c'est la brique du contexte porté par le token.
+     */
+    public function activeMembershipIn(string $organizationId): ?Membership
+    {
+        return $this->memberships()
+            ->where('organization_id', $organizationId)
+            ->where('status', 'active')
+            ->with(['organization', 'roles.permissions'])
+            ->first();
     }
 }

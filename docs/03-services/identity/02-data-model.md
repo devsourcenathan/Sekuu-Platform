@@ -422,8 +422,12 @@ Identity n'a pas besoin de connaître ces permissions — voir [ADR-0003](../../
 
 # 10. Sessions
 
+> **Nom de table :** `user_sessions`, et non `sessions`. Laravel réserve `sessions`
+> à son propre driver de session web ; la collision serait silencieuse et
+> destructrice.
+
 ```text
-sessions
+user_sessions
 
 id              uuid         PK
 user_id         uuid         FK → users(id) ON DELETE CASCADE
@@ -450,8 +454,8 @@ L'identifiant de session est porté par le claim `sid` du JWT, ce qui permet de 
 refresh_tokens
 
 id            uuid        PK
-session_id    uuid        FK → sessions(id) ON DELETE CASCADE
-user_id       uuid        FK → users(id)    ON DELETE CASCADE
+session_id    uuid        FK → user_sessions(id) ON DELETE CASCADE
+user_id       uuid        FK → users(id)         ON DELETE CASCADE
 token_hash    char(64)    NOT NULL          -- SHA-256, jamais la valeur en clair
 parent_id     uuid        FK → refresh_tokens(id) NULL
 expires_at    timestamptz NOT NULL

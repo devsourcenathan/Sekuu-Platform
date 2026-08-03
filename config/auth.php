@@ -16,7 +16,7 @@ return [
     */
 
     'defaults' => [
-        'guard' => env('AUTH_GUARD', 'web'),
+        'guard' => env('AUTH_GUARD', 'api'),
         'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
     ],
 
@@ -38,6 +38,13 @@ return [
     */
 
     'guards' => [
+        // Les API de la plateforme sont sans état : l'utilisateur est résolu
+        // depuis l'access token, jamais depuis une session serveur.
+        // @see Modules/Identity/Infrastructure/Auth/JwtUserResolver.php
+        'api' => [
+            'driver' => 'sekuu-jwt',
+        ],
+
         'web' => [
             'driver' => 'session',
             'provider' => 'users',

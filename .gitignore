@@ -20,6 +20,9 @@
 /public/storage
 /storage/*.key
 /storage/pail
+
+# Clés de signature des tokens : jamais versionnées, en aucun emplacement.
+*.pem
 /vendor
 _ide_helper.php
 Homestead.json

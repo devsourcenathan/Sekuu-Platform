@@ -113,7 +113,17 @@ SEKUU_DOMAIN_VERIFY=verify.sekuu.com
 
 | Module | État |
 | --- | --- |
-| **Identity** | Squelette en place — `health`, table `users` |
+| **Identity** | Authentification opérationnelle — inscription, connexion, rotation des jetons, organisations, changement de contexte, JWKS |
 | Verify · Notify · Billing · Storage · AI · Search · Analytics | Non démarrés |
 
-Prochaine étape : la tranche verticale d'authentification (`register`, `login`, `refresh`, `me`, `switch-organization`).
+Reste à faire sur Identity : workspaces et leurs membres, invitations, journal d'audit, OAuth, vérification d'email et réinitialisation de mot de passe.
+
+### Clés de signature
+
+En développement, une paire RSA est générée automatiquement dans `storage/app/private/identity/`. Pour la régénérer :
+
+```bash
+php artisan identity:generate-keys
+```
+
+En production, les clés proviennent du gestionnaire de secrets via `IDENTITY_JWT_PRIVATE_KEY` et `IDENTITY_JWT_PUBLIC_KEY`, et ne sont jamais versionnées.
