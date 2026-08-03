@@ -68,6 +68,14 @@
       "value": ""
     },
     {
+      "key": "template_id",
+      "value": ""
+    },
+    {
+      "key": "suppression_id",
+      "value": ""
+    },
+    {
       "key": "api_key",
       "value": ""
     },
@@ -2617,6 +2625,477 @@
                   "pm.test('Le cout est rapporte', () => pm.expect(d.channels.sms.cost).to.have.property('spent'));"
                 ]
               }
+            }
+          ]
+        },
+        {
+          "name": "Templates",
+          "description": "Catalogue de templates. Ceux de la plateforme sont versionnes avec le code et restent en lecture seule ; une organisation en cree des variantes.\n\nLa cle d'API doit porter `notifications.read` pour lire et `notifications.manage` pour ecrire.",
+          "item": [
+            {
+              "name": "Catalogue visible",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/templates",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "templates"
+                  ]
+                },
+                "description": "Templates de plateforme **et** variantes de l'organisation portee par la cle.\n\n`scope` les distingue, `editable` indique lesquels peuvent etre modifies.",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{api_key}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Catalogue lisible', () => pm.response.to.have.status(200));",
+                      "const t = pm.response.json().data.find(x => x.key === 'password.reset');",
+                      "pm.test('Le catalogue de plateforme est en lecture seule', function () {",
+                      "  pm.expect(t.scope).to.eql('platform');",
+                      "  pm.expect(t.editable).to.eql(false);",
+                      "});"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Creer une variante",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/templates",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "templates"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"key\": \"invitation.sent\",\n  \"channel\": \"email\",\n  \"variables\": [\n    { \"name\": \"organization_name\", \"required\": true }\n  ],\n  \"contents\": [\n    {\n      \"locale\": \"fr\",\n      \"subject\": \"Rejoignez {{organization_name}}\",\n      \"body\": \"<p>Bonjour, {{organization_name}} vous invite.</p>\"\n    }\n  ]\n}"
+                },
+                "description": "La variante porte la meme cle qu'un template de plateforme et **prend le pas** sur lui pour cette organisation.\n\nLa categorie n'est pas choisie : elle est heritee du template de plateforme. Sans cette regle, une organisation requalifierait ses invitations en `transactional` et contournerait le desabonnement.",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{api_key}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('201 creee', () => pm.response.to.have.status(201));",
+                      "const d = pm.response.json().data;",
+                      "pm.collectionVariables.set('template_id', d.id);",
+                      "pm.test('Categorie heritee, pas choisie', () => pm.expect(d.category).to.eql('operational'));",
+                      "pm.test('Modifiable', () => pm.expect(d.editable).to.eql(true));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Cle inedite en transactionnel (422 attendu)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/templates",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "templates"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"key\": \"produit.alerte\",\n  \"channel\": \"email\",\n  \"category\": \"transactional\",\n  \"contents\": [\n    { \"locale\": \"fr\", \"subject\": \"Alerte\", \"body\": \"Quelque chose s'est produit.\" }\n  ]\n}"
+                },
+                "description": "Une organisation ne decide pas seule qu'un de ses messages ne peut plus etre refuse.",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{api_key}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('422 VALIDATION_ERROR', function () {",
+                      "  pm.response.to.have.status(422);",
+                      "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+                      "});"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Detail d'un template",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/templates/{{template_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "templates",
+                    "{{template_id}}"
+                  ]
+                },
+                "description": "Renvoie les contenus traduits. La variante d'une **autre** organisation est indiscernable d'un template inexistant.",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{api_key}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Modifier une variante",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/templates/{{template_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "templates",
+                    "{{template_id}}"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"contents\": [\n    {\n      \"locale\": \"fr\",\n      \"subject\": \"Nouvelle formulation\",\n      \"body\": \"<p>Nouveau corps.</p>\"\n    }\n  ]\n}"
+                },
+                "description": "Ni la cle, ni le canal, ni la categorie ne sont modifiables : les changer reviendrait a creer un autre template, et la categorie gouverne le droit au desabonnement.\n\nChaque modification incremente `version`. Les messages deja acceptes ne changent pas : leur contenu est fige.",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{api_key}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('200 modifiee', () => pm.response.to.have.status(200));",
+                      "pm.test('Version incrementee', () => pm.expect(pm.response.json().data.version).to.be.above(1));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Previsualiser sans envoyer",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/templates/{{template_id}}/preview",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "templates",
+                    "{{template_id}}",
+                    "preview"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"locale\": \"fr\",\n  \"variables\": {\n    \"organization_name\": \"SOS Clinique\"\n  }\n}"
+                },
+                "description": "Rien n'est envoye, rien n'est enregistre. C'est le seul moyen honnete de verifier un template avant de l'exposer a de vrais destinataires.\n\nUne variable obligatoire manquante est signalee ici (`TEMPLATE_VARIABLE_MISSING`) plutot que decouverte en production.",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{api_key}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Archiver une variante",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/templates/{{template_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "templates",
+                    "{{template_id}}"
+                  ]
+                },
+                "description": "Archivage et non suppression : des messages deja envoyes referencent ce template.\n\nSur un template de plateforme, la reponse est `403 TEMPLATE_READ_ONLY`.",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{api_key}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Suppressions",
+          "description": "Liste des destinations qui ne recevront plus rien.\n\nElle est **globale a la plateforme**, pas propre a une organisation : une adresse morte l'est pour tout le monde, et la reputation qu'elle protege est celle du domaine entier.\n\nElle prime sur tout, y compris le transactionnel.",
+          "item": [
+            {
+              "name": "Lister les suppressions",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/suppressions?per_page=20",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "suppressions"
+                  ],
+                  "query": [
+                    {
+                      "key": "per_page",
+                      "value": "20"
+                    },
+                    {
+                      "key": "filter[reason]",
+                      "value": "hard_bounce",
+                      "disabled": true
+                    },
+                    {
+                      "key": "filter[channel]",
+                      "value": "email",
+                      "disabled": true
+                    },
+                    {
+                      "key": "filter[destination]",
+                      "value": "john",
+                      "disabled": true,
+                      "description": "Recherche partielle : on ne se rappelle souvent qu'un fragment."
+                    }
+                  ]
+                },
+                "description": "Exige `notifications.read`. Un token d'utilisateur est refuse : un utilisateur connecte n'a pas a toucher une liste qui engage tout le domaine.",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{api_key}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Liste lisible', () => pm.response.to.have.status(200));",
+                      "const d = pm.response.json().data;",
+                      "if (d.length) pm.collectionVariables.set('suppression_id', d[0].id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Supprimer une destination",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/suppressions",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "suppressions"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"channel\": \"email\",\n  \"destination\": \"Indesirable@Sekuu.COM\"\n}"
+                },
+                "description": "Exige `notifications.manage`. Le motif est toujours `manual` : les autres constatent un fait rapporte par un fournisseur.\n\nLa destination est normalisee en minuscules — sans quoi la casse permettrait de contourner la liste.\n\n`expires_at` permet une suppression temporaire, seul `manual` l'autorise : un rebond dur, lui, est definitif.",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{api_key}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('201 creee', () => pm.response.to.have.status(201));",
+                      "const d = pm.response.json().data;",
+                      "pm.collectionVariables.set('suppression_id', d.id);",
+                      "pm.test('Destination normalisee', () => pm.expect(d.destination).to.eql('indesirable@sekuu.com'));",
+                      "pm.test('Motif manuel', () => pm.expect(d.reason).to.eql('manual'));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Rehabiliter une destination",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/suppressions/{{suppression_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "suppressions",
+                    "{{suppression_id}}"
+                  ]
+                },
+                "description": "Action sensible : rehabiliter une adresse qui rebondit durablement degrade la reputation de **tout le domaine**, pas seulement celle de l'organisation concernee. Chaque rehabilitation est journalisee.\n\nC'est aussi le seul recours contre un faux positif de fournisseur, qui bloquerait sinon definitivement une adresse valide — y compris son lien de reinitialisation de mot de passe.",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{api_key}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('204 rehabilitee', () => pm.response.to.have.status(204));"
+                    ]
+                  }
+                }
+              ]
             }
           ]
         }

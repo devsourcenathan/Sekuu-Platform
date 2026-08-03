@@ -54,6 +54,8 @@ tags:
   - name: Notifications
   - name: Préférences
   - name: Boîte de réception
+  - name: Templates
+  - name: Suppressions
 
 security:
   - bearerAuth: []
@@ -495,6 +497,327 @@ paths:
           description: '`TRANSACTIONAL_CANNOT_BE_DISABLED`, `VALIDATION_ERROR`'
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
 
+  /templates:
+    get:
+      tags: [Templates]
+      summary: Catalogue visible par l'organisation
+      description: |
+        Templates de plateforme et variantes propres à l'organisation. Le champ
+        `scope` les distingue, `editable` indique lesquelles peuvent être
+        modifiées.
+      security:
+        - apiKey: []
+      responses:
+        '200':
+          description: Templates
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Template' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [Templates]
+      summary: Créer une variante d'organisation
+      description: |
+        Requiert `notifications.manage`.
+
+        La variante porte la même clé qu'un template de plateforme et **prend
+        le pas** sur lui pour cette organisation.
+
+        **La catégorie n'est pas choisie librement.** Si un template de
+        plateforme existe pour cette clé et ce canal, la variante en hérite —
+        sans quoi une organisation requalifierait ses invitations en
+        `transactional` et contournerait le désabonnement.
+
+        Sur une clé inédite, `transactional` est refusé : une organisation ne
+        décide pas seule qu'un message ne peut plus être refusé.
+      security:
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key, channel, contents]
+              properties:
+                key: { type: string, pattern: '^[a-z0-9]+(\.[a-z0-9_]+)+$', example: invitation.sent }
+                channel: { type: string, enum: [email, sms, whatsapp, push, in_app] }
+                category:
+                  type: string
+                  enum: [operational, marketing]
+                  description: Ignorée si un template de plateforme porte déjà cette clé.
+                variables:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      required: { type: boolean }
+                contents:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [locale, body]
+                    properties:
+                      locale: { type: string, example: fr }
+                      subject: { type: [string, 'null'] }
+                      body: { type: string }
+      responses:
+        '201':
+          description: Variante créée
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Template' }
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+        '409':
+          description: '`DUPLICATE_RESOURCE` — une variante existe déjà'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /templates/{templateId}:
+    parameters:
+      - name: templateId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Templates]
+      summary: Détail et contenus traduits
+      security:
+        - apiKey: []
+      responses:
+        '200':
+          description: Template
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/Template'
+                          - type: object
+                            properties:
+                              contents:
+                                type: array
+                                items: { $ref: '#/components/schemas/TemplateContent' }
+        '404':
+          description: '`TEMPLATE_NOT_FOUND` — inexistant, **ou** variante d''une autre organisation'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    patch:
+      tags: [Templates]
+      summary: Modifier une variante
+      description: |
+        Requiert `notifications.manage`.
+
+        Ni la clé, ni le canal, ni la catégorie ne sont modifiables : les
+        changer reviendrait à créer un autre template, et la catégorie gouverne
+        le droit au désabonnement.
+
+        Chaque modification incrémente `version`. Les messages déjà acceptés ne
+        changent pas : leur contenu est figé.
+      security:
+        - apiKey: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                variables: { type: array, items: { type: object } }
+                status: { type: string, enum: [active, archived] }
+                contents:
+                  type: array
+                  items: { $ref: '#/components/schemas/TemplateContent' }
+      responses:
+        '200':
+          description: Variante modifiée
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Template' }
+        '403':
+          description: '`TEMPLATE_READ_ONLY` — template de plateforme'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Templates]
+      summary: Archiver une variante
+      description: |
+        Requiert `notifications.manage`.
+
+        Archivage et non suppression : des messages déjà envoyés référencent ce
+        template.
+      security:
+        - apiKey: []
+      responses:
+        '204': { description: Variante archivée }
+        '403':
+          description: '`TEMPLATE_READ_ONLY`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /templates/{templateId}/preview:
+    post:
+      tags: [Templates]
+      summary: Rendu à blanc
+      description: |
+        Requiert `notifications.manage`.
+
+        Rien n'est envoyé, rien n'est enregistré. C'est le seul moyen honnête
+        de vérifier un template avant de l'exposer à de vrais destinataires.
+
+        Les variables obligatoires manquantes sont signalées ici plutôt que
+        découvertes en production.
+      security:
+        - apiKey: []
+      parameters:
+        - name: templateId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                locale: { type: [string, 'null'] }
+                variables: { type: object, additionalProperties: true }
+      responses:
+        '200':
+          description: Rendu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/TemplateContent' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422':
+          description: '`TEMPLATE_VARIABLE_MISSING`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /suppressions:
+    get:
+      tags: [Suppressions]
+      summary: Destinations supprimées
+      description: |
+        Requiert `notifications.read`.
+
+        La liste est **globale à la plateforme**, pas propre à une
+        organisation : une adresse morte l'est pour tout le monde, et la
+        réputation qu'elle protège est celle du domaine entier.
+
+        Filtres : `filter[channel]`, `filter[reason]`, `filter[destination]`
+        (recherche partielle).
+      security:
+        - apiKey: []
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: per_page
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        '200':
+          description: Suppressions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Suppression' }
+                  meta: { $ref: '#/components/schemas/CursorMeta' }
+        '400':
+          description: '`INVALID_FILTER`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [Suppressions]
+      summary: Supprimer une destination manuellement
+      description: |
+        Requiert `notifications.manage`. Le motif est toujours `manual` : les
+        autres constatent un fait rapporté par un fournisseur.
+
+        `expires_at` permet une suppression temporaire — le seul motif qui
+        l'autorise. Un rebond dur, lui, est définitif.
+      security:
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel, destination]
+              properties:
+                channel: { type: string, enum: [email, sms, whatsapp, push, in_app] }
+                destination: { type: string }
+                expires_at: { type: [string, 'null'], format: date-time }
+      responses:
+        '201':
+          description: Destination supprimée
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Suppression' }
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+        '409':
+          description: '`DUPLICATE_RESOURCE`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /suppressions/{suppressionId}:
+    delete:
+      tags: [Suppressions]
+      summary: Réhabiliter une destination
+      description: |
+        Requiert `notifications.manage`.
+
+        Action sensible : réhabiliter une adresse qui rebondit durablement
+        dégrade la réputation de **tout le domaine**, pas seulement celle de
+        l'organisation concernée. Chaque réhabilitation est journalisée.
+
+        C'est aussi le seul recours contre un faux positif de fournisseur, qui
+        bloquerait sinon définitivement une adresse valide — y compris son lien
+        de réinitialisation de mot de passe.
+      security:
+        - apiKey: []
+      parameters:
+        - name: suppressionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Destination réhabilitée }
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+        '404':
+          description: '`SUPPRESSION_NOT_FOUND`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
   /preferences/unsubscribe/{token}:
     parameters:
       - name: token
@@ -730,6 +1053,12 @@ components:
     ValidationError:
       description: '`VALIDATION_ERROR`'
       content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    InsufficientPermissions:
+      description: '`INSUFFICIENT_PERMISSIONS` — la clé ne porte pas le scope exigé'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    NotFound:
+      description: '`TEMPLATE_NOT_FOUND` — inexistant, ou hors de portée de la clé'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
 
   schemas:
 
@@ -863,6 +1192,56 @@ components:
           type: object
           description: Canaux sans coordonnée fournie.
           additionalProperties: { type: string }
+
+    Template:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        key: { type: string, example: invitation.sent }
+        channel: { type: string, enum: [email, sms, whatsapp, push, in_app] }
+        category: { type: string, enum: [transactional, operational, marketing] }
+        status: { type: string, enum: [active, archived] }
+        version:
+          type: integer
+          description: Incrémenté à chaque modification. Les messages déjà acceptés ne changent pas.
+        variables:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              required: { type: boolean }
+        locales: { type: array, items: { type: string } }
+        scope:
+          type: string
+          enum: [platform, organization]
+          description: Les templates de plateforme sont versionnés avec le code.
+        editable: { type: boolean }
+
+    TemplateContent:
+      type: object
+      properties:
+        locale: { type: string, example: fr }
+        subject: { type: [string, 'null'] }
+        body: { type: string }
+
+    Suppression:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        channel: { type: string }
+        destination:
+          type: string
+          description: Normalisée en minuscules — sans quoi la casse permettrait de contourner la liste.
+        reason:
+          type: string
+          enum: [hard_bounce, complaint, unsubscribe, manual, invalid]
+        source: { type: [string, 'null'], description: Fournisseur ou clé ayant signalé. }
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+          description: '`null` = permanente. Seul le motif `manual` peut être temporaire.'
+        created_at: { type: string, format: date-time }
 
     ChannelUsage:
       type: object

@@ -3,6 +3,11 @@
 declare(strict_types=1);
 
 return [
+    'template_read_only' => "Les templates de plateforme sont versionnes avec le code et ne sont pas modifiables par l'API. Creez une variante d'organisation.",
+    'template_variant_exists' => 'Une variante existe deja pour cette cle et ce canal.',
+    'template_category_reserved' => "Le transactionnel est reserve aux templates de plateforme : une organisation ne decide pas seule qu'un message ne peut plus etre refuse.",
+    'suppression_not_found' => "Cette suppression n'existe pas.",
+    'suppression_already_exists' => 'Cette destination est deja supprimee.',
     'spend_limit_reached' => 'Le plafond de dépense mensuel du canal :channel est atteint.',
     'unsubscribe_token_invalid' => 'Ce lien de désabonnement est invalide.',
     'idempotency_key_required' => "L'en-tête Idempotency-Key est obligatoire sur ce point d'entrée.",

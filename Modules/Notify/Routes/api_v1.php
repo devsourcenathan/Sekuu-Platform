@@ -8,6 +8,8 @@ use Modules\Notify\Presentation\Http\Controllers\InboxController;
 use Modules\Notify\Presentation\Http\Controllers\NotificationController;
 use Modules\Notify\Presentation\Http\Controllers\PreferenceController;
 use Modules\Notify\Presentation\Http\Controllers\SendController;
+use Modules\Notify\Presentation\Http\Controllers\SuppressionController;
+use Modules\Notify\Presentation\Http\Controllers\TemplateController;
 use Modules\Notify\Presentation\Http\Controllers\UsageController;
 use Modules\Notify\Presentation\Http\Controllers\WebhookController;
 
@@ -35,6 +37,30 @@ Route::post('webhooks/{provider}', WebhookController::class)->name('webhooks');
 | d'API portant `notifications.send` est exigée, sinon n'importe quel
 | utilisateur connecté pourrait écrire au nom de la plateforme.
 */
+/*
+| Catalogue de templates. Les templates de plateforme sont versionnés avec le
+| code et restent en lecture seule ; une organisation en crée des variantes.
+*/
+Route::prefix('templates')->name('templates.')->group(function (): void {
+    Route::get('/', [TemplateController::class, 'index'])->name('index');
+    Route::post('/', [TemplateController::class, 'store'])->name('store');
+    Route::get('{template}', [TemplateController::class, 'show'])->name('show');
+    Route::patch('{template}', [TemplateController::class, 'update'])->name('update');
+    Route::delete('{template}', [TemplateController::class, 'destroy'])->name('destroy');
+    Route::post('{template}/preview', [TemplateController::class, 'preview'])->name('preview');
+});
+
+/*
+| Liste de suppression. Elle est **globale à la plateforme** : une adresse
+| morte l'est pour tout le monde. Le scope `notifications.manage` est donc
+| réservé aux clés d'exploitation, pas aux organisations clientes.
+*/
+Route::prefix('suppressions')->name('suppressions.')->group(function (): void {
+    Route::get('/', [SuppressionController::class, 'index'])->name('index');
+    Route::post('/', [SuppressionController::class, 'store'])->name('store');
+    Route::delete('{suppression}', [SuppressionController::class, 'destroy'])->name('destroy');
+});
+
 Route::middleware('api-key:notifications.send')->group(function (): void {
     Route::post('notifications', [SendController::class, 'store'])->name('notifications.store');
     Route::post('notifications/bulk', [SendController::class, 'bulk'])->name('notifications.bulk');

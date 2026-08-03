@@ -76,7 +76,17 @@ Un fournisseur non configuré n'est jamais essayé : en développement, Resend e
 
 **Plafond de dépense** — contrôle mensuel par organisation sur les canaux facturés, et endpoint de consommation. C'est ce qui donne un usage au coût enregistré à chaque livraison.
 
-**Non implémenté** — canaux WhatsApp et push ; gestion des templates par API ; gestion des suppressions par API.
+**Templates par API** — `GET/POST /templates`, `GET/PATCH/DELETE /templates/{id}`, `POST /templates/{id}/preview`. Les templates de plateforme restent en lecture seule ; une organisation en crée des variantes qui prennent le pas.
+
+La catégorie d'une variante est **héritée** du template de plateforme, et `transactional` est refusé sur une clé inédite : sans cette règle, une organisation requalifierait ses invitations en transactionnel et contournerait le désabonnement — l'[ADR-0006](04-decisions/adr-0006-transactional-vs-marketing.md) serait contournable par une simple requête.
+
+`DELETE` archive au lieu de supprimer : des messages déjà envoyés référencent le template. La prévisualisation n'envoie ni n'enregistre rien.
+
+**Suppressions par API** — `GET/POST /suppressions`, `DELETE /suppressions/{id}`. La liste est globale à la plateforme, et le `DELETE` est journalisé : réhabiliter une adresse qui rebondit dégrade la réputation de tout le domaine.
+
+C'est aussi le seul recours contre un faux positif de fournisseur, qui bloquait jusqu'ici définitivement une adresse valide — y compris son lien de réinitialisation — sans autre issue qu'une requête SQL.
+
+**Non implémenté** — canaux WhatsApp et push.
 
 ---
 
@@ -200,9 +210,9 @@ GET  /audit-logs                 →  trace des quatre étapes
 
 ## 8.2 Prochaines étapes
 
-**Compléter Notify** : webhooks fournisseur (c'est ce qui alimente la liste de suppression), API d'envoi pour les produits externes, canal SMS.
+Notify est fonctionnellement complet, hors WhatsApp et push. La suite naturelle est **Billing** — son contrat d'événements avec Identity est déjà défini — puis Verify.
 
-Puis **Billing** — son contrat d'événements avec Identity est déjà défini — et Verify.
+Le canal WhatsApp reste le plus attendu au Cameroun ; il suppose un compte Business vérifié et des modèles approuvés par Meta, donc un délai externe qu'il vaut mieux engager tôt.
 
 ## 8.3 Dette identifiée
 

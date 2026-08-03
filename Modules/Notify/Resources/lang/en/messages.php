@@ -3,6 +3,11 @@
 declare(strict_types=1);
 
 return [
+    'template_read_only' => 'Platform templates are versioned with the code and cannot be edited through the API. Create an organization variant instead.',
+    'template_variant_exists' => 'A variant already exists for this key and channel.',
+    'template_category_reserved' => 'Transactional messages are reserved to platform templates: an organization cannot decide alone that a message may no longer be declined.',
+    'suppression_not_found' => 'This suppression does not exist.',
+    'suppression_already_exists' => 'This destination is already suppressed.',
     'spend_limit_reached' => 'The monthly spending limit for the :channel channel has been reached.',
     'unsubscribe_token_invalid' => 'This unsubscribe link is invalid.',
     'idempotency_key_required' => 'The Idempotency-Key header is required for this endpoint.',

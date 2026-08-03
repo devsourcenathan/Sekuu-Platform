@@ -180,6 +180,17 @@ Un filtre inconnu renvoie `400` / `INVALID_FILTER`.
 
 Les templates de plateforme (`organization_id` nul) sont **en lecture seule** via l'API : ils sont versionnés avec le code, comme les migrations. Une organisation peut en créer une variante portant la même clé ; elle prend alors le pas.
 
+La catégorie, elle, n'est pas choisie librement :
+
+- si un template de plateforme porte déjà cette clé et ce canal, **la variante en hérite** — sans quoi une organisation requalifierait ses invitations en `transactional` et contournerait le désabonnement ;
+- sur une clé inédite, `transactional` est refusé (`422`) : une organisation ne décide pas seule qu'un de ses messages ne peut plus être refusé.
+
+`PATCH` ne touche ni la clé, ni le canal, ni la catégorie : changer les deux premiers reviendrait à créer un autre template, et la troisième gouverne le droit au désabonnement.
+
+`DELETE` archive au lieu de supprimer (`403` / `TEMPLATE_READ_ONLY` sur un template de plateforme) : des messages déjà envoyés y renvoient.
+
+La variante d'une autre organisation est indiscernable d'un template inexistant (`404` / `TEMPLATE_NOT_FOUND`).
+
 `POST /templates/{id}/preview` accepte un jeu de variables et renvoie le rendu, sans rien envoyer ni enregistrer. C'est le seul moyen honnête de vérifier un template avant de l'exposer à de vrais destinataires.
 
 Modifier un template **n'affecte aucun message déjà accepté** : le contenu est figé au moment de l'acceptation.
