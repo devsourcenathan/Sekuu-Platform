@@ -39,14 +39,21 @@ return new class extends Migration
             // SHA-256 du jeton. La valeur en clair n'est jamais stockée.
             $table->char('token_hash', 64)->unique();
 
-            // Chaînage pour la détection de rejeu.
-            $table->foreignUuid('parent_id')->nullable()->constrained('refresh_tokens')->nullOnDelete();
+            // Chaînage pour la détection de rejeu. La contrainte est ajoutée
+            // après la création : Laravel émet les clés étrangères avant la
+            // clé primaire, et Postgres refuse une auto-référence vers une
+            // table qui n'a pas encore de contrainte unique.
+            $table->uuid('parent_id')->nullable();
 
             $table->timestamp('expires_at');
             $table->timestamp('revoked_at')->nullable();
             $table->timestamps();
 
             $table->index('session_id');
+        });
+
+        Schema::table('refresh_tokens', function (Blueprint $table): void {
+            $table->foreign('parent_id')->references('id')->on('refresh_tokens')->nullOnDelete();
         });
     }
 

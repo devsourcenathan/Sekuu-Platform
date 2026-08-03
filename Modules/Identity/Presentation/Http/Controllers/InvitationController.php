@@ -7,6 +7,8 @@ namespace Modules\Identity\Presentation\Http\Controllers;
 use App\Platform\Exceptions\DomainException;
 use App\Platform\Http\ApiResponse;
 use Illuminate\Http\JsonResponse;
+use Modules\Identity\Application\Audit\AuditAction;
+use Modules\Identity\Application\Audit\AuditLogger;
 use Modules\Identity\Application\Invitations\AcceptInvitation;
 use Modules\Identity\Application\Invitations\SendInvitation;
 use Modules\Identity\Domain\AuthenticatedContext;
@@ -46,6 +48,7 @@ final class InvitationController
         SendInvitationRequest $request,
         AuthenticatedContext $context,
         SendInvitation $send,
+        AuditLogger $audit,
         string $organizationId,
     ): JsonResponse {
         $issued = $send->handle(
@@ -53,6 +56,14 @@ final class InvitationController
             email: $request->string('email')->toString(),
             globalRoleId: $request->string('global_role_id')->toString(),
             inviter: $context->user,
+        );
+
+        $audit->record(
+            AuditAction::INVITATION_SENT,
+            user: $context->user,
+            organizationId: $organizationId,
+            target: $issued->invitation,
+            payload: ['email' => $issued->invitation->email],
         );
 
         $payload = $this->present($issued->invitation->load('role'));
@@ -66,8 +77,11 @@ final class InvitationController
         return ApiResponse::created($payload);
     }
 
-    public function destroy(AuthenticatedContext $context, string $invitationId): JsonResponse
-    {
+    public function destroy(
+        AuthenticatedContext $context,
+        AuditLogger $audit,
+        string $invitationId,
+    ): JsonResponse {
         $invitation = Invitation::query()
             ->where('organization_id', $this->organizationId($context))
             ->whereKey($invitationId)
@@ -82,6 +96,14 @@ final class InvitationController
         }
 
         $invitation->forceFill(['revoked_at' => now()])->save();
+
+        $audit->record(
+            AuditAction::INVITATION_REVOKED,
+            user: $context->user,
+            organizationId: $invitation->organization_id,
+            target: $invitation,
+            payload: ['email' => $invitation->email],
+        );
 
         return ApiResponse::noContent();
     }
@@ -120,6 +142,7 @@ final class InvitationController
         AcceptInvitationRequest $request,
         AcceptInvitation $accept,
         JwtUserResolver $resolver,
+        AuditLogger $audit,
         string $token,
     ): JsonResponse {
         // La route est publique : un utilisateur déjà connecté est pris en
@@ -127,6 +150,14 @@ final class InvitationController
         $authenticated = $resolver->resolve($request)?->user;
 
         $result = $accept->handle($token, $authenticated, $request->validated());
+
+        $audit->record(
+            AuditAction::INVITATION_ACCEPTED,
+            user: $result->user,
+            organizationId: $result->membership->organization_id,
+            target: $result->membership,
+            payload: ['account_created' => $result->accountCreated],
+        );
 
         return ApiResponse::success([
             'organization_id' => $result->membership->organization_id,

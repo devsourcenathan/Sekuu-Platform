@@ -6,6 +6,8 @@ namespace Modules\Identity\Presentation\Http\Controllers;
 
 use App\Platform\Http\ApiResponse;
 use Illuminate\Http\JsonResponse;
+use Modules\Identity\Application\Audit\AuditAction;
+use Modules\Identity\Application\Audit\AuditLogger;
 use Modules\Identity\Application\Workspaces\ManageWorkspaceMembers;
 use Modules\Identity\Domain\AuthenticatedContext;
 use Modules\Identity\Domain\Models\WorkspaceMember;
@@ -44,11 +46,20 @@ final class WorkspaceMemberController
         AddWorkspaceMemberRequest $request,
         AuthenticatedContext $context,
         ManageWorkspaceMembers $members,
+        AuditLogger $audit,
         string $workspaceId,
     ): JsonResponse {
         $workspace = $this->findWorkspace($context, $workspaceId);
 
         $member = $members->add($workspace, $request->string('membership_id')->toString());
+
+        $audit->record(
+            AuditAction::WORKSPACE_MEMBER_ADDED,
+            user: $context->user,
+            organizationId: $workspace->organization_id,
+            target: $workspace,
+            payload: ['membership_id' => $member->membership_id],
+        );
 
         return ApiResponse::created([
             'membership_id' => $member->membership_id,
@@ -59,10 +70,21 @@ final class WorkspaceMemberController
     public function destroy(
         AuthenticatedContext $context,
         ManageWorkspaceMembers $members,
+        AuditLogger $audit,
         string $workspaceId,
         string $membershipId,
     ): JsonResponse {
-        $members->remove($this->findWorkspace($context, $workspaceId), $membershipId);
+        $workspace = $this->findWorkspace($context, $workspaceId);
+
+        $members->remove($workspace, $membershipId);
+
+        $audit->record(
+            AuditAction::WORKSPACE_MEMBER_REMOVED,
+            user: $context->user,
+            organizationId: $workspace->organization_id,
+            target: $workspace,
+            payload: ['membership_id' => $membershipId],
+        );
 
         return ApiResponse::noContent();
     }

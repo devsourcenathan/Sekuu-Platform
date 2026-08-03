@@ -8,6 +8,8 @@ use App\Platform\Exceptions\DomainException;
 use App\Platform\Http\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Identity\Application\Audit\AuditAction;
+use Modules\Identity\Application\Audit\AuditLogger;
 use Modules\Identity\Application\Auth\AuthenticateUser;
 use Modules\Identity\Application\Auth\DeviceInfo;
 use Modules\Identity\Application\Auth\RegisterUser;
@@ -24,7 +26,10 @@ use Modules\Identity\Presentation\Http\Responses\AuthPayload;
  */
 final class AuthController
 {
-    public function __construct(private readonly SessionTokenService $tokens) {}
+    public function __construct(
+        private readonly SessionTokenService $tokens,
+        private readonly AuditLogger $audit,
+    ) {}
 
     public function register(RegisterRequest $request, RegisterUser $register): JsonResponse
     {
@@ -32,18 +37,32 @@ final class AuthController
 
         $pair = $this->tokens->start($user, DeviceInfo::fromRequest($request));
 
+        $this->audit->record(AuditAction::USER_REGISTERED, user: $user, target: $user);
+
         return ApiResponse::created(AuthPayload::forTokenPair($pair, $user))
             ->withCookie(AuthPayload::refreshCookie($pair->refreshToken));
     }
 
     public function login(LoginRequest $request, AuthenticateUser $authenticate): JsonResponse
     {
-        $user = $authenticate->handle(
-            $request->string('email')->toString(),
-            $request->string('password')->toString(),
-        );
+        $email = $request->string('email')->toString();
+
+        try {
+            $user = $authenticate->handle($email, $request->string('password')->toString());
+        } catch (DomainException $e) {
+            // Les échecs sont journalisés autant que les succès : c'est ce qui
+            // permet de repérer une attaque par force brute.
+            $this->audit->record(
+                AuditAction::AUTH_LOGIN_FAILED,
+                payload: ['email' => $email, 'reason' => $e->errorCode],
+            );
+
+            throw $e;
+        }
 
         $pair = $this->tokens->start($user, DeviceInfo::fromRequest($request));
+
+        $this->audit->record(AuditAction::AUTH_LOGIN, user: $user, target: $pair->session);
 
         return ApiResponse::success(AuthPayload::forTokenPair($pair, $user))
             ->withCookie(AuthPayload::refreshCookie($pair->refreshToken));
@@ -90,10 +109,14 @@ final class AuthController
         AuthenticatedContext $context,
         SwitchOrganization $switch,
     ): JsonResponse {
-        $accessToken = $switch->handle(
-            $context->user,
-            $context->session,
-            $request->string('organization_id')->toString(),
+        $organizationId = $request->string('organization_id')->toString();
+
+        $accessToken = $switch->handle($context->user, $context->session, $organizationId);
+
+        $this->audit->record(
+            AuditAction::AUTH_ORGANIZATION_SWITCHED,
+            user: $context->user,
+            organizationId: $organizationId,
         );
 
         return ApiResponse::success(AuthPayload::forAccessToken($accessToken));
@@ -102,6 +125,13 @@ final class AuthController
     public function logout(AuthenticatedContext $context): JsonResponse
     {
         $context->session->revoke();
+
+        $this->audit->record(
+            AuditAction::AUTH_LOGOUT,
+            user: $context->user,
+            organizationId: $context->token->organizationId,
+            target: $context->session,
+        );
 
         return ApiResponse::success(null)
             ->withCookie(AuthPayload::forgetRefreshCookie());
@@ -113,10 +143,16 @@ final class AuthController
      */
     public function logoutAll(AuthenticatedContext $context): JsonResponse
     {
-        $context->user->sessions()
-            ->whereNull('revoked_at')
-            ->get()
-            ->each(fn ($session) => $session->revoke());
+        $sessions = $context->user->sessions()->whereNull('revoked_at')->get();
+
+        $sessions->each(fn ($session) => $session->revoke());
+
+        $this->audit->record(
+            AuditAction::AUTH_LOGOUT_ALL,
+            user: $context->user,
+            organizationId: $context->token->organizationId,
+            payload: ['sessions_revoked' => $sessions->count()],
+        );
 
         return ApiResponse::success(null)
             ->withCookie(AuthPayload::forgetRefreshCookie());

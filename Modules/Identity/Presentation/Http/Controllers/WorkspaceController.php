@@ -6,6 +6,8 @@ namespace Modules\Identity\Presentation\Http\Controllers;
 
 use App\Platform\Http\ApiResponse;
 use Illuminate\Http\JsonResponse;
+use Modules\Identity\Application\Audit\AuditAction;
+use Modules\Identity\Application\Audit\AuditLogger;
 use Modules\Identity\Application\Workspaces\CreateWorkspace;
 use Modules\Identity\Domain\AuthenticatedContext;
 use Modules\Identity\Domain\Models\Workspace;
@@ -41,8 +43,17 @@ final class WorkspaceController
         CreateWorkspaceRequest $request,
         AuthenticatedContext $context,
         CreateWorkspace $create,
+        AuditLogger $audit,
     ): JsonResponse {
         $workspace = $create->handle($this->currentMembership($context), $request->validated());
+
+        $audit->record(
+            AuditAction::WORKSPACE_CREATED,
+            user: $context->user,
+            organizationId: $workspace->organization_id,
+            target: $workspace,
+            payload: ['name' => $workspace->name, 'slug' => $workspace->slug],
+        );
 
         return ApiResponse::created($this->present($workspace));
     }
@@ -59,18 +70,41 @@ final class WorkspaceController
     public function update(
         UpdateWorkspaceRequest $request,
         AuthenticatedContext $context,
+        AuditLogger $audit,
         string $workspaceId,
     ): JsonResponse {
         $workspace = $this->findWorkspace($context, $workspaceId);
 
-        $workspace->fill($request->validated())->save();
+        $workspace->fill($request->validated());
+        $changes = array_keys($workspace->getDirty());
+        $workspace->save();
+
+        $audit->record(
+            AuditAction::WORKSPACE_UPDATED,
+            user: $context->user,
+            organizationId: $workspace->organization_id,
+            target: $workspace,
+            payload: ['changed' => $changes],
+        );
 
         return ApiResponse::success($this->present($workspace));
     }
 
-    public function destroy(AuthenticatedContext $context, string $workspaceId): JsonResponse
-    {
-        $this->findWorkspace($context, $workspaceId)->delete();
+    public function destroy(
+        AuthenticatedContext $context,
+        AuditLogger $audit,
+        string $workspaceId,
+    ): JsonResponse {
+        $workspace = $this->findWorkspace($context, $workspaceId);
+        $workspace->delete();
+
+        $audit->record(
+            AuditAction::WORKSPACE_DELETED,
+            user: $context->user,
+            organizationId: $workspace->organization_id,
+            target: $workspace,
+            payload: ['name' => $workspace->name],
+        );
 
         return ApiResponse::noContent();
     }

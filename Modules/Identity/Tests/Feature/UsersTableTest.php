@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Identity\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Modules\Identity\Domain\Models\User;
 use Tests\TestCase;
@@ -50,6 +51,28 @@ final class UsersTableTest extends TestCase
         $this->expectExceptionMessageMatches('/unique/i');
 
         $this->makeUser('nathan@sekuu.com');
+    }
+
+    /**
+     * Garantie apportée par le type `citext` : elle tient même si un futur
+     * appelant oublie de normaliser l'adresse avant insertion.
+     */
+    public function test_emails_are_case_insensitive_at_the_database_level(): void
+    {
+        $this->makeUser('nathan@sekuu.com');
+
+        $this->expectExceptionMessageMatches('/unique/i');
+
+        $this->makeUser('Nathan@Sekuu.COM');
+    }
+
+    public function test_the_status_column_rejects_unknown_values(): void
+    {
+        $user = $this->makeUser('nathan@sekuu.com');
+
+        $this->expectExceptionMessageMatches('/users_status_check/i');
+
+        DB::table('users')->where('id', $user->id)->update(['status' => 'inconnu']);
     }
 
     public function test_a_deleted_account_frees_its_email(): void

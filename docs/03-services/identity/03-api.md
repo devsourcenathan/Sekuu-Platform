@@ -239,7 +239,36 @@ Délier le dernier moyen de connexion d'un compte sans mot de passe renvoie `409
 | --- | --- | --- | --- |
 | `GET` | `/audit-logs` | org | Journal de l'organisation — `audit.read` |
 
-Cette collection utilise la **pagination par curseur** (`?cursor=…`), conformément aux guidelines.
+Cette collection utilise la **pagination par curseur** (`?cursor=…`), conformément aux guidelines : elle est volumineuse et fortement écrite, deux conditions où l'offset produit doublons et oublis.
+
+Filtres acceptés : `filter[action]`, `filter[user_id]`, `filter[target_type]`. Tout autre filtre renvoie `400` / `INVALID_FILTER` plutôt que d'être ignoré silencieusement.
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "…",
+      "action": "workspace.created",
+      "target_type": "Workspace",
+      "target_id": "…",
+      "ip_address": "127.0.0.1",
+      "request_id": "req_8b94d7d0",
+      "payload": { "name": "Douala", "slug": "douala" },
+      "created_at": "2026-08-03T13:42:51Z",
+      "user": { "id": "…", "first_name": "Nathan", "last_name": "Tchinda", "email": "nathan@sekuu.com" }
+    }
+  ],
+  "meta": {
+    "per_page": 20,
+    "next_cursor": "eyJpZCI6…",
+    "has_more": true,
+    "request_id": "req_8b94d7d0"
+  }
+}
+```
+
+Le `request_id` de chaque entrée est celui de la requête qui a provoqué l'action : c'est ce qui relie une ligne de journal, une réponse d'API et une trace applicative.
 
 ---
 

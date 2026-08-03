@@ -7,6 +7,8 @@ namespace Modules\Identity\Application\Auth;
 use App\Platform\Exceptions\DomainException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Identity\Application\Audit\AuditAction;
+use Modules\Identity\Application\Audit\AuditLogger;
 use Modules\Identity\Domain\Models\Membership;
 use Modules\Identity\Domain\Models\RefreshToken;
 use Modules\Identity\Domain\Models\User;
@@ -24,6 +26,7 @@ final class SessionTokenService
 {
     public function __construct(
         private readonly AccessTokenIssuer $issuer,
+        private readonly AuditLogger $audit,
         private readonly int $refreshTtl,
         private readonly int $sessionTtl,
     ) {}
@@ -97,7 +100,16 @@ final class SessionTokenService
             // La révocation est appliquée hors transaction : à l'intérieur,
             // le rollback provoqué par l'exception l'annulerait, et le vol
             // resterait sans conséquence.
-            UserSession::query()->find($replay->sessionId)?->revoke();
+            $session = UserSession::query()->find($replay->sessionId);
+            $session?->revoke();
+
+            // Un rejeu est un événement de sécurité : il doit laisser une trace
+            // même si l'utilisateur légitime ne s'en aperçoit jamais.
+            $this->audit->record(
+                action: AuditAction::AUTH_TOKEN_REPLAY_DETECTED,
+                user: $session?->user()->first(),
+                target: $session,
+            );
 
             throw new DomainException(
                 'TOKEN_REVOKED',

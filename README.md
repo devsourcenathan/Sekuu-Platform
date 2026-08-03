@@ -47,6 +47,14 @@ curl http://localhost:8000/api/v1/health
 
 ## Tests
 
+La suite tourne sur **PostgreSQL**, comme la production — `citext`, les index partiels et les contraintes `CHECK` ne sont pas simulables sur SQLite, et une divergence entre les deux moteurs ne se révélerait qu'en production.
+
+Créez la base de test une fois :
+
+```bash
+createdb -U postgres sekuu_testing
+```
+
 ```bash
 php artisan test
 ```
@@ -113,10 +121,10 @@ SEKUU_DOMAIN_VERIFY=verify.sekuu.com
 
 | Module | État |
 | --- | --- |
-| **Identity** | Authentification, organisations, workspaces et invitations opérationnels |
+| **Identity** | Authentification, organisations, workspaces, invitations et journal d'audit opérationnels |
 | Verify · Notify · Billing · Storage · AI · Search · Analytics | Non démarrés |
 
-Reste à faire sur Identity : journal d'audit, OAuth, vérification d'email et réinitialisation de mot de passe.
+Reste à faire sur Identity : OAuth, vérification d'email et réinitialisation de mot de passe.
 
 Les modules disposent de deux middlewares d'autorisation exposés par Identity :
 

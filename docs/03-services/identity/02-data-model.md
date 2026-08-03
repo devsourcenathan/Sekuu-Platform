@@ -561,12 +561,21 @@ payload           jsonb        DEFAULT '{}'
 created_at        timestamptz  NOT NULL
 ```
 
-Actions journalisées : connexion, échec de connexion, déconnexion, changement de mot de passe, création et suppression d'organisation, invitation, changement de rôle, révocation de session, activation de produit.
+Le vocabulaire des actions est fermé et stable — des rapports de conformité s'y adosseront :
+
+```text
+user.registered            auth.login              auth.login_failed
+auth.logout                auth.logout_all         auth.organization_switched
+auth.token_replay_detected organization.created
+invitation.sent            invitation.accepted     invitation.revoked
+workspace.created          workspace.updated       workspace.deleted
+workspace.member_added     workspace.member_removed
+```
 
 **Règles**
 
-* Table **append-only** : ni `UPDATE`, ni `DELETE`, ni `updated_at`.
-* Le `payload` ne contient jamais de mot de passe, de token ni de secret.
+* Table **append-only** : ni `UPDATE`, ni `DELETE`, ni `updated_at`. L'immuabilité est imposée par le modèle, qui lève une exception sur toute tentative de modification ou de suppression — un journal modifiable ne prouve rien.
+* Le `payload` ne contient jamais de mot de passe, de token ni de secret. Le filtrage est **automatique et récursif** : toute clé contenant `password`, `token`, `secret`, `api_key`, `authorization` ou `private_key` est retirée avant écriture, à n'importe quelle profondeur.
 * Rétention **24 mois**. À la suppression d'un compte, les lignes sont anonymisées (`user_id → NULL`) et non supprimées.
 * Collection volumineuse : l'API l'expose en **pagination par curseur**.
 

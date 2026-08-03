@@ -26,10 +26,7 @@ return new class extends Migration
             $table->string('first_name', 100);
             $table->string('last_name', 100);
 
-            $this->isPostgres()
-                ? $table->addColumn('citext', 'email')
-                : $table->string('email', 255);
-
+            $table->string('email', 255);
             $table->string('phone', 32)->nullable();
             $table->string('password_hash', 255)->nullable();
             $table->text('avatar_url')->nullable();
@@ -46,9 +43,14 @@ return new class extends Migration
             $table->index('last_login_at');
         });
 
+        // citext n'est pas exposé par la grammaire de schéma de Laravel : la
+        // colonne est créée en varchar puis convertie.
+        if ($this->isPostgres()) {
+            DB::statement('ALTER TABLE users ALTER COLUMN email TYPE citext');
+        }
+
         // Unicité de l'email restreinte aux comptes vivants : un compte
-        // supprimé ne doit pas bloquer une réinscription. Postgres et SQLite
-        // supportent tous deux les index uniques partiels.
+        // supprimé ne doit pas bloquer une réinscription.
         DB::statement(
             'CREATE UNIQUE INDEX users_email_unique ON users (email) WHERE deleted_at IS NULL'
         );

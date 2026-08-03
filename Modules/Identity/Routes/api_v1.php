@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Modules\Identity\Presentation\Http\Controllers\AuditLogController;
 use Modules\Identity\Presentation\Http\Controllers\AuthController;
 use Modules\Identity\Presentation\Http\Controllers\HealthController;
 use Modules\Identity\Presentation\Http\Controllers\InvitationController;
@@ -76,6 +77,9 @@ Route::middleware(['auth:api', 'organization'])->group(function (): void {
         ->middleware('scope:users.invite')->name('invitations.store');
     Route::delete('invitations/{invitation}', [InvitationController::class, 'destroy'])
         ->middleware('scope:users.invite')->name('invitations.destroy');
+
+    Route::get('audit-logs', [AuditLogController::class, 'index'])
+        ->middleware('scope:audit.read')->name('audit-logs.index');
 });
 
 /*

@@ -22,9 +22,7 @@ return new class extends Migration
             // invitation ne peut pas accorder un rôle inexistant.
             $table->foreignUuid('global_role_id')->constrained('global_roles')->restrictOnDelete();
 
-            $this->isPostgres()
-                ? $table->addColumn('citext', 'email')
-                : $table->string('email', 255);
+            $table->string('email', 255);
 
             // Jeton stocké haché, comme les refresh tokens.
             $table->char('token_hash', 64)->unique();
@@ -37,6 +35,10 @@ return new class extends Migration
 
             $table->index(['organization_id', 'accepted_at']);
         });
+
+        if ($this->isPostgres()) {
+            DB::statement('ALTER TABLE invitations ALTER COLUMN email TYPE citext');
+        }
 
         // Une seule invitation en attente par adresse et par organisation.
         DB::statement(

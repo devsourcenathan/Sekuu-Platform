@@ -7,6 +7,7 @@ namespace Modules\Identity;
 use App\Platform\Support\ModuleServiceProvider;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Auth;
+use Modules\Identity\Application\Audit\AuditLogger;
 use Modules\Identity\Application\Auth\SessionTokenService;
 use Modules\Identity\Domain\AuthenticatedContext;
 use Modules\Identity\Infrastructure\Auth\JwtUserResolver;
@@ -55,11 +56,19 @@ final class IdentityServiceProvider extends ModuleServiceProvider
             leeway: config('identity.jwt.leeway'),
         ));
 
-        $this->app->singleton(SessionTokenService::class, fn ($app) => new SessionTokenService(
+        // Lié par requête, et non en singleton : le service journalise, et le
+        // journal doit porter l'IP et le request_id de la requête courante.
+        $this->app->bind(SessionTokenService::class, fn ($app) => new SessionTokenService(
             issuer: $app->make(AccessTokenIssuer::class),
+            audit: $app->make(AuditLogger::class),
             refreshTtl: config('identity.refresh_token.ttl'),
             sessionTtl: config('identity.session.ttl'),
         ));
+
+        $this->app->bind(
+            AuditLogger::class,
+            fn ($app) => new AuditLogger($app->make('request')),
+        );
 
         $this->app->singleton(JwtUserResolver::class);
 
