@@ -476,6 +476,42 @@ Détails complets dans [security.md](../../02-standards/security.md).
 
 ---
 
+# 11 bis. Jetons d'action
+
+Réinitialisation de mot de passe et vérification d'adresse.
+
+```text
+action_tokens
+
+id            uuid        PK
+user_id       uuid        FK → users(id) ON DELETE CASCADE
+type          varchar(40) NOT NULL   -- password_reset | email_verification
+token_hash    char(64)    NOT NULL   -- SHA-256, jamais la valeur en clair
+expires_at    timestamptz NOT NULL
+consumed_at   timestamptz NULL
+```
+
+**Contraintes**
+
+* `UNIQUE (token_hash)`.
+* `UNIQUE (user_id, type) WHERE consumed_at IS NULL` — un seul jeton en attente par type : demander un nouveau lien invalide le précédent.
+* Le type est vérifié à la consommation : un jeton de réinitialisation ne peut pas servir à vérifier une adresse.
+
+## Historique des mots de passe
+
+```text
+password_histories
+
+id             uuid         PK
+user_id        uuid         FK → users(id) ON DELETE CASCADE
+password_hash  varchar(255) NOT NULL
+created_at     timestamptz  NOT NULL
+```
+
+Les 5 derniers hachages sont conservés, puis purgés. Le mot de passe courant compte toujours comme « récemment utilisé », même si l'historique est vide.
+
+---
+
 # 12. Comptes OAuth
 
 ```text
@@ -567,6 +603,8 @@ Le vocabulaire des actions est fermé et stable — des rapports de conformité 
 user.registered            auth.login              auth.login_failed
 auth.logout                auth.logout_all         auth.organization_switched
 auth.token_replay_detected organization.created
+password.reset_requested   password.reset
+email.verification_sent    email.verified
 invitation.sent            invitation.accepted     invitation.revoked
 workspace.created          workspace.updated       workspace.deleted
 workspace.member_added     workspace.member_removed

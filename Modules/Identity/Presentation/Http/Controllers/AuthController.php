@@ -13,12 +13,18 @@ use Modules\Identity\Application\Audit\AuditLogger;
 use Modules\Identity\Application\Auth\AuthenticateUser;
 use Modules\Identity\Application\Auth\DeviceInfo;
 use Modules\Identity\Application\Auth\RegisterUser;
+use Modules\Identity\Application\Auth\RequestPasswordReset;
+use Modules\Identity\Application\Auth\ResetPassword;
 use Modules\Identity\Application\Auth\SessionTokenService;
 use Modules\Identity\Application\Auth\SwitchOrganization;
+use Modules\Identity\Application\Auth\VerifyEmail;
 use Modules\Identity\Domain\AuthenticatedContext;
+use Modules\Identity\Presentation\Http\Requests\ForgotPasswordRequest;
 use Modules\Identity\Presentation\Http\Requests\LoginRequest;
 use Modules\Identity\Presentation\Http\Requests\RegisterRequest;
+use Modules\Identity\Presentation\Http\Requests\ResetPasswordRequest;
 use Modules\Identity\Presentation\Http\Requests\SwitchOrganizationRequest;
+use Modules\Identity\Presentation\Http\Requests\VerifyEmailRequest;
 use Modules\Identity\Presentation\Http\Responses\AuthPayload;
 
 /**
@@ -31,15 +37,27 @@ final class AuthController
         private readonly AuditLogger $audit,
     ) {}
 
-    public function register(RegisterRequest $request, RegisterUser $register): JsonResponse
-    {
+    public function register(
+        RegisterRequest $request,
+        RegisterUser $register,
+        VerifyEmail $verify,
+    ): JsonResponse {
         $user = $register->handle($request->validated());
 
         $pair = $this->tokens->start($user, DeviceInfo::fromRequest($request));
 
         $this->audit->record(AuditAction::USER_REGISTERED, user: $user, target: $user);
 
-        return ApiResponse::created(AuthPayload::forTokenPair($pair, $user))
+        $verificationToken = $verify->issueFor($user);
+        $this->audit->record(AuditAction::EMAIL_VERIFICATION_SENT, user: $user);
+
+        $payload = AuthPayload::forTokenPair($pair, $user);
+
+        if (app()->environment('local', 'testing')) {
+            $payload['email_verification_token'] = $verificationToken;
+        }
+
+        return ApiResponse::created($payload)
             ->withCookie(AuthPayload::refreshCookie($pair->refreshToken));
     }
 
@@ -86,6 +104,77 @@ final class AuthController
         return ApiResponse::success(
             AuthPayload::forTokenPair($pair, $pair->session->user()->firstOrFail())
         )->withCookie(AuthPayload::refreshCookie($pair->refreshToken));
+    }
+
+    /**
+     * Demande de réinitialisation.
+     *
+     * Répond toujours 202, que l'adresse existe ou non : toute différence
+     * permettrait d'énumérer les comptes.
+     */
+    public function forgotPassword(
+        ForgotPasswordRequest $request,
+        RequestPasswordReset $reset,
+    ): JsonResponse {
+        $email = $request->string('email')->toString();
+
+        $issued = $reset->handle($email);
+
+        if ($issued !== null) {
+            $this->audit->record(AuditAction::PASSWORD_RESET_REQUESTED, user: $issued['user']);
+            // Notify enverra le lien dès que le module existera.
+        }
+
+        $payload = ['message' => __('If an account matches this address, a reset link has been sent.')];
+
+        // Le jeton n'est exposé qu'en développement : en production il
+        // n'existe que dans le message envoyé par Notify.
+        if ($issued !== null && app()->environment('local', 'testing')) {
+            $payload['token'] = $issued['token'];
+        }
+
+        return ApiResponse::success($payload, status: 202);
+    }
+
+    public function resetPassword(ResetPasswordRequest $request, ResetPassword $reset): JsonResponse
+    {
+        $user = $reset->handle(
+            $request->string('token')->toString(),
+            $request->string('password')->toString(),
+        );
+
+        $this->audit->record(AuditAction::PASSWORD_RESET, user: $user, target: $user);
+
+        return ApiResponse::success([
+            'message' => __('Your password has been reset. Please sign in again.'),
+        ])->withCookie(AuthPayload::forgetRefreshCookie());
+    }
+
+    public function verifyEmail(VerifyEmailRequest $request, VerifyEmail $verify): JsonResponse
+    {
+        $user = $verify->handle($request->string('token')->toString());
+
+        $this->audit->record(AuditAction::EMAIL_VERIFIED, user: $user, target: $user);
+
+        return ApiResponse::success([
+            'email' => $user->email,
+            'email_verified_at' => $user->email_verified_at?->toIso8601ZuluString(),
+        ]);
+    }
+
+    public function resendVerification(AuthenticatedContext $context, VerifyEmail $verify): JsonResponse
+    {
+        $token = $verify->issueFor($context->user);
+
+        $this->audit->record(AuditAction::EMAIL_VERIFICATION_SENT, user: $context->user);
+
+        $payload = ['message' => __('A verification link has been sent.')];
+
+        if (app()->environment('local', 'testing')) {
+            $payload['token'] = $token;
+        }
+
+        return ApiResponse::success($payload, status: 202);
     }
 
     public function me(AuthenticatedContext $context): JsonResponse

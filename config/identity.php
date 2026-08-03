@@ -47,8 +47,18 @@ return [
         'ttl' => (int) env('IDENTITY_SESSION_TTL', 2592000),
     ],
 
+    'tokens' => [
+        // Jetons d'action à usage unique.
+        'password_reset_ttl' => (int) env('IDENTITY_PASSWORD_RESET_TTL', 3600),
+        'email_verification_ttl' => (int) env('IDENTITY_EMAIL_VERIFICATION_TTL', 86400),
+    ],
+
     'password' => [
         'min_length' => 12,
+
+        // Nombre de mots de passe précédents conservés (hachés) pour empêcher
+        // une réutilisation immédiate.
+        'history' => 5,
 
         // Vérification contre les fuites connues (appel réseau) : activée
         // hors développement et hors tests.

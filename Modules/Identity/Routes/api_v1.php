@@ -31,10 +31,19 @@ Route::prefix('auth')->name('auth.')->group(function (): void {
         Route::post('register', [AuthController::class, 'register'])->name('register');
         Route::post('login', [AuthController::class, 'login'])->name('login');
         Route::post('refresh', [AuthController::class, 'refresh'])->name('refresh');
+
+        Route::post('forgot-password', [AuthController::class, 'forgotPassword'])
+            ->name('forgot-password');
+        Route::post('reset-password', [AuthController::class, 'resetPassword'])
+            ->name('reset-password');
+        Route::post('verify-email', [AuthController::class, 'verifyEmail'])
+            ->name('verify-email');
     });
 
     Route::middleware('auth:api')->group(function (): void {
         Route::get('me', [AuthController::class, 'me'])->name('me');
+        Route::post('resend-verification', [AuthController::class, 'resendVerification'])
+            ->middleware('throttle:5,1')->name('resend-verification');
         Route::post('logout', [AuthController::class, 'logout'])->name('logout');
         Route::post('logout-all', [AuthController::class, 'logoutAll'])->name('logout-all');
         Route::post('switch-organization', [AuthController::class, 'switchOrganization'])

@@ -38,7 +38,39 @@ Le contrat faisant foi est `openapi.yaml`, versionné avec le code. Ce document 
 
 L'ancienne route `/identity/me` n'existe pas. La route correcte est `GET /api/v1/auth/me`.
 
-`/auth/forgot-password` renvoie toujours `202`, que l'adresse existe ou non.
+## 2.1 Jetons d'action
+
+`forgot-password`, `reset-password`, `verify-email` et `resend-verification` reposent sur des **jetons d'action à usage unique**, stockés hachés (SHA-256) et typés :
+
+| Type | Durée de vie |
+| --- | --- |
+| `password_reset` | 1 heure |
+| `email_verification` | 24 heures |
+
+Règles communes :
+
+* Un jeton est **typé** : un jeton de réinitialisation ne peut pas servir à vérifier une adresse, ni l'inverse.
+* Émettre un nouveau jeton du même type **invalide le précédent** — un seul lien est actif à la fois.
+* Toutes les causes d'échec (inconnu, déjà consommé, expiré, mauvais type) renvoient le même `400` / `RESET_TOKEN_INVALID` : distinguer permettrait de sonder l'état des jetons.
+* En environnement local et de test uniquement, le jeton est renvoyé dans la réponse. En production il n'existe que dans le message envoyé par Notify.
+
+## 2.2 Réinitialisation de mot de passe
+
+`POST /auth/forgot-password` renvoie **toujours** `202` avec le même message, que l'adresse existe, n'existe pas, ou appartienne à un compte suspendu. Toute différence de statut, de corps ou de temps de réponse permettrait d'énumérer les comptes.
+
+`POST /auth/reset-password` :
+
+* refuse un mot de passe figurant parmi les **5 derniers** utilisés — `422` / `PASSWORD_RECENTLY_USED` ; seuls des hachages sont conservés dans `password_histories` ;
+* **révoque toutes les sessions, sans exception** : on ignore laquelle appartient à l'attaquant ;
+* marque l'adresse comme vérifiée si elle ne l'était pas — recevoir le lien prouve la maîtrise de la boîte.
+
+## 2.3 Vérification d'adresse
+
+`POST /auth/verify-email` est **public** : le lien est cliqué depuis une boîte mail, souvent sur un autre appareil qu'à l'inscription. Exiger une session le rendrait inutilisable.
+
+`POST /auth/resend-verification` exige un token, et renvoie `409` / `RESOURCE_CONFLICT` si l'adresse est déjà vérifiée.
+
+Un jeton de vérification est émis automatiquement à l'inscription.
 
 ## 2.1 Réponse de connexion
 

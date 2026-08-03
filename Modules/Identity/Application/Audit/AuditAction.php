@@ -26,6 +26,14 @@ final class AuditAction
 
     public const AUTH_TOKEN_REPLAY_DETECTED = 'auth.token_replay_detected';
 
+    public const PASSWORD_RESET_REQUESTED = 'password.reset_requested';
+
+    public const PASSWORD_RESET = 'password.reset';
+
+    public const EMAIL_VERIFICATION_SENT = 'email.verification_sent';
+
+    public const EMAIL_VERIFIED = 'email.verified';
+
     public const ORGANIZATION_CREATED = 'organization.created';
 
     public const INVITATION_SENT = 'invitation.sent';

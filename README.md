@@ -121,10 +121,12 @@ SEKUU_DOMAIN_VERIFY=verify.sekuu.com
 
 | Module | État |
 | --- | --- |
-| **Identity** | Authentification, organisations, workspaces, invitations et journal d'audit opérationnels |
+| **Identity** | Authentification, organisations, workspaces, invitations, journal d'audit, réinitialisation de mot de passe et vérification d'adresse |
 | Verify · Notify · Billing · Storage · AI · Search · Analytics | Non démarrés |
 
-Reste à faire sur Identity : OAuth, vérification d'email et réinitialisation de mot de passe.
+Reste à faire sur Identity : OAuth, changement de mot de passe depuis le profil, gestion des sessions.
+
+Tant que **Notify** n'existe pas, aucun message n'est envoyé : les jetons d'invitation, de réinitialisation et de vérification sont renvoyés dans la réponse API en environnement local et de test uniquement.
 
 Les modules disposent de deux middlewares d'autorisation exposés par Identity :
 
