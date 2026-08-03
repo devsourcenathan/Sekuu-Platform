@@ -1,0 +1,1295 @@
+openapi: 3.1.0
+
+info:
+  title: Sekuu Identity
+  version: 1.0.0
+  description: |
+    Fournisseur d'identité de l'écosystème Sekuu.
+
+    Ce contrat est la **source de vérité** de l'API Identity. Toute divergence
+    entre ce document et l'implémentation est un bug de l'implémentation.
+
+    ## Conventions
+
+    Communes à toutes les API de la plateforme :
+
+    - Toutes les routes sont versionnées (`/api/v1`). Aucune route n'est exposée sans version.
+    - HTTPS uniquement, JSON UTF-8, clés en `snake_case`.
+    - Identifiants en UUID v4, dates ISO8601 en UTC.
+    - Toute réponse porte un `meta.request_id`, également renvoyé dans l'en-tête `X-Request-Id`.
+    - La logique cliente s'appuie sur `error.code`, **jamais** sur `error.message`, qui est traduit selon `Accept-Language`.
+
+    ## Contexte d'organisation
+
+    Un access token peut porter une organisation active (claim `org`). Les
+    routes marquées `organization` l'exigent : à défaut, elles répondent
+    `403 ORGANIZATION_REQUIRED`. On l'obtient via `POST /auth/switch-organization`.
+
+    ## Isolation entre organisations
+
+    Une ressource appartenant à une autre organisation renvoie systématiquement
+    `404`, jamais `403` : un `403` confirmerait son existence.
+
+  contact:
+    name: Sekuu Platform
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://identity.sekuu.com/api/v1
+    description: Production
+  - url: http://localhost:8000/api/v1
+    description: Développement local
+
+tags:
+  - name: Authentification
+  - name: Mot de passe
+  - name: Vérification d'adresse
+  - name: OAuth
+  - name: Sessions
+  - name: Organisations
+  - name: Workspaces
+  - name: Invitations
+  - name: Audit
+  - name: Service
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  # ---------------------------------------------------------------- Service --
+
+  /health:
+    get:
+      tags: [Service]
+      summary: État du service
+      security: []
+      responses:
+        '200':
+          description: Service opérationnel
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          service: { type: string, example: identity }
+                          version: { type: string, example: v1 }
+                          status: { type: string, enum: [ok, degraded] }
+                          checks:
+                            type: object
+                            properties:
+                              database: { type: string, enum: [ok, unreachable] }
+        '503':
+          description: Une dépendance est indisponible
+
+  # --------------------------------------------------------- Authentification --
+
+  /auth/register:
+    post:
+      tags: [Authentification]
+      summary: Créer un compte
+      description: |
+        Ouvre une session et émet une paire de jetons. Un jeton de vérification
+        d'adresse est également émis ; en production il n'est transmis que par
+        Notify, et n'apparaît donc pas dans la réponse.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [first_name, last_name, email, password]
+              properties:
+                first_name: { type: string, maxLength: 100, example: Nathan }
+                last_name: { type: string, maxLength: 100, example: Tchinda }
+                email: { type: string, format: email, example: nathan@sekuu.com }
+                password:
+                  type: string
+                  minLength: 12
+                  description: 12 caractères minimum, sans règle de composition imposée.
+                  example: un-mot-de-passe-long
+                language: { type: string, default: fr }
+                timezone: { type: string, default: UTC }
+      responses:
+        '201':
+          description: Compte créé
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/TokenPair' }
+        '409':
+          description: '`EMAIL_ALREADY_USED`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/login:
+    post:
+      tags: [Authentification]
+      summary: Se connecter
+      description: |
+        La réponse ne distingue jamais « adresse inconnue » de « mot de passe
+        incorrect » : les deux renvoient `INVALID_CREDENTIALS` avec le même
+        message et un temps de réponse constant.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Connecté
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/TokenPair' }
+        '401':
+          description: '`INVALID_CREDENTIALS`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '403':
+          description: '`ACCOUNT_SUSPENDED`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/refresh:
+    post:
+      tags: [Authentification]
+      summary: Renouveler les jetons
+      description: |
+        Rotation : le jeton présenté est révoqué et remplacé. Présenter un jeton
+        déjà utilisé est interprété comme un vol — **toute la session est
+        révoquée**, y compris le jeton légitime.
+
+        Le jeton est lu en priorité dans le cookie `sekuu_refresh_token`, puis
+        dans le corps.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+                  description: Inutile si le cookie HttpOnly est présent.
+      responses:
+        '200':
+          description: Nouvelle paire de jetons
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/TokenPair' }
+        '401':
+          description: '`INVALID_TOKEN`, `TOKEN_EXPIRED`, `TOKEN_REVOKED`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/me:
+    get:
+      tags: [Authentification]
+      summary: Profil et contexte courant
+      responses:
+        '200':
+          description: Profil
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          user: { $ref: '#/components/schemas/User' }
+                          organizations:
+                            type: array
+                            items: { $ref: '#/components/schemas/OrganizationSummary' }
+                          context: { $ref: '#/components/schemas/TokenContext' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /auth/switch-organization:
+    post:
+      tags: [Authentification]
+      summary: Changer d'organisation active
+      description: |
+        Émet un nouvel access token portant `org`, `roles`, `scopes` et
+        `products`. Le refresh token n'est pas touché : la session reste la
+        même, seul le contexte change.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organization_id]
+              properties:
+                organization_id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Nouveau token contextualisé
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/AccessToken' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403':
+          description: '`ORGANIZATION_SUSPENDED`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '404':
+          description: '`MEMBERSHIP_NOT_FOUND` — également renvoyé si l''organisation n''existe pas'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /auth/logout:
+    post:
+      tags: [Authentification]
+      summary: Déconnecter l'appareil courant
+      responses:
+        '200': { description: Session révoquée }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /auth/logout-all:
+    post:
+      tags: [Authentification]
+      summary: Déconnecter tous les appareils
+      responses:
+        '200': { description: Toutes les sessions révoquées }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  # ------------------------------------------------------------ Mot de passe --
+
+  /auth/forgot-password:
+    post:
+      tags: [Mot de passe]
+      summary: Demander une réinitialisation
+      description: |
+        Répond **toujours** `202` avec le même message, que l'adresse existe,
+        n'existe pas, ou appartienne à un compte suspendu. Toute différence
+        permettrait d'énumérer les comptes.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '202':
+          description: Demande enregistrée
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          message: { type: string }
+                          token:
+                            type: string
+                            description: Présent en environnement local et de test uniquement.
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/reset-password:
+    post:
+      tags: [Mot de passe]
+      summary: Appliquer un nouveau mot de passe
+      description: |
+        Révoque **toutes** les sessions sans exception : on ignore laquelle
+        appartient à l'attaquant. Marque également l'adresse comme vérifiée —
+        recevoir le lien prouve la maîtrise de la boîte.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string }
+                password: { type: string, minLength: 12 }
+      responses:
+        '200': { description: Mot de passe réinitialisé }
+        '400':
+          description: '`RESET_TOKEN_INVALID` — inconnu, déjà utilisé, expiré, ou d''un autre type'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '422':
+          description: '`PASSWORD_RECENTLY_USED`, `VALIDATION_ERROR`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /users/{userId}/change-password:
+    post:
+      tags: [Mot de passe]
+      summary: Changer son mot de passe
+      description: |
+        Un utilisateur ne peut changer que **son propre** mot de passe, quel que
+        soit son rôle : un administrateur passe par la réinitialisation.
+
+        À la différence d'une réinitialisation, la session courante est
+        conservée — l'appelant a prouvé qu'il connaît son mot de passe.
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, password]
+              properties:
+                current_password: { type: string }
+                password: { type: string, minLength: 12 }
+      responses:
+        '200': { description: 'Mot de passe changé, autres appareils déconnectés' }
+        '401':
+          description: '`INVALID_CREDENTIALS` — mot de passe actuel incorrect'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '403':
+          description: '`FORBIDDEN` — tentative sur le compte d''autrui'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '409':
+          description: '`RESOURCE_CONFLICT` — compte sans mot de passe (créé via OAuth)'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '422':
+          description: '`PASSWORD_RECENTLY_USED`, `VALIDATION_ERROR`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  # --------------------------------------------------- Vérification d'adresse --
+
+  /auth/verify-email:
+    post:
+      tags: [Vérification d'adresse]
+      summary: Vérifier une adresse
+      description: |
+        Route **publique** : le lien est cliqué depuis une boîte mail, souvent
+        sur un autre appareil qu'à l'inscription. Exiger une session le rendrait
+        inutilisable.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: Adresse vérifiée
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          email: { type: string, format: email }
+                          email_verified_at: { type: string, format: date-time }
+        '400':
+          description: '`RESET_TOKEN_INVALID`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/resend-verification:
+    post:
+      tags: [Vérification d'adresse]
+      summary: Renvoyer le lien de vérification
+      description: Émettre un nouveau lien invalide le précédent.
+      responses:
+        '202': { description: Lien émis }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409':
+          description: '`RESOURCE_CONFLICT` — adresse déjà vérifiée'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  # ------------------------------------------------------------------- OAuth --
+
+  /oauth/{provider}/redirect:
+    get:
+      tags: [OAuth]
+      summary: Démarrer le flux OAuth
+      description: |
+        Renvoie l'URL d'autorisation plutôt qu'une redirection HTTP : l'API est
+        consommée par des clients web et mobiles qui pilotent eux-mêmes la
+        navigation.
+
+        Le `state` protège du CSRF. Conservé côté serveur pendant 10 minutes, lié
+        au fournisseur, et à usage unique.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+      responses:
+        '200':
+          description: URL d'autorisation
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          authorization_url: { type: string, format: uri }
+                          state: { type: string }
+        '422':
+          description: '`OAUTH_PROVIDER_NOT_SUPPORTED`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /oauth/{provider}/callback:
+    get:
+      tags: [OAuth]
+      summary: Retour du fournisseur
+      description: |
+        Rattachement d'un compte existant :
+
+        | Situation | Comportement |
+        | --- | --- |
+        | Lien `(provider, provider_id)` connu | Connexion |
+        | Aucun compte pour cette adresse | Création, sans mot de passe |
+        | Compte existant, fournisseur **de confiance** | Rattachement, adresse marquée vérifiée |
+        | Compte existant, fournisseur **non listé** | `409 OAUTH_EMAIL_TAKEN` |
+
+        Le dernier cas évite une prise de contrôle de compte via un fournisseur
+        qui ne vérifierait pas les adresses qu'il rapporte.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+        - name: code
+          in: query
+          required: true
+          schema: { type: string }
+        - name: state
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Connecté
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/TokenPair'
+                          - type: object
+                            properties:
+                              account_created: { type: boolean }
+        '400':
+          description: '`OAUTH_STATE_INVALID`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '403':
+          description: '`ACCOUNT_SUSPENDED`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '409':
+          description: '`OAUTH_EMAIL_TAKEN`, `OAUTH_ACCOUNT_ALREADY_LINKED`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '503':
+          description: '`OAUTH_PROVIDER_ERROR`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /oauth/accounts:
+    get:
+      tags: [OAuth]
+      summary: Comptes externes liés
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/OAuthAccount' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /oauth/accounts/{accountId}:
+    delete:
+      tags: [OAuth]
+      summary: Délier un compte externe
+      description: |
+        Refusé si c'est le dernier moyen de connexion d'un compte sans mot de
+        passe : l'utilisateur se retrouverait enfermé dehors.
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Compte délié }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`RESOURCE_CONFLICT` — dernier moyen de connexion'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  # ---------------------------------------------------------------- Sessions --
+
+  /sessions:
+    get:
+      tags: [Sessions]
+      summary: Appareils connectés
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /sessions/{sessionId}:
+    delete:
+      tags: [Sessions]
+      summary: Déconnecter un appareil
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Session révoquée }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ----------------------------------------------------------- Organisations --
+
+  /organizations:
+    get:
+      tags: [Organisations]
+      summary: Organisations de l'utilisateur connecté
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/OrganizationSummary' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [Organisations]
+      summary: Créer une organisation
+      description: Le créateur en devient `owner`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 200, example: SOS Clinique }
+                slug: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$' }
+                country: { type: string, minLength: 2, maxLength: 2, example: CM }
+                currency: { type: string, minLength: 3, maxLength: 3, example: XAF }
+                timezone: { type: string }
+                locale: { type: string }
+      responses:
+        '201':
+          description: Organisation créée
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Organization' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409':
+          description: '`ORGANIZATION_SLUG_TAKEN`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  # -------------------------------------------------------------- Workspaces --
+
+  /workspaces:
+    get:
+      tags: [Workspaces]
+      summary: Workspaces accessibles
+      description: |
+        Ne renvoie que les workspaces dont l'utilisateur est membre, sauf s'il
+        détient `workspace.manage`.
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Workspace' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/OrganizationRequired' }
+    post:
+      tags: [Workspaces]
+      summary: Créer un workspace
+      description: 'Requiert `workspace.create`. Le créateur en devient membre.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 200, example: Douala }
+                slug: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$' }
+                settings: { type: object, additionalProperties: true }
+      responses:
+        '201':
+          description: Workspace créé
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Workspace' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+        '409':
+          description: '`DUPLICATE_RESOURCE` — slug déjà pris dans cette organisation'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /workspaces/{workspaceId}:
+    parameters:
+      - $ref: '#/components/parameters/WorkspaceId'
+    get:
+      tags: [Workspaces]
+      summary: Détail d'un workspace
+      responses:
+        '200':
+          description: Workspace
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Workspace' }
+        '403':
+          description: '`WORKSPACE_ACCESS_DENIED` — même organisation, mais non membre'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '404':
+          description: '`WORKSPACE_NOT_FOUND` — inexistant, **ou** appartenant à une autre organisation'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    patch:
+      tags: [Workspaces]
+      summary: Modifier un workspace
+      description: 'Requiert `workspace.manage`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 200 }
+                settings: { type: object, additionalProperties: true }
+                status: { type: string, enum: [active, archived] }
+      responses:
+        '200':
+          description: Workspace modifié
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Workspace' }
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Workspaces]
+      summary: Supprimer un workspace
+      description: 'Requiert `workspace.manage`.'
+      responses:
+        '204': { description: Workspace supprimé }
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /workspaces/{workspaceId}/members:
+    parameters:
+      - $ref: '#/components/parameters/WorkspaceId'
+    get:
+      tags: [Workspaces]
+      summary: Membres d'un workspace
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/WorkspaceMember' }
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Workspaces]
+      summary: Ajouter un membre
+      description: |
+        Requiert `workspace.manage`. Le membership doit appartenir à la même
+        organisation que le workspace.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [membership_id]
+              properties:
+                membership_id: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Membre ajouté
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+        '404':
+          description: '`MEMBERSHIP_NOT_FOUND`, `WORKSPACE_NOT_FOUND`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '409':
+          description: '`DUPLICATE_RESOURCE` — déjà membre'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /workspaces/{workspaceId}/members/{membershipId}:
+    delete:
+      tags: [Workspaces]
+      summary: Retirer un membre
+      description: 'Requiert `workspace.manage`.'
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - name: membershipId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Membre retiré }
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ------------------------------------------------------------- Invitations --
+
+  /organizations/{organizationId}/invitations:
+    parameters:
+      - $ref: '#/components/parameters/OrganizationId'
+    get:
+      tags: [Invitations]
+      summary: Invitations en attente
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Invitation' }
+        '404':
+          description: '`ORGANIZATION_NOT_FOUND` — l''organisation de l''URL ne correspond pas à celle du token'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    post:
+      tags: [Invitations]
+      summary: Inviter quelqu'un
+      description: 'Requiert `users.invite`.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, global_role_id]
+              properties:
+                email: { type: string, format: email }
+                global_role_id: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Invitation créée
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/Invitation'
+                          - type: object
+                            properties:
+                              token:
+                                type: string
+                                description: Présent en environnement local et de test uniquement.
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+        '409':
+          description: '`ALREADY_MEMBER`, `DUPLICATE_RESOURCE` — invitation déjà en attente'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /invitations/{invitationId}:
+    delete:
+      tags: [Invitations]
+      summary: Révoquer une invitation
+      description: 'Requiert `users.invite`.'
+      parameters:
+        - name: invitationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Invitation révoquée }
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /invitations/{token}:
+    get:
+      tags: [Invitations]
+      summary: Consulter une invitation
+      description: |
+        Route **publique** : le jeton fait office de preuve, puisqu'il n'a été
+        transmis qu'à l'adresse invitée. Ni l'identifiant de l'invitation, ni
+        celui de l'organisation, ni l'inviteur ne sont exposés.
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Invitation
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          email: { type: string, format: email }
+                          organization:
+                            type: object
+                            properties:
+                              name: { type: string }
+                              slug: { type: string }
+                          role: { type: string, example: member }
+                          expires_at: { type: string, format: date-time }
+                          requires_account:
+                            type: boolean
+                            description: Vrai si aucun compte n'existe encore pour cette adresse.
+        '404':
+          description: '`INVITATION_NOT_FOUND` — inexistante, révoquée ou expirée'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /invitations/{token}/accept:
+    post:
+      tags: [Invitations]
+      summary: Accepter une invitation
+      description: |
+        Route **publique**. Si aucun compte n'existe pour l'adresse invitée,
+        `first_name`, `last_name` et `password` sont requis et le compte est
+        créé — son adresse est alors considérée comme vérifiée.
+
+        Si l'appelant présente un access token, son adresse doit correspondre à
+        celle de l'invitation : une invitation ne peut pas être détournée par un
+        autre compte connecté.
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                first_name: { type: string, maxLength: 100 }
+                last_name: { type: string, maxLength: 100 }
+                password: { type: string, minLength: 12 }
+      responses:
+        '200':
+          description: Invitation acceptée
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          organization_id: { type: string, format: uuid }
+                          membership_id: { type: string, format: uuid }
+                          account_created: { type: boolean }
+                          user:
+                            type: object
+                            properties:
+                              id: { type: string, format: uuid }
+                              email: { type: string, format: email }
+        '403':
+          description: '`INVITATION_EMAIL_MISMATCH`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '404':
+          description: '`INVITATION_NOT_FOUND`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '409':
+          description: '`INVITATION_ALREADY_ACCEPTED`, `ALREADY_MEMBER`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '410':
+          description: '`INVITATION_EXPIRED`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '422':
+          description: '`VALIDATION_ERROR` — champs d''inscription manquants'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  # ------------------------------------------------------------------- Audit --
+
+  /audit-logs:
+    get:
+      tags: [Audit]
+      summary: Journal d'audit de l'organisation
+      description: |
+        Requiert `audit.read`.
+
+        Collection volumineuse et fortement écrite : elle est paginée **par
+        curseur**, la pagination par offset y produisant doublons et oublis.
+
+        Un filtre inconnu renvoie `400 INVALID_FILTER` plutôt que d'être ignoré :
+        un filtre silencieusement ignoré donnerait l'illusion d'une recherche
+        exhaustive.
+      parameters:
+        - name: cursor
+          in: query
+          description: Curseur opaque. Ne jamais le décoder ni le construire.
+          schema: { type: string }
+        - name: per_page
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: filter[action]
+          in: query
+          schema: { type: string, example: workspace.created }
+        - name: filter[user_id]
+          in: query
+          schema: { type: string, format: uuid }
+        - name: filter[target_type]
+          in: query
+          schema: { type: string, example: Workspace }
+      responses:
+        '200':
+          description: Entrées du journal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AuditLog' }
+                  meta: { $ref: '#/components/schemas/CursorMeta' }
+        '400':
+          description: '`INVALID_FILTER`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Access token JWT signé en RS256, valable 15 minutes. Les clés publiques
+        de vérification sont publiées sur `/.well-known/jwks.json`, servi à la
+        racine du domaine (hors préfixe `/api/v1`).
+
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    OrganizationId:
+      name: organizationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    WorkspaceId:
+      name: workspaceId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Provider:
+      name: provider
+      in: path
+      required: true
+      schema: { type: string, enum: [google, microsoft, github] }
+
+  responses:
+    Unauthenticated:
+      description: '`UNAUTHENTICATED`, `INVALID_TOKEN`, `TOKEN_EXPIRED`, `TOKEN_REVOKED`'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    OrganizationRequired:
+      description: '`ORGANIZATION_REQUIRED` — le token ne porte aucune organisation active'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    InsufficientPermissions:
+      description: '`INSUFFICIENT_PERMISSIONS`, `ORGANIZATION_REQUIRED`'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    NotFound:
+      description: '`RESOURCE_NOT_FOUND` — inexistant, **ou** hors du périmètre de l''appelant'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    ValidationError:
+      description: '`VALIDATION_ERROR`'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    RateLimited:
+      description: '`RATE_LIMIT_EXCEEDED`'
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  schemas:
+
+    Meta:
+      type: object
+      required: [request_id]
+      properties:
+        request_id:
+          type: string
+          example: req_8b94d7d0a1b2
+          description: Présent dans chaque réponse et dans l'en-tête `X-Request-Id`.
+
+    CursorMeta:
+      allOf:
+        - $ref: '#/components/schemas/Meta'
+        - type: object
+          properties:
+            per_page: { type: integer }
+            next_cursor: { type: [string, 'null'] }
+            has_more: { type: boolean }
+
+    SuccessEnvelope:
+      type: object
+      required: [success, meta]
+      properties:
+        success: { type: boolean, const: true }
+        data: {}
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    ErrorEnvelope:
+      type: object
+      required: [success, error, meta]
+      properties:
+        success: { type: boolean, const: false }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: |
+                Référence **stable**. La logique cliente s'appuie dessus, jamais
+                sur `message`. Catalogue complet dans docs/02-standards/error-codes.md
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              description: Traduit selon `Accept-Language`.
+            details:
+              type: object
+              additionalProperties: { type: array, items: { type: string } }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        first_name: { type: string }
+        last_name: { type: string }
+        email: { type: string, format: email }
+        phone: { type: [string, 'null'] }
+        avatar_url: { type: [string, 'null'] }
+        language: { type: string }
+        timezone: { type: string }
+        email_verified_at: { type: [string, 'null'], format: date-time }
+
+    AccessToken:
+      type: object
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, const: Bearer }
+        expires_in: { type: integer, example: 900 }
+
+    TokenPair:
+      allOf:
+        - $ref: '#/components/schemas/AccessToken'
+        - type: object
+          properties:
+            refresh_token:
+              type: string
+              description: |
+                Également posé en cookie `HttpOnly`. Les clients web doivent
+                ignorer ce champ et s'appuyer sur le cookie.
+            session_id: { type: string, format: uuid }
+            user: { $ref: '#/components/schemas/User' }
+            organizations:
+              type: array
+              items: { $ref: '#/components/schemas/OrganizationSummary' }
+
+    TokenContext:
+      type: object
+      description: Contexte porté par l'access token. Ne contient aucune donnée personnelle.
+      properties:
+        session_id: { type: string, format: uuid }
+        organization_id: { type: [string, 'null'], format: uuid }
+        workspace_id: { type: [string, 'null'], format: uuid }
+        roles:
+          type: array
+          items: { type: string, enum: [owner, admin, billing_manager, member] }
+        scopes:
+          type: array
+          items: { type: string, example: organization.manage }
+          description: Permissions **globales** uniquement. Les permissions métier appartiennent aux produits.
+        products:
+          type: array
+          items: { type: string, example: clinicflow }
+
+    OrganizationSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        roles: { type: array, items: { type: string } }
+
+    Organization:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        country: { type: [string, 'null'] }
+        currency: { type: [string, 'null'] }
+        timezone: { type: string }
+        locale: { type: string }
+        status: { type: string, enum: [active, suspended, deleted] }
+
+    Workspace:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        settings: { type: object, additionalProperties: true }
+        status: { type: string }
+        created_at: { type: string, format: date-time }
+
+    WorkspaceMember:
+      type: object
+      properties:
+        membership_id: { type: string, format: uuid }
+        is_default: { type: boolean }
+        user: { $ref: '#/components/schemas/User' }
+
+    Invitation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        role: { type: string, example: member }
+        expires_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+
+    Session:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        device_name: { type: [string, 'null'] }
+        platform: { type: [string, 'null'] }
+        browser: { type: [string, 'null'] }
+        ip_address: { type: [string, 'null'] }
+        last_activity: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        is_current: { type: boolean }
+
+    OAuthAccount:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        provider: { type: string, example: google }
+        email: { type: [string, 'null'], format: email }
+        linked_at: { type: string, format: date-time }
+
+    AuditLog:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        action: { type: string, example: workspace.created }
+        target_type: { type: [string, 'null'], example: Workspace }
+        target_id: { type: [string, 'null'], format: uuid }
+        ip_address: { type: [string, 'null'] }
+        request_id: { type: [string, 'null'] }
+        payload:
+          type: object
+          additionalProperties: true
+          description: 'Filtré : ne contient jamais de mot de passe, jeton ou secret.'
+        created_at: { type: string, format: date-time }
+        user: { oneOf: [{ $ref: '#/components/schemas/User' }, { type: 'null' }] }

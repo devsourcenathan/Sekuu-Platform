@@ -4,7 +4,9 @@ Socle technique commun de l'écosystème Sekuu : une plateforme de services part
 
 Développé comme un **monolithe modulaire Laravel** — une application, une base PostgreSQL, des modules aux frontières strictes, chacun exposé sur son propre sous-domaine et extractible plus tard sans changer d'URL.
 
-📖 **La documentation est dans [`docs/`](docs/README.md)** — commencez par la [vision](docs/01-overview/vision.md) puis l'[architecture](docs/01-overview/architecture.md).
+📖 **La documentation est dans [`docs/`](docs/README.md)** — commencez par le [récapitulatif](docs/RECAP.md) pour l'état réel, ou la [vision](docs/01-overview/vision.md) puis l'[architecture](docs/01-overview/architecture.md) pour la cible.
+
+🔌 **API Identity** — contrat [`Modules/Identity/openapi.yaml`](Modules/Identity/openapi.yaml) · [collection Postman](postman/)
 
 ---
 

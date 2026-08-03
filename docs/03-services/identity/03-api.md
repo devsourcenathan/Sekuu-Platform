@@ -7,7 +7,11 @@
 
 Cette API respecte intégralement les [API Guidelines](../../02-standards/api-guidelines.md) : réponses uniformes, `snake_case`, UUID, dates ISO8601 UTC, pagination, `request_id`, codes d'erreur issus du [catalogue commun](../../02-standards/error-codes.md).
 
-Le contrat faisant foi est `openapi.yaml`, versionné avec le code. Ce document en est la vue lisible.
+Le contrat faisant foi est [`Modules/Identity/openapi.yaml`](../../../Modules/Identity/openapi.yaml), versionné avec le code. Ce document en est la vue lisible.
+
+`OpenApiContractTest` vérifie à chaque exécution de la suite que le contrat couvre exactement les routes réelles — ni route non documentée, ni opération fantôme — et que les codes d'erreur cités appartiennent au [catalogue](../../02-standards/error-codes.md).
+
+Pour explorer l'API à la main : [collection Postman](../../../postman/Sekuu-Identity.postman_collection.json).
 
 ---
 

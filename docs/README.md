@@ -10,6 +10,7 @@ Sekuu Platform est le socle technique commun de l'écosystème Sekuu : une plate
 
 | Vous voulez… | Lisez |
 | --- | --- |
+| Savoir ce qui est **réellement implémenté** | [Récapitulatif](RECAP.md) |
 | Comprendre le projet | [Vision](01-overview/vision.md) |
 | Comprendre l'architecture technique | [Architecture](01-overview/architecture.md) |
 | Développer une API | [API Guidelines](02-standards/api-guidelines.md) puis [Codes d'erreur](02-standards/error-codes.md) |
@@ -52,7 +53,7 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 
 | Service | État | Documentation |
 | --- | --- | --- |
-| **Identity** | Spécifié | [vision](03-services/identity/01-overview.md) · [modèle de données](03-services/identity/02-data-model.md) · [API](03-services/identity/03-api.md) |
+| **Identity** | **Implémenté** | [vision](03-services/identity/01-overview.md) · [modèle de données](03-services/identity/02-data-model.md) · [API](03-services/identity/03-api.md) · [contrat OpenAPI](../Modules/Identity/openapi.yaml) |
 | Verify | À spécifier | — |
 | Notify | À spécifier | — |
 | Billing | À spécifier | — |
