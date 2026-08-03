@@ -121,6 +121,17 @@ Retirer le dernier `owner` renvoie `409` / `LAST_OWNER_CANNOT_LEAVE`.
 
 `GET /workspaces` ne renvoie que les workspaces dont l'utilisateur est membre, sauf s'il détient `workspace.manage`.
 
+Le créateur d'un workspace en devient automatiquement membre — sans quoi il ne verrait pas ce qu'il vient de créer.
+
+Distinction importante sur les refus :
+
+| Situation | Réponse |
+| --- | --- |
+| Workspace d'une **autre organisation** | `404` / `WORKSPACE_NOT_FOUND` — son existence n'est pas révélée |
+| Workspace de **son organisation**, dont on n'est pas membre | `403` / `WORKSPACE_ACCESS_DENIED` |
+
+Toutes ces routes exigent un token portant une organisation active ; à défaut, `403` / `ORGANIZATION_REQUIRED`.
+
 ---
 
 # 6. Invitations
@@ -141,6 +152,34 @@ Le corps de création référence un rôle existant :
   "global_role_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
 }
 ```
+
+## 6.1 Acceptation
+
+`GET /invitations/{token}` et `POST /invitations/{token}/accept` sont **publics** : le jeton fait office de preuve, puisqu'il n'a été transmis qu'à l'adresse invitée.
+
+* Si aucun compte n'existe pour l'adresse, `accept` exige `first_name`, `last_name` et `password`, et crée le compte. L'adresse est alors considérée comme vérifiée : sa maîtrise est prouvée par la réception du jeton.
+* Si un compte existe, ces champs sont inutiles.
+* Si l'appelant présente un access token, son adresse doit correspondre à celle de l'invitation — sinon `403` / `INVITATION_EMAIL_MISMATCH`. Une invitation ne peut pas être détournée par un autre compte connecté.
+
+Le jeton en clair n'est renvoyé par `POST /organizations/{id}/invitations` qu'en environnement local ou de test. En production, il n'existe que dans le message envoyé par Notify.
+
+## 6.2 Réponse de la consultation publique
+
+```json
+{
+  "success": true,
+  "data": {
+    "email": "john@gmail.com",
+    "organization": { "name": "SOS Clinique", "slug": "sos-clinique" },
+    "role": "member",
+    "expires_at": "2026-08-10T13:42:51Z",
+    "requires_account": true
+  },
+  "meta": { "request_id": "req_8b94d7d0" }
+}
+```
+
+Ni l'identifiant de l'invitation, ni celui de l'organisation, ni l'inviteur ne sont exposés à un visiteur non authentifié.
 
 ---
 

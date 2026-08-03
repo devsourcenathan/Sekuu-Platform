@@ -137,12 +137,14 @@ Un `INTERNAL_ERROR` ne doit jamais exposer de trace, de requête SQL ou de nom d
 | `RESET_TOKEN_INVALID` | 400 | Jeton de réinitialisation invalide ou expiré |
 | `ORGANIZATION_NOT_FOUND` | 404 | Organisation inexistante |
 | `ORGANIZATION_SLUG_TAKEN` | 409 | Slug d'organisation déjà pris |
+| `ORGANIZATION_REQUIRED` | 403 | Le token ne porte aucune organisation active — appeler `/auth/switch-organization` |
 | `MEMBERSHIP_NOT_FOUND` | 404 | L'utilisateur n'appartient pas à cette organisation |
 | `ALREADY_MEMBER` | 409 | L'utilisateur est déjà membre de l'organisation |
 | `LAST_OWNER_CANNOT_LEAVE` | 409 | Une organisation doit conserver au moins un `Owner` |
 | `INVITATION_NOT_FOUND` | 404 | Invitation inexistante |
 | `INVITATION_EXPIRED` | 410 | Invitation expirée |
 | `INVITATION_ALREADY_ACCEPTED` | 409 | Invitation déjà acceptée |
+| `INVITATION_EMAIL_MISMATCH` | 403 | L'invitation vise une autre adresse que celle du compte connecté |
 | `WORKSPACE_NOT_FOUND` | 404 | Workspace inexistant |
 | `WORKSPACE_ACCESS_DENIED` | 403 | L'utilisateur n'est pas membre de ce workspace |
 | `PRODUCT_NOT_FOUND` | 404 | Produit inconnu de la plateforme |

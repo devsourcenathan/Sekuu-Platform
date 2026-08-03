@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Identity;
 
 use App\Platform\Support\ModuleServiceProvider;
+use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Auth;
 use Modules\Identity\Application\Auth\SessionTokenService;
 use Modules\Identity\Domain\AuthenticatedContext;
@@ -13,6 +14,8 @@ use Modules\Identity\Infrastructure\Console\GenerateJwtKeysCommand;
 use Modules\Identity\Infrastructure\Jwt\AccessTokenIssuer;
 use Modules\Identity\Infrastructure\Jwt\AccessTokenVerifier;
 use Modules\Identity\Infrastructure\Jwt\SigningKeys;
+use Modules\Identity\Presentation\Http\Middleware\RequireOrganization;
+use Modules\Identity\Presentation\Http\Middleware\RequireScope;
 
 final class IdentityServiceProvider extends ModuleServiceProvider
 {
@@ -76,6 +79,12 @@ final class IdentityServiceProvider extends ModuleServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([GenerateJwtKeysCommand::class]);
         }
+
+        // Identity étant le fournisseur d'identité, c'est lui qui expose les
+        // middlewares d'autorisation globale utilisables par tous les modules.
+        $router = $this->app->make(Router::class);
+        $router->aliasMiddleware('organization', RequireOrganization::class);
+        $router->aliasMiddleware('scope', RequireScope::class);
 
         Auth::viaRequest(
             'sekuu-jwt',

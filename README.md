@@ -113,10 +113,17 @@ SEKUU_DOMAIN_VERIFY=verify.sekuu.com
 
 | Module | État |
 | --- | --- |
-| **Identity** | Authentification opérationnelle — inscription, connexion, rotation des jetons, organisations, changement de contexte, JWKS |
+| **Identity** | Authentification, organisations, workspaces et invitations opérationnels |
 | Verify · Notify · Billing · Storage · AI · Search · Analytics | Non démarrés |
 
-Reste à faire sur Identity : workspaces et leurs membres, invitations, journal d'audit, OAuth, vérification d'email et réinitialisation de mot de passe.
+Reste à faire sur Identity : journal d'audit, OAuth, vérification d'email et réinitialisation de mot de passe.
+
+Les modules disposent de deux middlewares d'autorisation exposés par Identity :
+
+```php
+Route::middleware(['auth:api', 'organization'])          // organisation active requise
+Route::middleware('scope:workspace.manage')              // permission globale requise
+```
 
 ### Clés de signature
 
