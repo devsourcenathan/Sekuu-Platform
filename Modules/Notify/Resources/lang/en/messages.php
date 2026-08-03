@@ -8,6 +8,7 @@ return [
     'template_category_reserved' => 'Transactional messages are reserved to platform templates: an organization cannot decide alone that a message may no longer be declined.',
     'suppression_not_found' => 'This suppression does not exist.',
     'suppression_already_exists' => 'This destination is already suppressed.',
+    'channel_quota_reached' => 'The monthly :channel quota included in your plan has been reached.',
     'spend_limit_reached' => 'The monthly spending limit for the :channel channel has been reached.',
     'unsubscribe_token_invalid' => 'This unsubscribe link is invalid.',
     'idempotency_key_required' => 'The Idempotency-Key header is required for this endpoint.',

@@ -61,4 +61,7 @@ return [
     'workspace_member_missing' => 'Ce membre n\'appartient pas à l\'espace de travail.',
     'workspace_not_found' => 'Cet espace de travail n\'existe pas.',
     'workspace_slug_taken' => 'Un espace de travail avec ce slug existe déjà dans cette organisation.',
+    'member_quota_reached' => 'Le nombre de sièges prévu par votre plan est atteint. Les invitations en attente comptent comme des sièges.',
+    'workspace_quota_reached' => "Le nombre d'espaces de travail prévu par votre plan est atteint.",
+
 ];

@@ -61,4 +61,7 @@ return [
     'workspace_member_missing' => 'This member does not belong to the workspace.',
     'workspace_not_found' => 'This workspace does not exist.',
     'workspace_slug_taken' => 'A workspace with this slug already exists in this organization.',
+    'member_quota_reached' => 'Your plan seat limit has been reached. Pending invitations count as seats.',
+    'workspace_quota_reached' => 'Your plan workspace limit has been reached.',
+
 ];

@@ -308,7 +308,49 @@ Un plan ouvre des produits, et fixe des limites : nombre de membres, de workspac
 
 Billing **publie** ces limites ; il ne les fait pas respecter. Chaque module contrôle son propre quota, parce que lui seul sait le compter. Notify sait combien de SMS il a envoyés ; Billing ne le saura jamais mieux que lui.
 
-C'est ce qui remplace le plafond de dépense global aujourd'hui codé dans Notify, noté comme dette dans le [RECAP](../../RECAP.md).
+La lecture passe par le contrat `BillingContract::limit()`, symétrique de celui d'Identity. Le comptage et le refus appartiennent à l'appelant.
+
+## 10.1 Une limite a trois états, pas deux
+
+| État | Sens |
+| --- | --- |
+| Plafonnée | une valeur |
+| **Illimitée** | le plan couvre la ressource sans borne |
+| **Non couverte** | le plan n'ouvre pas cette ressource |
+
+Un simple `?int` confondrait les deux derniers, et « illimité » se lirait comme « interdit » — ou l'inverse, ce qui serait pire : un client qui a payé pour ne pas être borné se retrouverait bloqué.
+
+## 10.2 Un quota n'est pas un contrôle d'accès
+
+Une organisation **sans abonnement** n'est pas bloquée par les quotas.
+
+Le faire dupliquerait le rôle d'`organization_products` côté Identity — et surtout, cela fermerait toute organisation créée avant qu'un abonnement n'existe, y compris pendant l'inscription.
+
+Un quota borne un usage **autorisé**. Il ne décide pas de l'autorisation.
+
+## 10.3 Ce qui est appliqué aujourd'hui
+
+| Ressource | Module | Comptage |
+| --- | --- | --- |
+| `members` | Identity | Membres actifs **+ invitations en attente** |
+| `workspaces` | Identity | Workspaces non supprimés |
+| `sms_monthly` | Notify | Messages **acceptés** dans le mois |
+
+Les invitations en attente consomment un siège : ne compter que les membres laisserait envoyer cent invitations sur un plan de trois, et le dépassement ne serait constaté qu'à l'acceptation — une fois la promesse faite à l'invité.
+
+Notify compte les messages acceptés et non les livraisons : compter les secondes laisserait un envoi groupé franchir le quota avant qu'aucun message n'ait abouti.
+
+## 10.4 Le plafond de dépense n'est pas remplacé
+
+Le plafond global de Notify était un **substitut** aux quotas par plan, faute de Billing. Maintenant qu'ils existent, il redevient ce qu'il aurait dû être d'emblée : un garde-fou absolu contre une boucle ou une clé d'API fuitée, indépendant du plan.
+
+| | Quota de plan | Plafond de dépense |
+| --- | --- | --- |
+| Mesure | un **volume** | une **dépense** |
+| Source | le plan de l'organisation | la configuration de la plateforme |
+| Rôle | limite **commerciale** | garde-fou contre l'emballement |
+
+Les deux coexistent. Supprimer le second laisserait une organisation au plan illimité sans aucune borne — et c'est précisément celle qui peut coûter le plus cher.
 
 ---
 

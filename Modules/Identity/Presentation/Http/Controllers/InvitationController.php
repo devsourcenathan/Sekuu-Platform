@@ -12,6 +12,7 @@ use Modules\Identity\Application\Audit\AuditLogger;
 use Modules\Identity\Application\Events\IdentityEvents;
 use Modules\Identity\Application\Invitations\AcceptInvitation;
 use Modules\Identity\Application\Invitations\SendInvitation;
+use Modules\Identity\Application\Products\OrganizationQuota;
 use Modules\Identity\Domain\AuthenticatedContext;
 use Modules\Identity\Domain\Models\Invitation;
 use Modules\Identity\Domain\Models\User;
@@ -51,8 +52,14 @@ final class InvitationController
         SendInvitation $send,
         AuditLogger $audit,
         IdentityEvents $events,
+        OrganizationQuota $quota,
         string $organizationId,
     ): JsonResponse {
+        // Le siège est réservé dès l'invitation, pas à son acceptation :
+        // constater le dépassement plus tard reviendrait à revenir sur une
+        // promesse déjà faite à l'invité.
+        $quota->assertCanAddMember($organizationId);
+
         $issued = $send->handle(
             organizationId: $this->assertOrganizationMatches($context, $organizationId),
             email: $request->string('email')->toString(),

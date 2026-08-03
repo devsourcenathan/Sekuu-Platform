@@ -8,6 +8,7 @@ use App\Platform\Http\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Modules\Identity\Application\Audit\AuditAction;
 use Modules\Identity\Application\Audit\AuditLogger;
+use Modules\Identity\Application\Products\OrganizationQuota;
 use Modules\Identity\Application\Workspaces\CreateWorkspace;
 use Modules\Identity\Domain\AuthenticatedContext;
 use Modules\Identity\Domain\Models\Workspace;
@@ -44,7 +45,12 @@ final class WorkspaceController
         AuthenticatedContext $context,
         CreateWorkspace $create,
         AuditLogger $audit,
+        OrganizationQuota $quota,
     ): JsonResponse {
+        // Refusé avant création : accepter puis dépasser le plan obligerait à
+        // supprimer un workspace ensuite, ce qu'aucun quota ne devrait faire.
+        $quota->assertCanCreateWorkspace($context->token->organizationId);
+
         $workspace = $create->handle($this->currentMembership($context), $request->validated());
 
         $audit->record(

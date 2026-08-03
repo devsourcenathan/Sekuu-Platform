@@ -8,6 +8,7 @@ return [
     'template_category_reserved' => "Le transactionnel est reserve aux templates de plateforme : une organisation ne decide pas seule qu'un message ne peut plus etre refuse.",
     'suppression_not_found' => "Cette suppression n'existe pas.",
     'suppression_already_exists' => 'Cette destination est deja supprimee.',
+    'channel_quota_reached' => 'Le quota mensuel du canal :channel prévu par votre plan est atteint.',
     'spend_limit_reached' => 'Le plafond de dépense mensuel du canal :channel est atteint.',
     'unsubscribe_token_invalid' => 'Ce lien de désabonnement est invalide.',
     'idempotency_key_required' => "L'en-tête Idempotency-Key est obligatoire sur ce point d'entrée.",

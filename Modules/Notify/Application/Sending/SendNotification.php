@@ -36,6 +36,7 @@ final class SendNotification
         private readonly TemplateRenderer $renderer,
         private readonly RecipientFilter $filter,
         private readonly SpendGuard $budget,
+        private readonly ChannelQuota $quota,
     ) {}
 
     public function handle(SendRequest $request): SendOutcome
@@ -93,8 +94,13 @@ final class SendNotification
 
         $this->assertDestinationIsValid($channel, $destination);
 
-        // Vérifié avant le rendu : inutile de préparer un message qu'on ne
-        // s'autorise pas à payer.
+        // Vérifiés avant le rendu : inutile de préparer un message qu'on ne
+        // s'autorise pas à envoyer.
+        //
+        // Deux bornes distinctes, et non redondantes : le quota du plan est une
+        // limite **commerciale**, le plafond de dépense un garde-fou contre
+        // l'emballement. Un plan illimité n'échappe donc pas au second.
+        $this->quota->assertWithinQuota($channel, $request->organizationId);
         $this->budget->assertWithinBudget($channel, $request->organizationId);
 
         // Le rendu précède la mise en file : le contenu est figé à

@@ -14,7 +14,7 @@
 | Modules non démarrés | Verify, Storage, AI, Search, Analytics |
 | Endpoints | 85 sous `/api/v1` + `/.well-known/jwks.json` |
 | Migrations | 26 |
-| Tests | 420, sur PostgreSQL |
+| Tests | 429, sur PostgreSQL |
 | Contrats | `Modules/*/openapi.yaml`, vérifiés par test |
 | Collection de test | `postman/` |
 
@@ -34,11 +34,13 @@ Dans `app/Platform/`, commun à tous les futurs modules :
 | `ApiExceptionRenderer` | Traduit **toute** exception en réponse normalisée |
 | `ModuleServiceProvider` | Socle de module : routes versionnées, sous-domaine, migrations, traductions |
 | `DomainEvent` | Événement générique — le type est une chaîne, pas une classe : aucune dépendance de compilation entre modules |
-| `IdentityContract` | Première interface de la couche de contrats : lecture synchrone d'Identity par les autres modules |
+| `IdentityContract` | Lecture synchrone d'Identity par les autres modules |
+| `BillingContract` | Limites du plan courant d'une organisation |
+| `QuotaGuard` | Refus d'une écriture dépassant le quota — le comptage reste au module appelant |
 
 Conséquence : un module ne formate jamais une erreur lui-même, et n'a rien à câbler pour exposer ses routes.
 
-`IdentityContract` est le seul moyen dont dispose un module pour interroger Identity — jamais son modèle Eloquent, jamais sa table. Le jour où Identity est extrait, seule l'implémentation change : l'appel local devient un appel HTTP, et les appelants ne sont pas modifiés.
+Ces contrats sont le seul moyen dont dispose un module pour en interroger un autre — jamais son modèle Eloquent, jamais sa table. Le jour où l'un est extrait, seule l'implémentation change : l'appel local devient un appel HTTP, et les appelants ne sont pas modifiés.
 
 ## 2.2 Module Identity
 
@@ -117,6 +119,10 @@ Le consommateur ne touche jamais les lignes `source = 'manual'` : une activation
 **Branché sur Notify** — huit événements produisent de vrais messages : activation, renouvellement, rappels d'échéance, entrée en grâce, suspension, facture émise, facture réglée, paiement échoué. Tous transactionnels ; trois portent aussi un SMS, aux seuls moments où une action du client est attendue.
 
 Billing ne connaissant ni utilisateurs ni adresses, il obtient le destinataire d'Identity par son **contrat public** — premier usage de la couche `app/Platform/Contracts/`, et le cas exact pour lequel elle était prévue.
+
+**Quotas appliqués** — sièges et workspaces côté Identity, volume de SMS côté Notify. Billing publie la limite, chaque module compte sa ressource. Une limite a **trois** états — plafonnée, illimitée, non couverte — et une organisation sans abonnement n'est pas bloquée : un quota borne un usage autorisé, il ne décide pas de l'autorisation.
+
+Le plafond de dépense de Notify n'est pas supprimé pour autant. Il était un substitut aux quotas par plan ; il redevient ce qu'il aurait dû être d'emblée, un garde-fou absolu contre une boucle ou une clé fuitée — sans lui, une organisation au plan illimité n'aurait plus aucune borne.
 
 **Jamais éprouvé** — les callbacks. Ni Notch Pay ni Tranzak n'en ont envoyé un vrai : cela suppose une URL publique. Le sondage couvre la même fonction, plus lentement.
 
@@ -244,7 +250,6 @@ GET  /audit-logs                 →  trace des quatre étapes
 
 Par ordre décroissant de valeur :
 
-* **Les quotas.** Billing publie `limits` dans ses événements et personne ne s'en sert. Le plafond de dépense de Notify reste global — la dette que Billing était censé résorber.
 * **Les callbacks, réellement reçus.** Dernière branche du chemin de paiement jamais éprouvée contre du réel ; suppose une URL publique.
 * **Les comptes marchands de production**, Notch Pay et Tranzak. Administratif et long, à engager en parallèle.
 * **La documentation Tara**, à réclamer directement — elle n'est pas publique.

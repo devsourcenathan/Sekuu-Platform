@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Modules\Billing;
 
+use App\Platform\Contracts\BillingContract;
 use App\Platform\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Billing\Infrastructure\Console\AdvanceLifecycleCommand;
 use Modules\Billing\Infrastructure\Console\ReconcilePaymentsCommand;
+use Modules\Billing\Infrastructure\Contracts\BillingGateway;
 use Modules\Billing\Infrastructure\Providers\ProviderRegistry;
 use Modules\Billing\Infrastructure\Webhooks\WebhookRegistry;
 
@@ -52,6 +54,14 @@ final class BillingServiceProvider extends ModuleServiceProvider
     public function boot(): void
     {
         parent::boot();
+
+        // Billing expose ses limites aux autres modules, et **rien d'autre** :
+        // il publie les quotas, il ne les fait pas respecter. Chaque module
+        // compte le sien, parce que lui seul sait le compter.
+        //
+        // Lié par requête et non en singleton : la mémoïsation interne ne doit
+        // pas survivre à un changement de plan.
+        $this->app->bind(BillingContract::class, BillingGateway::class);
 
         if ($this->app->runningInConsole()) {
             $this->commands([ReconcilePaymentsCommand::class, AdvanceLifecycleCommand::class]);
