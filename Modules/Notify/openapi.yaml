@@ -262,6 +262,54 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/OrganizationRequired' }
 
+  /notifications/usage:
+    get:
+      tags: [Notifications]
+      summary: Consommation du mois en cours
+      description: |
+        Volume par canal et par statut, et **dépense constatée** sur les canaux
+        facturés.
+
+        Le plafond protège contre l'emballement — une boucle dans un produit ou
+        une clé d'API fuitée se traduirait sinon par une facture que rien
+        n'arrête avant le relevé. Ce n'est pas une facturation : celle-ci
+        appartient à Billing.
+
+        La mesure est **rétrospective** : le coût n'est connu qu'une fois le
+        message accepté par le fournisseur, si bien qu'un plafond peut être
+        dépassé d'un message.
+
+        `limit` et `remaining` valent `null` lorsque aucun plafond n'est
+        configuré — c'est une absence de contrôle, pas un budget infini mesuré.
+
+        `purged` restitue le volume des notifications déjà purgées, dont
+        l'agrégat survit à la suppression.
+      responses:
+        '200':
+          description: Consommation
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          period:
+                            type: object
+                            properties:
+                              from: { type: string, format: date-time }
+                              to: { type: string, format: date-time }
+                          channels:
+                            type: object
+                            additionalProperties: { $ref: '#/components/schemas/ChannelUsage' }
+                          purged:
+                            type: object
+                            additionalProperties: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/OrganizationRequired' }
+
   /notifications/bulk:
     post:
       tags: [Envoi]
@@ -815,6 +863,23 @@ components:
           type: object
           description: Canaux sans coordonnée fournie.
           additionalProperties: { type: string }
+
+    ChannelUsage:
+      type: object
+      properties:
+        sent: { type: integer }
+        by_status:
+          type: object
+          additionalProperties: { type: integer }
+        cost:
+          type: object
+          properties:
+            spent: { type: number }
+            limit:
+              type: [number, 'null']
+              description: '`null` = aucun plafond configuré.'
+            remaining: { type: [number, 'null'] }
+            currency: { type: string, example: XAF }
 
     InboxEntry:
       type: object

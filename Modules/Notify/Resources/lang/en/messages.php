@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 return [
+    'spend_limit_reached' => 'The monthly spending limit for the :channel channel has been reached.',
     'unsubscribe_token_invalid' => 'This unsubscribe link is invalid.',
     'idempotency_key_required' => 'The Idempotency-Key header is required for this endpoint.',
     'bulk_limit_exceeded' => 'A bulk request carries at most :limit messages.',

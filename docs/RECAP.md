@@ -12,9 +12,9 @@
 | Application | Monolithe modulaire Laravel 13, PHP 8.3, PostgreSQL 18 |
 | Modules livrés | **Identity** (complet) · **Notify** (email, SMS, interne) |
 | Modules non démarrés | Verify, Billing, Storage, AI, Search, Analytics |
-| Endpoints | 53 sous `/api/v1` + `/.well-known/jwks.json` |
+| Endpoints | 54 sous `/api/v1` + `/.well-known/jwks.json` |
 | Migrations | 21 |
-| Tests | 290, sur PostgreSQL |
+| Tests | 302, sur PostgreSQL |
 | Contrats | `Modules/*/openapi.yaml`, vérifiés par test |
 | Collection de test | `postman/` |
 
@@ -72,7 +72,9 @@ Un fournisseur non configuré n'est jamais essayé : en développement, Resend e
 
 **Canal interne** — `/inbox`, sans aucun fournisseur externe : le repli qui reste disponible quand tout le reste échoue.
 
-**Purge** — `php artisan notify:purge`, avec conservation d'un agrégat par jour, canal, catégorie et statut.
+**Purge** — `php artisan notify:purge`, planifiée quotidiennement par le module, avec conservation d'un agrégat par jour, canal, catégorie et statut.
+
+**Plafond de dépense** — contrôle mensuel par organisation sur les canaux facturés, et endpoint de consommation. C'est ce qui donne un usage au coût enregistré à chaque livraison.
 
 **Non implémenté** — canaux WhatsApp et push ; gestion des templates par API ; gestion des suppressions par API.
 
@@ -173,7 +175,7 @@ Suite automatisée (PostgreSQL requis, base `sekuu_testing`) :
 php artisan test
 ```
 
-Exploration manuelle : importer [`postman/Sekuu-Platform.postman_collection.json`](../postman/Sekuu-Platform.postman_collection.json) et l'environnement associé. 76 requêtes couvrant les 54 routes des deux modules ; les jetons sont capturés automatiquement d'une requête à l'autre.
+Exploration manuelle : importer [`postman/Sekuu-Platform.postman_collection.json`](../postman/Sekuu-Platform.postman_collection.json) et l'environnement associé. 77 requêtes couvrant les 55 routes des deux modules ; les jetons sont capturés automatiquement d'une requête à l'autre.
 
 ## 7.3 Parcours minimal
 
@@ -207,6 +209,5 @@ Puis **Billing** — son contrat d'événements avec Identity est déjà défini
 * Aucun endpoint de listing des rôles globaux — la collection Postman doit lire l'identifiant en base.
 * `GET /users` et `PATCH /users/{id}` sont spécifiés mais pas implémentés.
 * Pas de MFA ni de passkeys — prévus au modèle, non développés.
-* `notify:purge` n'est pas planifié : aucune tâche cron ne l'exécute.
-* `cost_amount` est renseigné par les fournisseurs SMS et jamais lu — ni plafond par organisation, ni refacturation.
+* Le plafond de dépense est global : le même pour toutes les organisations. Des quotas par plan viendront avec Billing.
 * Internationalisation limitée à `en` et `fr`. Ajouter une langue suppose de traduire les 93 clés et les 10 templates de Notify ; un test échoue tant qu'une clé manque.

@@ -8,6 +8,7 @@ use Modules\Notify\Presentation\Http\Controllers\InboxController;
 use Modules\Notify\Presentation\Http\Controllers\NotificationController;
 use Modules\Notify\Presentation\Http\Controllers\PreferenceController;
 use Modules\Notify\Presentation\Http\Controllers\SendController;
+use Modules\Notify\Presentation\Http\Controllers\UsageController;
 use Modules\Notify\Presentation\Http\Controllers\WebhookController;
 
 /*
@@ -53,6 +54,10 @@ Route::middleware('throttle:20,1')->group(function (): void {
 });
 
 Route::middleware('auth:api')->group(function (): void {
+    // Rend lisible le coût enregistré à chaque livraison : sans cette vue, il
+    // ne serait constatable que sur la facture du fournisseur.
+    Route::get('notifications/usage', UsageController::class)->name('notifications.usage');
+
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::get('notifications/{notification}', [NotificationController::class, 'show'])
         ->name('notifications.show');

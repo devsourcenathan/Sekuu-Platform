@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 return [
+    'spend_limit_reached' => 'Le plafond de dépense mensuel du canal :channel est atteint.',
     'unsubscribe_token_invalid' => 'Ce lien de désabonnement est invalide.',
     'idempotency_key_required' => "L'en-tête Idempotency-Key est obligatoire sur ce point d'entrée.",
     'bulk_limit_exceeded' => 'Un envoi groupé porte au maximum :limit messages.',

@@ -135,6 +135,33 @@ return [
         'notifications_days' => 365,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Plafonds de dépense
+    |--------------------------------------------------------------------------
+    |
+    | Le coût unitaire du SMS rend ce garde-fou nécessaire : sans lui, une
+    | boucle dans un produit ou une clé d'API fuitée se traduit par une
+    | facture que rien n'arrête avant le relevé.
+    |
+    | Ce n'est pas une facturation — celle-ci appartient à Billing. Le plafond
+    | est le même pour toutes les organisations ; des quotas par plan viendront
+    | avec Billing. `null` désactive le contrôle.
+    |
+    */
+
+    'limits' => [
+        'currency' => env('NOTIFY_LIMIT_CURRENCY', 'XAF'),
+
+        'sms' => [
+            'monthly_cost' => env('NOTIFY_SMS_MONTHLY_COST'),
+        ],
+
+        'whatsapp' => [
+            'monthly_cost' => env('NOTIFY_WHATSAPP_MONTHLY_COST'),
+        ],
+    ],
+
     'queue' => env('NOTIFY_QUEUE', 'notifications'),
 
 ];

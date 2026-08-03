@@ -2582,6 +2582,43 @@
               ]
             }
           }
+        },
+        {
+          "name": "Consommation du mois",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/usage",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "usage"
+              ]
+            },
+            "description": "Volume par canal et depense constatee sur les canaux factures.\n\nLe plafond protege contre l'emballement : une boucle dans un produit ou une cle d'API fuitee se traduirait sinon par une facture que rien n'arrete avant le releve.\n\n`limit` et `remaining` valent `null` lorsque aucun plafond n'est configure : c'est une absence de controle, pas un budget infini mesure."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Consommation lisible', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('Une entree par canal', function () {",
+                  "  pm.expect(d.channels).to.have.property('email');",
+                  "  pm.expect(d.channels).to.have.property('sms');",
+                  "});",
+                  "pm.test('Le cout est rapporte', () => pm.expect(d.channels.sms.cost).to.have.property('spent'));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },

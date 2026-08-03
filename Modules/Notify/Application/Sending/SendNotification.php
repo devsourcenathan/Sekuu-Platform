@@ -35,6 +35,7 @@ final class SendNotification
         private readonly TemplateResolver $resolver,
         private readonly TemplateRenderer $renderer,
         private readonly RecipientFilter $filter,
+        private readonly SpendGuard $budget,
     ) {}
 
     public function handle(SendRequest $request): SendOutcome
@@ -91,6 +92,10 @@ final class SendNotification
         }
 
         $this->assertDestinationIsValid($channel, $destination);
+
+        // Vérifié avant le rendu : inutile de préparer un message qu'on ne
+        // s'autorise pas à payer.
+        $this->budget->assertWithinBudget($channel, $request->organizationId);
 
         // Le rendu précède la mise en file : le contenu est figé à
         // l'acceptation, pas à l'envoi.

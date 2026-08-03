@@ -6,6 +6,7 @@ namespace Modules\Notify;
 
 use App\Platform\Events\DomainEvent;
 use App\Platform\Support\ModuleServiceProvider;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
 use Modules\Notify\Application\Events\DomainEventSubscriber;
 use Modules\Notify\Infrastructure\Console\PurgeNotificationsCommand;
@@ -63,5 +64,18 @@ final class NotifyServiceProvider extends ModuleServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([PurgeNotificationsCommand::class]);
         }
+
+        // Le module planifie lui-même ses tâches : une commande de purge que
+        // rien n'exécute laisse la table croître indéfiniment, et personne ne
+        // s'en aperçoit avant que le volume ne devienne un problème.
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+            $schedule->command(PurgeNotificationsCommand::class)
+                ->dailyAt('03:15')
+                // Une purge concurrente sur deux serveurs dédoublerait les
+                // agrégats.
+                ->withoutOverlapping()
+                ->onOneServer()
+                ->runInBackground();
+        });
     }
 }
