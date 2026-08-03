@@ -193,25 +193,61 @@ Le frontend est responsable de l'affichage dans le fuseau horaire de l'utilisate
 
 # 10. Langue
 
-Toutes les API doivent supporter le header :
-
-```http
-Accept-Language
-```
-
-Exemple :
+Toutes les API supportent `Accept-Language`.
 
 ```http
 Accept-Language: fr
-
-Accept-Language: en
-
-Accept-Language: es
+Accept-Language: fr-CA
+Accept-Language: de;q=1.0, fr;q=0.8
 ```
 
-Les messages peuvent être traduits.
+## 10.1 Langues supportées
 
-Les codes d'erreur restent identiques.
+`en` (défaut) et `fr`. La liste fait foi dans `config/sekuu.php`.
+
+Une langue non supportée n'est jamais servie partiellement : la réponse repart dans la langue par défaut. Exposer une clé de traduction brute serait pire que répondre en anglais.
+
+La région est ignorée : `fr-CA` est traité comme `fr`. Les qualités (`q=`) sont respectées, par ordre décroissant.
+
+## 10.2 Ordre de résolution
+
+| Priorité | Source |
+| --- | --- |
+| 1 | La **préférence enregistrée** de l'utilisateur (`users.language`, porté par le claim `lang`) |
+| 2 | L'en-tête `Accept-Language` |
+| 3 | La langue par défaut de la plateforme |
+
+Le profil prime sur l'en-tête, et c'est délibéré : un navigateur envoie sa propre langue sans que l'utilisateur l'ait demandé, alors que le choix enregistré dans le profil est explicite. Un utilisateur ayant choisi le français ne doit pas recevoir de l'anglais parce qu'il consulte depuis un poste configuré autrement.
+
+Sur les routes non authentifiées — connexion, mot de passe oublié — seul l'en-tête s'applique, faute de profil connu.
+
+## 10.3 Réponse
+
+Toute réponse déclare la langue utilisée :
+
+```http
+Content-Language: fr
+Vary: Accept-Language
+```
+
+`Vary` est indispensable : sans lui, un cache intermédiaire servirait la version française à un client anglophone.
+
+## 10.4 Ce qui n'est jamais traduit
+
+Les codes d'erreur, les slugs, les clés de template et les valeurs d'énumération sont des **références stables**. Ils ne changent ni avec la langue, ni avec la région.
+
+C'est la contrepartie de la traduction des messages : le client s'appuie sur `error.code`, jamais sur `error.message`.
+
+## 10.5 Implémentation
+
+Les messages sont des **clés**, jamais des phrases : `__('identity::messages.credentials_invalid')`, et non `__('The credentials are incorrect.')`. Passer la phrase anglaise comme clé fonctionne par accident tant que rien ne la traduit, puis échoue silencieusement le jour où l'on ajoute une langue.
+
+| Portée | Emplacement | Préfixe |
+| --- | --- | --- |
+| Plateforme | `lang/{locale}/platform.php` | `platform.` |
+| Module | `Modules/{Module}/Resources/lang/{locale}/messages.php` | `{module}::messages.` |
+
+Trois tests verrouillent l'ensemble : le code d'erreur ne varie pas avec la langue, toute clé absente d'une langue fait échouer la suite, et un `__()` recevant une phrase est signalé.
 
 ---
 

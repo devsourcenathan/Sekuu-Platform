@@ -23,6 +23,20 @@ info:
     * L'adresse complète des destinataires — elle est masquée.
     * Les identifiants de fournisseurs.
 
+
+    ## Langue
+
+    Toutes les routes acceptent `Accept-Language`. Langues supportees : `en`
+    (defaut) et `fr`.
+
+    Ordre de resolution : preference enregistree de l'utilisateur, puis
+    `Accept-Language`, puis defaut de la plateforme. Toute reponse porte
+    `Content-Language` et `Vary: Accept-Language`.
+
+    Seuls les **messages** sont traduits. Les codes d'erreur, slugs et valeurs
+    d'enumeration sont des references stables, identiques dans toutes les
+    langues.
+
   contact:
     name: Sekuu Platform
   license:
@@ -234,6 +248,8 @@ paths:
         comprises. Le champ `editable` permet à l'interface de griser ce qui
         n'est pas modifiable, plutôt que de laisser l'utilisateur découvrir le
         refus après coup.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
       responses:
         '200':
           description: Préférences
@@ -299,6 +315,27 @@ components:
       description: |
         Access token émis par Identity, vérifié par signature. Notify ne délivre
         aucun jeton.
+
+  parameters:
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      description: |
+        Langue souhaitée pour les messages. Langues supportées : `en` (défaut)
+        et `fr`.
+
+        La région est ignorée — `fr-CA` vaut `fr` — les qualités (`q=`) sont
+        respectées, et une langue non supportée retombe sur le défaut.
+
+        La préférence enregistrée de l'utilisateur **prime** sur cet en-tête.
+
+        Ne concerne que les messages de l'API. La langue d'un **message envoyé**
+        est celle du destinataire, résolue à part : langue demandée, puis locale
+        de l'organisation, puis défaut.
+
+        S'applique à toutes les routes, même lorsqu'il n'est pas répété.
+      schema: { type: string, example: fr }
 
   responses:
     Unauthenticated:

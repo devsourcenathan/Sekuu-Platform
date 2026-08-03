@@ -30,6 +30,20 @@ info:
     Une ressource appartenant à une autre organisation renvoie systématiquement
     `404`, jamais `403` : un `403` confirmerait son existence.
 
+
+    ## Langue
+
+    Toutes les routes acceptent `Accept-Language`. Langues supportees : `en`
+    (defaut) et `fr`.
+
+    Ordre de resolution : preference enregistree de l'utilisateur, puis
+    `Accept-Language`, puis defaut de la plateforme. Toute reponse porte
+    `Content-Language` et `Vary: Accept-Language`.
+
+    Seuls les **messages** sont traduits. Les codes d'erreur, slugs et valeurs
+    d'enumeration sont des references stables, identiques dans toutes les
+    langues.
+
   contact:
     name: Sekuu Platform
   license:
@@ -141,6 +155,8 @@ paths:
         incorrect » : les deux renvoient `INVALID_CREDENTIALS` avec le même
         message et un temps de réponse constant.
       security: []
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
         required: true
         content:
@@ -1062,6 +1078,25 @@ components:
         racine du domaine (hors préfixe `/api/v1`).
 
   parameters:
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      description: |
+        Langue souhaitée pour les messages. Langues supportées : `en` (défaut)
+        et `fr`.
+
+        La région est ignorée — `fr-CA` vaut `fr` — les qualités (`q=`) sont
+        respectées, et une langue non supportée retombe sur le défaut plutôt
+        que d'exposer une clé de traduction brute.
+
+        La préférence enregistrée de l'utilisateur **prime** sur cet en-tête :
+        un navigateur envoie sa propre langue sans que l'utilisateur l'ait
+        demandé, alors que le profil est un choix explicite.
+
+        S'applique à toutes les routes, même lorsqu'il n'est pas répété.
+      schema: { type: string, example: fr }
+
     UserId:
       name: userId
       in: path

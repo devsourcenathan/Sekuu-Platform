@@ -201,4 +201,4 @@ Puis **Billing** — son contrat d'événements avec Identity est déjà défini
 * Aucun endpoint de listing des rôles globaux — la collection Postman doit lire l'identifiant en base.
 * `GET /users` et `PATCH /users/{id}` sont spécifiés mais pas implémentés.
 * Pas de MFA, de passkeys, ni d'API keys — prévus au modèle, non développés.
-* Pas de traductions : les messages sont en anglais dans le code, `Accept-Language` n'est pas encore exploité.
+* Internationalisation limitée à `en` et `fr`. Ajouter une langue suppose de traduire les 93 clés et les 10 templates de Notify ; un test échoue tant qu'une clé manque.
