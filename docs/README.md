@@ -56,7 +56,7 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | **Identity** | **Implémenté** | [vision](03-services/identity/01-overview.md) · [modèle de données](03-services/identity/02-data-model.md) · [API](03-services/identity/03-api.md) · [contrat OpenAPI](../Modules/Identity/openapi.yaml) |
 | **Notify** | **Implémenté** — canaux email, SMS et interne ; WhatsApp et push non développés | [vision](03-services/notify/01-overview.md) · [modèle de données](03-services/notify/02-data-model.md) · [API](03-services/notify/03-api.md) · [événements](03-services/notify/04-events.md) · [contrat OpenAPI](../Modules/Notify/openapi.yaml) |
 | Verify | À spécifier | — |
-| **Billing** | **Spécifié** — non implémenté | [vision](03-services/billing/01-overview.md) · [modèle de données](03-services/billing/02-data-model.md) · [API](03-services/billing/03-api.md) · [événements](03-services/billing/04-events.md) · [agrégateurs](03-services/billing/05-providers.md) |
+| **Billing** | **Implémenté** — Tranzak ; NotchPay et Tara à venir | [vision](03-services/billing/01-overview.md) · [modèle de données](03-services/billing/02-data-model.md) · [API](03-services/billing/03-api.md) · [événements](03-services/billing/04-events.md) · [agrégateurs](03-services/billing/05-providers.md) |
 | Storage | À spécifier | — |
 | AI | Esquissé dans [architecture.md](01-overview/architecture.md) | — |
 | Search | À spécifier | — |

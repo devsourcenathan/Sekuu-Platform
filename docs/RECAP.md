@@ -10,12 +10,11 @@
 | | |
 | --- | --- |
 | Application | Monolithe modulaire Laravel 13, PHP 8.3, PostgreSQL 18 |
-| Modules livrés | **Identity** (complet) · **Notify** (email, SMS, interne) |
-| Module spécifié, non implémenté | **Billing** |
+| Modules livrés | **Identity** (complet) · **Notify** (email, SMS, interne) · **Billing** (Tranzak) |
 | Modules non démarrés | Verify, Storage, AI, Search, Analytics |
-| Endpoints | 68 sous `/api/v1` + `/.well-known/jwks.json` |
-| Migrations | 21 |
-| Tests | 326, sur PostgreSQL |
+| Endpoints | 84 sous `/api/v1` + `/.well-known/jwks.json` |
+| Migrations | 26 |
+| Tests | 368, sur PostgreSQL |
 | Contrats | `Modules/*/openapi.yaml`, vérifiés par test |
 | Collection de test | `postman/` |
 
@@ -88,6 +87,26 @@ La catégorie d'une variante est **héritée** du template de plateforme, et `tr
 C'est aussi le seul recours contre un faux positif de fournisseur, qui bloquait jusqu'ici définitivement une adresse valide — y compris son lien de réinitialisation — sans autre issue qu'une requête SQL.
 
 **Non implémenté** — canaux WhatsApp et push.
+
+## 2.4 Module Billing
+
+**Implémenté** — catalogue de plans, abonnements prépayés, factures numérotées avec TVA figée, paiements Mobile Money via **Tranzak**, registre append-only, callbacks et réconciliation par sondage.
+
+**Ce qui alimente enfin `organization_products`.** Cette table existait, était lue à chaque requête, et se modifiait à la main. Identity consomme désormais les événements de Billing et applique un **état cible** — jamais un delta, puisqu'un même événement peut être livré deux fois.
+
+Le consommateur ne touche jamais les lignes `source = 'manual'` : une activation commerciale accordée par un humain ne se révoque pas au motif qu'aucun abonnement ne la justifie.
+
+**Le modèle est prépayé** ([ADR-0007](04-decisions/adr-0007-mobile-money-prepaid-subscriptions.md)) : il n'existe aucun moyen technique de prélever un client en Mobile Money. Le renouvellement est un acte volontaire, précédé de rappels à J-7, J-3 et J-1, suivi d'une grâce de 7 jours puis d'une suspension — jamais d'une suppression.
+
+**La bascule entre agrégateurs est volontairement étroite** ([ADR-0008](04-decisions/adr-0008-payment-aggregators-failover.md)) : on ne réessaie ailleurs que si l'invite n'est jamais partie sur le téléphone du client. Une temporisation compte comme « invite partie ». Ne pas encaisser est un incident réparable ; encaisser deux fois est une faute que le client découvre sur son relevé.
+
+**Le sondage n'est pas optionnel.** `billing:reconcile` interroge les agrégateurs toutes les 5 minutes. Un callback perdu retarde une confirmation, il ne la fait pas disparaître — sans quoi un client peut être débité sans obtenir son accès.
+
+**Le montant d'un callback n'est jamais cru** : le statut est relu chez l'agrégateur. Tranzak authentifie par un `authKey` transporté dans le corps, ce qui prouve que l'émetteur connaît le secret mais rien sur l'intégrité du corps.
+
+**Ce qui a changé ailleurs** — la table `products` d'Identity n'était seedée nulle part ; elle l'est désormais (6 produits). Sans elle, aucun plan n'avait rien à ouvrir.
+
+**Non implémenté** — NotchPay, Tara (aucune documentation publique), PDF de facture (appartient à Storage, renvoie `503`), facturation à l'usage.
 
 ---
 
@@ -213,17 +232,13 @@ GET  /audit-logs                 →  trace des quatre étapes
 
 Notify est fonctionnellement complet, hors WhatsApp et push.
 
-**Billing est spécifié** ([vision](03-services/billing/01-overview.md) · [modèle de données](03-services/billing/02-data-model.md) · [API](03-services/billing/03-api.md) · [événements](03-services/billing/04-events.md) · [ADR-0007](04-decisions/adr-0007-mobile-money-prepaid-subscriptions.md) · [ADR-0008](04-decisions/adr-0008-payment-aggregators-failover.md)), pas encore implémenté. C'est lui qui alimentera `organization_products`, aujourd'hui lue à chaque requête et modifiée à la main.
+Billing est implémenté avec **Tranzak**, le seul agrégateur documentant un bac à sable — c'est pourquoi il a été écrit en premier, quel que soit son rang de priorité à l'exécution.
 
-Les paiements passeront par des agrégateurs — NotchPay, Tranzak, Tara — avec une bascule **volontairement étroite** : on ne réessaie ailleurs que si l'invite n'est jamais partie sur le téléphone du client. Tout le reste double-débiterait.
+**Rien n'a encore été prouvé contre un vrai compte marchand.** Le module est complet et testé, mais aucun paiement réel n'a transité : c'est exactement la situation du canal SMS de Notify, écrit intégralement et jamais exécuté contre une vraie passerelle. L'obtention des comptes marchands est administrative et longue, et reste le prochain jalon.
 
-La documentation publique des agrégateurs a été dépouillée dans [05-providers.md](03-services/billing/05-providers.md). Trois constats en sortent :
+Restent à écrire : **NotchPay** (documentation publique complète, signature HMAC déjà maîtrisée) et **Tara**, dont la documentation technique n'est pas publique et doit être demandée directement.
 
-* **Aucun agrégateur n'expose l'information dont dépend la bascule.** « L'invite est-elle partie ? » doit être déduite de l'issue de l'appel de débit.
-* **Tara n'a pas de documentation technique publique.** Son adaptateur est repoussé ; deux agrégateurs suffisent à supprimer le point de défaillance unique.
-* **Tranzak est le seul à documenter un bac à sable**, donc le premier à écrire — quel que soit son rang de priorité à l'exécution.
-
-L'obtention des comptes marchands est **administrative et longue**, à engager en parallèle avant l'implémentation. Sinon le module sera écrit sans qu'aucun paiement ait pu être prouvé — exactement la situation du canal SMS, dont la passerelle n'a jamais été configurée.
+Deux agrégateurs suffisent à supprimer le point de défaillance unique ; avec un seul, la bascule n'existe que sur le papier — c'est le cas aujourd'hui.
 
 Puis Verify.
 

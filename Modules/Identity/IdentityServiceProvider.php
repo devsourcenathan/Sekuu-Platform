@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Modules\Identity;
 
+use App\Platform\Events\DomainEvent;
 use App\Platform\Support\ModuleServiceProvider;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Event;
 use Modules\Identity\Application\Audit\AuditLogger;
 use Modules\Identity\Application\Auth\SessionTokenService;
+use Modules\Identity\Application\Products\ApplySubscriptionAccess;
 use Modules\Identity\Domain\AuthenticatedContext;
 use Modules\Identity\Infrastructure\Auth\JwtUserResolver;
 use Modules\Identity\Infrastructure\Console\GenerateJwtKeysCommand;
@@ -105,5 +108,11 @@ final class IdentityServiceProvider extends ModuleServiceProvider
             'sekuu-jwt',
             fn ($request) => $this->app->make(JwtUserResolver::class)->user($request),
         );
+
+        // Identity consomme les décisions de Billing : `organization_products`
+        // est un cache de droits dérivé, et c'est Billing qui fait foi.
+        // L'écoute passe par l'événement générique de la plateforme : aucune
+        // dépendance de compilation vers le module émetteur.
+        Event::listen(DomainEvent::class, [ApplySubscriptionAccess::class, 'handle']);
     }
 }

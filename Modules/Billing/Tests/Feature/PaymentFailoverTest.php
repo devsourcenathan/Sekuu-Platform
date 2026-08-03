@@ -1,0 +1,175 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Modules\Billing\Tests\Feature;
+
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Billing\Application\Payments\InitiatePayment;
+use Modules\Billing\Application\Payments\SettlePayment;
+use Modules\Billing\Domain\AttemptStatus;
+use Modules\Billing\Domain\Models\PaymentIntent;
+use Modules\Billing\Infrastructure\Providers\ChargeOutcome;
+use Modules\Billing\Tests\Concerns\BillsAnOrganization;
+use Modules\Billing\Tests\Support\FakeProvider;
+use Tests\TestCase;
+
+/**
+ * La règle la plus importante du module.
+ *
+ * Chaque test ici protège contre un **double débit** — une faute que le client
+ * découvre sur son relevé, et qu'un remboursement Mobile Money rend pénible à
+ * corriger.
+ *
+ * @see docs/04-decisions/adr-0008-payment-aggregators-failover.md
+ */
+final class PaymentFailoverTest extends TestCase
+{
+    use BillsAnOrganization;
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->useFakeProviders();
+        $this->signInAsOwner();
+    }
+
+    /**
+     * Le seul cas qui autorise une bascule : l'agrégateur a refusé la demande,
+     * donc le client n'a jamais rien reçu.
+     */
+    public function test_a_rejected_request_falls_over_to_the_next_aggregator(): void
+    {
+        FakeProvider::willReturn('primary', ChargeOutcome::rejected('PROVIDER_AUTH_FAILED', 'Clé refusée'));
+        FakeProvider::willReturn('secondary', ChargeOutcome::prompted('ref-secondary-1'));
+
+        $intent = $this->pay();
+
+        $this->assertSame(['primary', 'secondary'], FakeProvider::$charged);
+        $this->assertSame(PaymentIntent::PENDING, $intent->status);
+
+        $attempts = $intent->attempts()->orderBy('priority')->get();
+
+        $this->assertSame(AttemptStatus::Rejected, $attempts[0]->status);
+        $this->assertFalse($attempts[0]->customer_prompted);
+        $this->assertSame(AttemptStatus::Prompted, $attempts[1]->status);
+    }
+
+    /**
+     * Le cœur du sujet : une fois l'invite partie, on n'essaie plus personne.
+     * Le client peut la valider avec dix minutes de retard.
+     */
+    public function test_a_prompted_customer_stops_the_failover(): void
+    {
+        FakeProvider::willReturn('primary', ChargeOutcome::prompted('ref-primary-1'));
+
+        $this->pay();
+
+        $this->assertSame(['primary'], FakeProvider::$charged);
+    }
+
+    /**
+     * Un solde insuffisant chez MTN le reste quel que soit l'agrégateur qui
+     * pose la question. C'est la règle déjà posée pour Notify — un rejet métier
+     * ne réussira pas davantage ailleurs — avec ici un enjeu supérieur.
+     */
+    public function test_a_business_failure_does_not_fall_over(): void
+    {
+        FakeProvider::willReturn('primary', ChargeOutcome::failed('PAYMENT_FAILED', 'Solde insuffisant'));
+
+        $intent = $this->pay();
+
+        $this->assertSame(['primary'], FakeProvider::$charged);
+        $this->assertSame(PaymentIntent::FAILED, $intent->status);
+    }
+
+    /**
+     * Le cas le plus banal et le plus dangereux : l'appel expire, on ignore si
+     * la demande a atteint l'agrégateur. Réessayer ailleurs double-débiterait.
+     */
+    public function test_an_unknown_outcome_never_falls_over(): void
+    {
+        FakeProvider::willReturn('primary', ChargeOutcome::unknown('Temporisation réseau'));
+
+        $intent = $this->pay();
+
+        $this->assertSame(['primary'], FakeProvider::$charged);
+
+        // L'incertitude compte comme « invite partie ».
+        $this->assertTrue($intent->attempts()->first()->customer_prompted);
+        $this->assertSame(PaymentIntent::PROCESSING, $intent->status);
+    }
+
+    public function test_every_aggregator_rejecting_charges_nobody(): void
+    {
+        FakeProvider::willReturn('primary', ChargeOutcome::rejected('PROVIDER_AUTH_FAILED', 'Clé refusée'));
+        FakeProvider::willReturn('secondary', ChargeOutcome::rejected('PROVIDER_AUTH_FAILED', 'Panne'));
+
+        $invoice = $this->subscribe();
+
+        $this->withToken($this->ownerToken)
+            ->postJson('/api/v1/payments', [
+                'invoice_id' => $invoice->id,
+                'msisdn' => '+237650000000',
+            ])
+            ->assertStatus(503)
+            ->assertJsonPath('error.code', 'PROVIDER_UNAVAILABLE');
+
+        $this->assertSame(['primary', 'secondary'], FakeProvider::$charged);
+        $this->assertSame(PaymentIntent::FAILED, PaymentIntent::query()->firstOrFail()->status);
+    }
+
+    /**
+     * Le garde-fou contre le client impatient : trois clics ne produisent pas
+     * trois invites, donc pas trois débits.
+     */
+    public function test_a_second_payment_on_the_same_invoice_is_refused(): void
+    {
+        FakeProvider::willReturn('primary', ChargeOutcome::prompted('ref-1'));
+
+        $invoice = $this->subscribe();
+
+        $this->withToken($this->ownerToken)
+            ->postJson('/api/v1/payments', ['invoice_id' => $invoice->id, 'msisdn' => '+237650000000'])
+            ->assertStatus(202);
+
+        $this->flushHeaders();
+
+        $this->withToken($this->ownerToken)
+            ->postJson('/api/v1/payments', ['invoice_id' => $invoice->id, 'msisdn' => '+237650000000'])
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'PAYMENT_ALREADY_PENDING');
+
+        $this->assertSame(1, PaymentIntent::query()->count());
+    }
+
+    /**
+     * Une invite partie ne se rétracte pas : écraser ce drapeau par un `false`
+     * venu d'un statut mal traduit rouvrirait la porte au double débit.
+     */
+    public function test_the_prompted_flag_is_never_downgraded(): void
+    {
+        FakeProvider::willReturn('primary', ChargeOutcome::prompted('ref-1'));
+
+        $intent = $this->pay();
+        $attempt = $intent->attempts()->firstOrFail();
+
+        $this->app->make(SettlePayment::class)
+            ->applyToAttempt($attempt, ChargeOutcome::rejected('X', 'y'));
+
+        $this->assertTrue($attempt->fresh()->customer_prompted);
+        $this->assertFalse($attempt->fresh()->allowsFailover());
+    }
+
+    private function pay(): PaymentIntent
+    {
+        $invoice = $this->subscribe();
+
+        return $this->app->make(InitiatePayment::class)->handle(
+            invoice: $invoice,
+            rawMsisdn: '+237650000000',
+        )->fresh();
+    }
+}

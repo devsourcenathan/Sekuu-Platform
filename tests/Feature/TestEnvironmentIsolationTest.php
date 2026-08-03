@@ -30,6 +30,11 @@ final class TestEnvironmentIsolationTest extends TestCase
             'Postmark (webhook)' => ['notify.email.postmark.webhook_token', 'POSTMARK_WEBHOOK_TOKEN'],
             'Passerelle SMS' => ['notify.sms.local_gateway.token', 'SMS_GATEWAY_TOKEN'],
             'Passerelle SMS (webhook)' => ['notify.sms.local_gateway.webhook_secret', 'SMS_GATEWAY_WEBHOOK_SECRET'],
+            // Un identifiant de paiement réel ne produirait pas un message de
+            // trop : il produirait un débit sur le compte de quelqu'un.
+            'Tranzak (identifiant)' => ['billing.tranzak.app_id', 'TRANZAK_APP_ID'],
+            'Tranzak (clé)' => ['billing.tranzak.app_key', 'TRANZAK_APP_KEY'],
+            'Tranzak (callback)' => ['billing.tranzak.auth_key', 'TRANZAK_AUTH_KEY'],
             'Twilio' => ['notify.sms.twilio.token', 'TWILIO_TOKEN'],
         ];
     }

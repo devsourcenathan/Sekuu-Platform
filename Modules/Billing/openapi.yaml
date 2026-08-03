@@ -1,0 +1,886 @@
+openapi: 3.1.0
+
+info:
+  title: Sekuu Billing API
+  version: '1.0'
+  description: |
+    Plans, abonnements, factures et paiements Mobile Money.
+
+    Cette API ne répond **jamais** à « ai-je accès à ce produit ? ». Cette
+    question se pose à Identity, sur `organization_products`. Y répondre ici
+    créerait une seconde vérité, et placerait Billing sur le chemin critique de
+    chaque requête produit.
+
+    Deux décisions gouvernent tout le reste :
+
+    - [ADR-0007](../../docs/04-decisions/adr-0007-mobile-money-prepaid-subscriptions.md) —
+      les abonnements sont **prépayés**. Il n'existe aucun moyen technique de
+      prélever un client en Mobile Money : le renouvellement est un acte
+      volontaire, pas un effet de bord du temps qui passe.
+    - [ADR-0008](../../docs/04-decisions/adr-0008-payment-aggregators-failover.md) —
+      les paiements transitent par des agrégateurs, avec une bascule
+      **volontairement étroite** : on ne réessaie ailleurs que si l'invite n'est
+      jamais partie sur le téléphone du client.
+
+    Tous les montants sont des **entiers**, dans l'unité la plus petite de leur
+    devise. Le franc CFA n'a pas de centime : 45 000 XAF s'écrit `45000`.
+    `currency_exponent` le dit explicitement pour qu'aucun client n'ait à le
+    deviner.
+
+servers:
+  - url: https://billing.sekuu.com/api/v1
+    description: Production
+  - url: http://localhost:8000/api/v1
+    description: Local
+
+tags:
+  - name: Service
+  - name: Catalogue
+  - name: Abonnement
+  - name: Factures
+  - name: Paiements
+  - name: Webhooks
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  /billing/health:
+    get:
+      tags: [Service]
+      summary: Agrégateurs réellement configurés
+      description: |
+        Un agrégateur sans identifiants n'est jamais essayé. Le dire franchement
+        évite de croire qu'un paiement pourra partir alors que rien n'est
+        branché.
+
+        `can_collect` à `false` signifie qu'aucun paiement ne peut aboutir : sur
+        un modèle prépayé, ne plus encaisser ferme les accès un par un.
+      security: []
+      responses:
+        '200':
+          description: État du service
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          status: { type: string, enum: [ok, degraded] }
+                          providers: { type: array, items: { type: string } }
+                          can_collect: { type: boolean }
+                          currency: { type: string, example: XAF }
+
+  /plans:
+    get:
+      tags: [Catalogue]
+      summary: Plans publics
+      description: |
+        **Public, sans authentification** : une page de tarifs doit être lisible
+        avant d'avoir un compte.
+
+        Les plans non publics n'apparaissent jamais, y compris pour
+        l'organisation qui en bénéficie — leur existence est une information
+        commerciale.
+
+        Il n'y a pas de `POST /plans`. Les plans sont versionnés avec le code,
+        comme les templates de plateforme de Notify : changer un prix consiste à
+        archiver l'ancien tarif, une opération de migration.
+      security: []
+      responses:
+        '200':
+          description: Catalogue
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Plan' }
+
+  /plans/{planKey}:
+    get:
+      tags: [Catalogue]
+      summary: Détail d'un plan
+      security: []
+      parameters:
+        - name: planKey
+          in: path
+          required: true
+          schema: { type: string, example: clinic-pro }
+      responses:
+        '200':
+          description: Plan
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Plan' }
+        '404':
+          description: '`PLAN_NOT_FOUND`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /subscription:
+    get:
+      tags: [Abonnement]
+      summary: Abonnement courant
+      description: |
+        Le singulier est délibéré : une organisation n'a qu'un abonnement
+        vivant. `/subscriptions/{id}` n'existe pas, parce qu'il n'y a rien à
+        choisir.
+
+        Ouvert à **tout membre** : un utilisateur doit pouvoir comprendre
+        pourquoi une fonctionnalité lui est refusée sans avoir à demander à son
+        patron.
+      responses:
+        '200':
+          description: Abonnement
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Subscription' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/OrganizationRequired' }
+        '404':
+          description: '`SUBSCRIPTION_NOT_FOUND`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    post:
+      tags: [Abonnement]
+      summary: Souscrire
+      description: |
+        Requiert `Owner` ou `Admin` : engager une dépense n'est pas une action
+        de membre ordinaire.
+
+        **Souscrire ne donne pas l'accès.** En l'absence d'essai, la
+        souscription produit une facture et l'abonnement reste `pending` ; c'est
+        le paiement qui ouvre le produit. Ouvrir d'abord et facturer ensuite
+        reviendrait à accorder un crédit à un inconnu.
+
+        `pending` n'est pas `suspended` : un abonnement qui n'a jamais été payé
+        n'a jamais rien eu à perdre.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_key]
+              properties:
+                plan_key: { type: string, example: clinic-pro }
+                price_id:
+                  type: [string, 'null']
+                  format: uuid
+                  description: Sans choix explicite, le tarif mensuel — le plus petit engagement.
+      responses:
+        '201':
+          description: Abonnement créé
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          subscription: { $ref: '#/components/schemas/Subscription' }
+                          invoice:
+                            oneOf:
+                              - $ref: '#/components/schemas/InvoiceSummary'
+                              - type: 'null'
+                            description: '`null` sur un plan avec essai : il n''y a rien à payer.'
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+        '404':
+          description: '`PLAN_NOT_FOUND`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '409':
+          description: '`SUBSCRIPTION_ALREADY_ACTIVE`, `PLAN_ARCHIVED`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /subscription/history:
+    get:
+      tags: [Abonnement]
+      summary: Abonnements passés
+      responses:
+        '200':
+          description: Historique
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Subscription' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /subscription/change:
+    post:
+      tags: [Abonnement]
+      summary: Changer de plan
+      description: |
+        Requiert `Owner` ou `Admin`. Le sens commande le comportement, et la
+        réponse le dit explicitement plutôt que de laisser deviner.
+
+        **Montée en gamme** — immédiate. Le reliquat de la période payée devient
+        un crédit, imputé sur une facture de différence. Jamais un remboursement :
+        un remboursement Mobile Money est lent, coûteux et souvent manuel.
+
+        **Descente en gamme** — différée au terme. La période en cours est
+        payée ; l'écourter obligerait à rembourser.
+
+        Une descente est refusée si l'usage courant dépasse les limites du plan
+        visé. Refuser plutôt qu'accepter puis appliquer : appliquer signifierait
+        supprimer des workspaces du client, et aucun formulaire de facturation
+        ne devrait pouvoir détruire des données.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_key]
+              properties:
+                plan_key: { type: string }
+                price_id: { type: [string, 'null'], format: uuid }
+      responses:
+        '200':
+          description: Changement enregistré
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          direction: { type: string, enum: [upgrade, downgrade] }
+                          effective: { type: string, enum: [immediate, period_end] }
+                          credit_applied: { type: integer }
+                          invoice:
+                            oneOf:
+                              - $ref: '#/components/schemas/InvoiceSummary'
+                              - type: 'null'
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+        '409':
+          description: '`DOWNGRADE_NOT_ALLOWED` — `details` liste chaque limite dépassée'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              example:
+                success: false
+                error:
+                  code: DOWNGRADE_NOT_ALLOWED
+                  message: L'usage actuel dépasse les limites du plan visé.
+                  details:
+                    - { limit: workspaces, current: 3, allowed: 1 }
+                    - { limit: members, current: 12, allowed: 5 }
+
+  /subscription/renew:
+    post:
+      tags: [Abonnement]
+      summary: Renouveler la période
+      description: |
+        Requiert `Owner` ou `Admin`.
+
+        **L'acte volontaire qui remplace la reconduction tacite.** Il n'existe
+        aucun moyen technique de prélever un client en Mobile Money : la
+        plateforme prévient, le client paie.
+
+        Appelable pendant la période en cours — le temps s'ajoute, il ne se
+        perd pas — comme pendant la grâce.
+
+        Une facture de renouvellement déjà ouverte est renvoyée telle quelle :
+        en émettre une seconde produirait deux documents pour une seule période.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201':
+          description: Facture de renouvellement
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/InvoiceSummary' }
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+        '404':
+          description: '`SUBSCRIPTION_NOT_FOUND`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /subscription/cancel:
+    post:
+      tags: [Abonnement]
+      summary: Résilier au terme
+      description: |
+        Requiert `Owner` ou `Admin`.
+
+        Résilier **ne coupe pas l'accès** : la période est payée. Couper
+        immédiatement obligerait à rembourser.
+
+        Le motif est facultatif et libre : une liste fermée produit des
+        statistiques flatteuses et sans valeur.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: [string, 'null'] }
+      responses:
+        '200':
+          description: Résiliation enregistrée
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Subscription' }
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+
+  /subscription/resume:
+    post:
+      tags: [Abonnement]
+      summary: Annuler une résiliation
+      description: Requiert `Owner` ou `Admin`. Possible tant que le terme n'est pas atteint.
+      responses:
+        '200':
+          description: Résiliation annulée
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Subscription' }
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+
+  /invoices:
+    get:
+      tags: [Factures]
+      summary: Factures de l'organisation
+      description: |
+        Aucune création directe : une facture est la conséquence d'une
+        souscription, d'un changement de plan ou d'un renouvellement.
+
+        Aucune suppression non plus : une facture émise s'annule, elle ne se
+        supprime pas. La numérotation doit rester sans trou — un trou est une
+        question à laquelle il faudra répondre lors d'un contrôle.
+
+        Filtres : `filter[status]`, `filter[number]`.
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: per_page
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        '200':
+          description: Factures
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Invoice' }
+                  meta: { $ref: '#/components/schemas/CursorMeta' }
+        '400':
+          description: '`INVALID_FILTER`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /invoices/{invoiceId}:
+    get:
+      tags: [Factures]
+      summary: Détail et lignes
+      description: |
+        Le crédit apparaît comme une **ligne**, pas comme une soustraction
+        silencieuse : un client doit pouvoir vérifier son total à la main.
+      parameters:
+        - name: invoiceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Facture
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/Invoice'
+                          - type: object
+                            properties:
+                              lines:
+                                type: array
+                                items: { $ref: '#/components/schemas/InvoiceLine' }
+        '404':
+          description: '`INVOICE_NOT_FOUND`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /invoices/{invoiceId}/download:
+    get:
+      tags: [Factures]
+      summary: PDF de la facture
+      description: |
+        Renverra `302` vers une URL signée de Storage.
+
+        Tant que Storage n'existe pas, la route répond `503` franchement plutôt
+        qu'un PDF généré à la volée dont personne ne garantit qu'il sera
+        identique demain — pour un document légal, c'est un problème.
+      parameters:
+        - name: invoiceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '503':
+          description: '`SERVICE_UNAVAILABLE` — Storage n''est pas encore implémenté'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /payments:
+    get:
+      tags: [Paiements]
+      summary: Historique des paiements
+      responses:
+        '200':
+          description: Paiements
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/PaymentIntent' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [Paiements]
+      summary: Initier un paiement Mobile Money
+      description: |
+        Requiert `Owner` ou `Admin`.
+
+        **Le montant n'est pas dans le corps.** Il vient de la facture.
+        L'accepter de l'appelant permettrait de régler 49 663 XAF avec 100 XAF —
+        c'est une faille, pas une commodité.
+
+        **L'agrégateur non plus.** NotchPay, Tranzak et Tara sont un détail
+        d'exploitation ; les exposer figerait l'ordre de priorité dans les
+        interfaces clientes et empêcherait toute bascule.
+
+        L'opérateur, lui, est déduit du préfixe du numéro. C'est un fait, pas un
+        choix.
+
+        Réponse `202` et non `201` : ce qui est créé est une **intention**. Le
+        client doit ensuite sonder `GET /payments/{id}`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invoice_id, msisdn]
+              properties:
+                invoice_id: { type: string, format: uuid }
+                method: { type: string, enum: [mobile_money], default: mobile_money }
+                msisdn: { type: string, example: '+237650000000' }
+      responses:
+        '202':
+          description: Demande transmise à l'opérateur
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/PaymentIntent' }
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+        '404':
+          description: '`INVOICE_NOT_FOUND`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '409':
+          description: |
+            `INVOICE_ALREADY_PAID`, `INVOICE_VOIDED`, `PAYMENT_ALREADY_PENDING`.
+
+            Le dernier est un garde-fou concret : sans lui, un client impatient
+            qui clique trois fois reçoit trois invites, et peut payer trois fois.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '422':
+          description: '`INVALID_MSISDN`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '503':
+          description: |
+            `PROVIDER_UNAVAILABLE` — aucun agrégateur configuré ne couvre cet
+            opérateur, ou tous ont refusé la demande. Dans ce dernier cas
+            **aucun débit n'a été effectué**.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /payments/{paymentId}:
+    get:
+      tags: [Paiements]
+      summary: Statut d'une intention
+      description: |
+        Fait pour être **sondé**, toutes les 3 à 5 secondes. `Retry-After`
+        accompagne la réponse tant que le statut n'est pas définitif.
+
+        `expired` n'est **pas** `failed` : il signifie *on ne sait pas*. Un
+        paiement dont on ignore l'issue peut avoir été encaissé ; le traiter
+        comme un échec risquerait de facturer deux fois.
+
+        Le détail des tentatives n'est exposé qu'aux rôles de facturation :
+        l'ordre de priorité des agrégateurs est une information d'exploitation.
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Statut
+          headers:
+            Retry-After:
+              schema: { type: integer }
+              description: Présent tant que le statut n'est pas définitif.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/PaymentIntent' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /billing/webhooks/{provider}:
+    post:
+      tags: [Webhooks]
+      summary: Callback d'un agrégateur
+      description: |
+        Publique au sens réseau, authentifiée par signature ou secret partagé.
+
+        **Un callback n'est jamais cru sur parole.** Il déclenche une relecture
+        du statut chez l'agrégateur, il ne le dicte pas. Chez Tranzak,
+        l'authentification passe par un `authKey` transporté dans le corps :
+        cela prouve que l'émetteur connaît le secret, jamais que le corps est
+        intact — un callback intercepté peut être rejoué modifié.
+
+        Une signature invalide renvoie `401`, et le callback est **tout de même
+        enregistré** : le jeter en silence priverait de toute trace en cas de
+        tentative de fraude.
+
+        Un callback déjà vu renvoie `200` sans rien refaire. La déduplication
+        s'appuie sur l'unicité en base, pas sur une vérification applicative qui
+        perdrait la course sous concurrence.
+
+        Le callback accélère une confirmation ; il n'en est jamais la seule
+        source. `billing:reconcile` interroge les agrégateurs toutes les cinq
+        minutes.
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string, enum: [tranzak] }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: |
+            Reçu. Toujours `200`, y compris pour un doublon ou une référence
+            inconnue : répondre en erreur déclencherait des réessais inutiles, et
+            finirait par faire désactiver le endpoint.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          processed: { type: boolean }
+                          reason: { type: string, enum: [duplicate, unknown_reference] }
+        '401':
+          description: '`WEBHOOK_SIGNATURE_INVALID`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '404':
+          description: '`ENDPOINT_NOT_FOUND` — agrégateur inconnu'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, format: uuid }
+      description: |
+        Obligatoire sur toute opération qui engage de l'argent. Un rejeu réseau
+        produirait sinon un second paiement ou un second abonnement — ici, le
+        doublon coûte au client.
+
+  responses:
+    Unauthenticated:
+      description: '`UNAUTHENTICATED`, `INVALID_TOKEN`, `TOKEN_EXPIRED`, `TOKEN_REVOKED`'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    OrganizationRequired:
+      description: '`ORGANIZATION_REQUIRED` — le token ne porte aucune organisation active'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    InsufficientPermissions:
+      description: '`INSUFFICIENT_PERMISSIONS` — engager une dépense exige `Owner` ou `Admin`'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    NotFound:
+      description: '`RESOURCE_NOT_FOUND`'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  schemas:
+
+    SuccessEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        data: {}
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    ErrorEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: { type: array, items: { type: object, additionalProperties: true } }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    Meta:
+      type: object
+      properties:
+        request_id: { type: string }
+
+    CursorMeta:
+      type: object
+      properties:
+        per_page: { type: integer }
+        next_cursor: { type: [string, 'null'] }
+        has_more: { type: boolean }
+
+    Money:
+      type: object
+      description: |
+        Montant entier dans l'unité la plus petite de sa devise.
+
+        `currency_exponent` vaut **0** pour le XAF : 45 000 XAF s'écrit `45000`.
+        Un client qui appliquerait le réflexe « /100 » afficherait 450 XAF.
+      properties:
+        amount: { type: integer, example: 45000 }
+        currency: { type: string, example: XAF }
+        currency_exponent: { type: integer, example: 0 }
+        formatted: { type: string, example: '45 000 XAF' }
+
+    Plan:
+      type: object
+      properties:
+        key: { type: string, example: clinic-pro }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        trial_days: { type: integer }
+        products:
+          type: array
+          items: { type: string, format: uuid }
+        limits:
+          type: object
+          additionalProperties: true
+          description: |
+            `null` sur une limite signifie **illimité**. L'absence de la clé
+            signifie **non couvert par ce plan**. La distinction compte.
+        prices:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Money'
+              - type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  interval: { type: string, enum: [month, year] }
+                  interval_count: { type: integer }
+
+    Subscription:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [pending, trialing, active, grace, suspended, cancelled, expired]
+          description: |
+            `pending` — souscrit, en attente du premier paiement. Aucun accès,
+            mais rien n'a jamais été perdu non plus.
+
+            `grace` — période échue, accès **encore ouvert**. Sans grâce, un
+            oubli d'une journée deviendrait une interruption d'activité.
+        plan:
+          type: object
+          properties:
+            key: { type: string }
+            name: { type: string }
+            limits: { type: object, additionalProperties: true }
+        price:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+            - type: object
+              properties:
+                interval: { type: string, enum: [month, year] }
+        current_period_start: { type: string, format: date-time }
+        current_period_end: { type: string, format: date-time }
+        trial_ends_at: { type: [string, 'null'], format: date-time }
+        grace_ends_at: { type: [string, 'null'], format: date-time }
+        cancel_at_period_end: { type: boolean }
+        pending_plan:
+          type: [string, 'null']
+          description: Descente en gamme différée, appliquée au renouvellement.
+        access_open:
+          type: boolean
+          description: |
+            **Confort d'affichage, pas une autorisation.** Un client qui s'en
+            sert pour ouvrir ou fermer une fonctionnalité fait le mauvais choix :
+            la source de vérité est `organization_products`, côté Identity.
+        credit_balance:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: Somme du registre, jamais une colonne stockée.
+
+    InvoiceSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: string, example: SKU-2026-000241 }
+        status: { type: string, enum: [open, paid, void, uncollectible] }
+        total: { type: integer }
+        currency: { type: string }
+        due_at: { type: [string, 'null'], format: date-time }
+
+    Invoice:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: string, example: SKU-2026-000241 }
+        status: { type: string, enum: [open, paid, void, uncollectible] }
+        currency: { type: string }
+        currency_exponent: { type: integer }
+        subtotal: { type: integer, description: Hors taxes. }
+        tax_rate:
+          type: number
+          example: 0.1925
+          description: |
+            **Figé à l'émission.** Si le taux change, les factures passées
+            continuent d'afficher ce qui a été réellement facturé.
+        tax_amount: { type: integer }
+        credit_applied: { type: integer }
+        total: { type: integer }
+        amount_paid:
+          type: integer
+          description: |
+            Le montant **brut** payé par le client, pas le net reçu après
+            commission de l'agrégateur. Confondre les deux laisserait la facture
+            impayée à hauteur de la commission.
+        issued_at: { type: string, format: date-time }
+        due_at: { type: [string, 'null'], format: date-time }
+        paid_at: { type: [string, 'null'], format: date-time }
+
+    InvoiceLine:
+      type: object
+      properties:
+        description: { type: string }
+        quantity: { type: integer }
+        unit_amount:
+          type: integer
+          description: Peut être négatif — c'est ainsi qu'apparaît un crédit de proration.
+        amount: { type: integer }
+
+    PaymentIntent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [pending, processing, succeeded, failed, expired, cancelled]
+          description: |
+            `expired` signifie **on ne sait pas**, ce qui n'est pas « cela a
+            échoué ». Ces intentions partent au rapprochement manuel, jamais à
+            une nouvelle tentative automatique.
+        operator: { type: [string, 'null'], enum: [mtn, orange, null] }
+        invoice_id: { type: [string, 'null'], format: uuid }
+        amount: { type: integer }
+        currency: { type: string }
+        currency_exponent: { type: integer }
+        formatted: { type: string }
+        expires_at: { type: string, format: date-time }
+        failure_code: { type: [string, 'null'] }
+        instructions: { type: string }
+        attempts:
+          type: array
+          description: Réservé aux rôles de facturation.
+          items: { $ref: '#/components/schemas/PaymentAttempt' }
+
+    PaymentAttempt:
+      type: object
+      properties:
+        provider: { type: string, example: tranzak }
+        status:
+          type: string
+          enum: [created, rejected, prompted, processing, succeeded, failed, expired]
+          description: |
+            `rejected` est le **seul** état qui autorise à essayer l'agrégateur
+            suivant : l'agrégateur a refusé la demande, donc le client n'a
+            jamais rien reçu.
+        customer_prompted:
+          type: boolean
+          description: |
+            L'invite est-elle partie sur le téléphone ? Aucun agrégateur ne
+            l'expose ; elle est déduite de l'issue de l'appel de débit.
+
+            Une fois à `true`, plus aucune bascule — le client peut valider avec
+            dix minutes de retard, et réessayer ailleurs le débiterait deux fois.
+        failure_code: { type: [string, 'null'] }
+        started_at: { type: string, format: date-time }

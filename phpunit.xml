@@ -50,6 +50,12 @@
         <env name="SMS_GATEWAY_WEBHOOK_SECRET" value=""/>
         <env name="TWILIO_ACCOUNT_SID" value=""/>
         <env name="TWILIO_TOKEN" value=""/>
+        <!-- Un identifiant de paiement réel dans la suite ne produirait pas un
+             message de trop : il produirait un débit sur le compte de
+             quelqu'un. -->
+        <env name="TRANZAK_APP_ID" value=""/>
+        <env name="TRANZAK_APP_KEY" value=""/>
+        <env name="TRANZAK_AUTH_KEY" value=""/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
