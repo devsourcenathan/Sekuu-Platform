@@ -169,11 +169,20 @@ Un `INTERNAL_ERROR` ne doit jamais exposer de trace, de requête SQL ou de nom d
 
 | Code | HTTP | Description |
 | --- | --- | --- |
-| `TEMPLATE_NOT_FOUND` | 404 | Template de notification inexistant |
+| `TEMPLATE_NOT_FOUND` | 404 | Template inexistant, ou sans contenu dans une langue utilisable |
 | `TEMPLATE_VARIABLE_MISSING` | 422 | Variable obligatoire absente du payload |
-| `CHANNEL_NOT_AVAILABLE` | 422 | Canal indisponible pour ce destinataire |
+| `TEMPLATE_RENDER_FAILED` | 422 | Le rendu du template a échoué |
+| `TEMPLATE_READ_ONLY` | 403 | Template de plateforme : non modifiable via l'API |
+| `CHANNEL_NOT_AVAILABLE` | 422 | Le destinataire n'a pas de coordonnée pour ce canal |
+| `CHANNEL_NOT_CONFIGURED` | 503 | Aucun fournisseur actif pour ce canal |
 | `RECIPIENT_INVALID` | 422 | Adresse email ou numéro invalide |
-| `RECIPIENT_OPTED_OUT` | 403 | Le destinataire s'est désabonné de ce type de message |
+| `RECIPIENT_OPTED_OUT` | 403 | Le destinataire a désactivé cette catégorie |
+| `RECIPIENT_SUPPRESSED` | 403 | Destination sur liste de suppression (rebond dur, plainte, désabonnement) |
+| `TRANSACTIONAL_CANNOT_BE_DISABLED` | 422 | Une catégorie transactionnelle ne peut pas être désactivée |
+| `NOTIFICATION_NOT_FOUND` | 404 | Notification inexistante |
+| `NOTIFICATION_NOT_CANCELLABLE` | 409 | Envoi déjà parti ou déjà terminé |
+| `SUPPRESSION_NOT_FOUND` | 404 | Entrée de suppression inexistante |
+| `UNSUBSCRIBE_TOKEN_INVALID` | 400 | Jeton de désabonnement inconnu ou expiré |
 | `PROVIDER_ERROR` | 503 | Le fournisseur d'envoi est en échec |
 
 ## 4.4 Billing

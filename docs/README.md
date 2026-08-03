@@ -54,8 +54,8 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | Service | État | Documentation |
 | --- | --- | --- |
 | **Identity** | **Implémenté** | [vision](03-services/identity/01-overview.md) · [modèle de données](03-services/identity/02-data-model.md) · [API](03-services/identity/03-api.md) · [contrat OpenAPI](../Modules/Identity/openapi.yaml) |
+| **Notify** | **Spécifié** | [vision](03-services/notify/01-overview.md) · [modèle de données](03-services/notify/02-data-model.md) · [API](03-services/notify/03-api.md) · [événements](03-services/notify/04-events.md) |
 | Verify | À spécifier | — |
-| Notify | À spécifier | — |
 | Billing | À spécifier | — |
 | Storage | À spécifier | — |
 | AI | Esquissé dans [architecture.md](01-overview/architecture.md) | — |
@@ -70,6 +70,8 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | [ADR-0002](04-decisions/adr-0002-api-versioning.md) | Versionnement des API dans l'URL, dès la v1 |
 | [ADR-0003](04-decisions/adr-0003-two-level-roles.md) | Rôles à deux niveaux : plateforme et métier |
 | [ADR-0004](04-decisions/adr-0004-jwt-stateless-tokens.md) | Access tokens JWT stateless, refresh tokens opaques |
+| [ADR-0005](04-decisions/adr-0005-notify-asynchronous-delivery.md) | Notify : envoi asynchrone, contenu figé à l'acceptation |
+| [ADR-0006](04-decisions/adr-0006-transactional-vs-marketing.md) | Catégories de messages et liste de suppression |
 
 ---
 
@@ -105,6 +107,8 @@ Les confusions les plus fréquentes, tranchées une fois pour toutes :
 | --- | --- | --- |
 | Plans, abonnements, paiements, factures | **Billing** | Identity ne stocke que des droits d'accès (`organization_products`) |
 | Envoi d'emails, SMS, push | **Notify** | Identity publie des événements, il n'envoie rien |
+| Décision d'envoyer un message | **Le module émetteur** | Notify n'a aucune logique métier |
+| Réputation d'expédition | **Notify** | Liste de suppression, prime sur toute catégorie |
 | Vérification d'identité (KYC/KYB) | **Verify** | — |
 | Permissions métier | **Chaque produit** | Identity ne connaît que les rôles globaux |
 | Base de données | **Un module = ses tables** | Aucune jointure inter-domaines |

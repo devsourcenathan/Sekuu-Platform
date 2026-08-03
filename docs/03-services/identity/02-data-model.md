@@ -638,6 +638,8 @@ Identity **n'envoie aucun message**. Il publie des événements que Notify conso
 
 Identity ne contient donc ni configuration SMTP, ni compte SMS, ni template de message.
 
+Le contrat de ces événements — nom, variables attendues, template et catégorie de chacun — est spécifié dans [Notify § 2](../notify/04-events.md).
+
 ---
 
 # 16. Pourquoi cette architecture ?

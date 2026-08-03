@@ -11,7 +11,8 @@
 | --- | --- |
 | Application | Monolithe modulaire Laravel 13, PHP 8.3, PostgreSQL 18 |
 | Modules livrés | **Identity** (complet) |
-| Modules non démarrés | Verify, Notify, Billing, Storage, AI, Search, Analytics |
+| Modules spécifiés, non développés | **Notify** |
+| Modules non démarrés | Verify, Billing, Storage, AI, Search, Analytics |
 | Endpoints | 35 sous `/api/v1` + `/.well-known/jwks.json` |
 | Migrations | 13 |
 | Tests | 150, sur PostgreSQL |
@@ -178,7 +179,9 @@ GET  /audit-logs                 →  trace des quatre étapes
 
 ## 8.2 Prochains modules
 
-Ordre suggéré : **Notify** (débloque Identity), puis **Billing** (le contrat d'événements avec Identity est déjà défini), puis Verify.
+**Notify** est spécifié ([vision](03-services/notify/01-overview.md), [modèle de données](03-services/notify/02-data-model.md), [API](03-services/notify/03-api.md), [événements](03-services/notify/04-events.md)) mais pas développé. C'est le prochain module à écrire : il débloque les huit flux d'Identity qui produisent aujourd'hui des jetons que personne n'envoie.
+
+Ensuite **Billing** — son contrat d'événements avec Identity est déjà défini — puis Verify.
 
 ## 8.3 Dette identifiée
 
