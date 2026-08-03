@@ -22,7 +22,7 @@ final class PasswordHistoryService
             if (Hash::check($plainPassword, $hash)) {
                 throw DomainException::unprocessable(
                     'PASSWORD_RECENTLY_USED',
-                    __('This password was used recently. Choose a different one.'),
+                    __('identity::messages.password_recently_used'),
                 );
             }
         }

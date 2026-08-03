@@ -34,7 +34,7 @@ final class RegisterUser
             if ($this->isUniqueViolation($e)) {
                 throw DomainException::conflict(
                     'EMAIL_ALREADY_USED',
-                    __('This email address is already linked to an account.'),
+                    __('identity::messages.email_already_used'),
                 );
             }
 

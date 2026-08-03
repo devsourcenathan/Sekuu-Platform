@@ -33,7 +33,7 @@ final class RecipientFilter
         if ($this->isSuppressed($channel, $destination)) {
             return FilterVerdict::blocked(
                 'RECIPIENT_SUPPRESSED',
-                __('This destination is on the suppression list.'),
+                __('notify::messages.recipient_suppressed'),
             );
         }
 
@@ -46,7 +46,7 @@ final class RecipientFilter
         if ($userId !== null && ! $this->isEnabled($userId, $organizationId, $category, $channel)) {
             return FilterVerdict::blocked(
                 'RECIPIENT_OPTED_OUT',
-                __('The recipient has disabled this category.'),
+                __('notify::messages.recipient_opted_out'),
             );
         }
 

@@ -38,6 +38,18 @@
         <env name="DB_DATABASE" value="sekuu_testing"/>
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
+        <!-- Les tests ne doivent JAMAIS emprunter les identifiants réels du
+             .env : sans ces neutralisations, la suite appelle les vrais
+             fournisseurs et envoie de vrais messages. -->
+        <env name="RESEND_API_KEY" value=""/>
+        <env name="RESEND_WEBHOOK_SECRET" value=""/>
+        <env name="POSTMARK_SERVER_TOKEN" value=""/>
+        <env name="POSTMARK_WEBHOOK_TOKEN" value=""/>
+        <env name="SMS_GATEWAY_ENDPOINT" value=""/>
+        <env name="SMS_GATEWAY_TOKEN" value=""/>
+        <env name="SMS_GATEWAY_WEBHOOK_SECRET" value=""/>
+        <env name="TWILIO_ACCOUNT_SID" value=""/>
+        <env name="TWILIO_TOKEN" value=""/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>

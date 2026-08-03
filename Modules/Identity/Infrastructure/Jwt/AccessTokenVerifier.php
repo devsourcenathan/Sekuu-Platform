@@ -34,9 +34,9 @@ final class AccessTokenVerifier
         try {
             $claims = (array) JWT::decode($token, new Key($this->keys->publicKey(), 'RS256'));
         } catch (ExpiredException) {
-            throw new DomainException('TOKEN_EXPIRED', __('The access token has expired.'), 401);
+            throw new DomainException('TOKEN_EXPIRED', __('identity::messages.token_expired'), 401);
         } catch (Throwable) {
-            throw new DomainException('INVALID_TOKEN', __('The access token is invalid.'), 401);
+            throw new DomainException('INVALID_TOKEN', __('identity::messages.token_invalid'), 401);
         }
 
         $this->assertIssuer($claims);
@@ -61,7 +61,7 @@ final class AccessTokenVerifier
     private function assertIssuer(array $claims): void
     {
         if (($claims['iss'] ?? null) !== $this->issuer) {
-            throw new DomainException('INVALID_TOKEN', __('The access token was issued by an unknown party.'), 401);
+            throw new DomainException('INVALID_TOKEN', __('identity::messages.token_unknown_issuer'), 401);
         }
     }
 
@@ -75,7 +75,7 @@ final class AccessTokenVerifier
         $tokenAudience = (array) ($claims['aud'] ?? []);
 
         if (array_intersect($tokenAudience, $this->audience) === []) {
-            throw new DomainException('INVALID_TOKEN', __('The access token is not intended for this service.'), 401);
+            throw new DomainException('INVALID_TOKEN', __('identity::messages.token_wrong_audience'), 401);
         }
     }
 }

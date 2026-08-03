@@ -31,7 +31,7 @@ final class WebhookController
         if (! $handler->verify($request)) {
             throw new DomainException(
                 'WEBHOOK_SIGNATURE_INVALID',
-                __('The webhook signature is invalid.'),
+                __('notify::messages.webhook_signature_invalid'),
                 401,
             );
         }

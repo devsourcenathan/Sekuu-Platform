@@ -113,7 +113,7 @@ final class SessionTokenService
 
             throw new DomainException(
                 'TOKEN_REVOKED',
-                __('The refresh token has already been used. The session has been revoked.'),
+                __('identity::messages.refresh_replayed'),
                 401,
             );
         }
@@ -127,7 +127,7 @@ final class SessionTokenService
             ->first();
 
         if ($token === null) {
-            throw new DomainException('INVALID_TOKEN', __('The refresh token is invalid.'), 401);
+            throw new DomainException('INVALID_TOKEN', __('identity::messages.refresh_invalid'), 401);
         }
 
         $session = $token->session()->first();
@@ -137,17 +137,17 @@ final class SessionTokenService
         }
 
         if ($token->expires_at->isPast()) {
-            throw new DomainException('TOKEN_EXPIRED', __('The refresh token has expired.'), 401);
+            throw new DomainException('TOKEN_EXPIRED', __('identity::messages.refresh_expired'), 401);
         }
 
         if ($session === null || ! $session->isUsable()) {
-            throw new DomainException('TOKEN_REVOKED', __('The session is no longer active.'), 401);
+            throw new DomainException('TOKEN_REVOKED', __('identity::messages.session_inactive'), 401);
         }
 
         $user = $session->user()->first();
 
         if ($user === null || ! $user->isActive()) {
-            throw new DomainException('ACCOUNT_SUSPENDED', __('This account is not active.'), 403);
+            throw new DomainException('ACCOUNT_SUSPENDED', __('identity::messages.account_inactive'), 403);
         }
 
         $token->revoke();

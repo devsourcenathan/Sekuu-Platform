@@ -107,7 +107,7 @@ final class InvitationController
         if ($invitation === null) {
             throw DomainException::notFound(
                 'INVITATION_NOT_FOUND',
-                __('This invitation does not exist.'),
+                __('identity::messages.invitation_not_found'),
             );
         }
 
@@ -138,7 +138,7 @@ final class InvitationController
         if ($invitation === null || ! $invitation->isPending()) {
             throw DomainException::notFound(
                 'INVITATION_NOT_FOUND',
-                __('This invitation does not exist or is no longer valid.'),
+                __('identity::messages.invitation_unusable'),
             );
         }
 

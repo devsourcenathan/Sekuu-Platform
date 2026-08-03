@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Modules\Identity\Infrastructure\Auth;
 
 use App\Platform\Exceptions\DomainException;
+use App\Platform\Http\Middleware\ResolveLocale;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\App;
 use Modules\Identity\Domain\AuthenticatedContext;
 use Modules\Identity\Domain\Models\User;
 use Modules\Identity\Domain\Models\UserSession;
@@ -56,7 +58,7 @@ final class JwtUserResolver
     public function require(Request $request): AuthenticatedContext
     {
         return $this->resolve($request)
-            ?? throw new DomainException('UNAUTHENTICATED', __('Authentication is required.'), 401);
+            ?? throw new DomainException('UNAUTHENTICATED', __('platform.authentication_required'), 401);
     }
 
     private function build(Request $request): ?AuthenticatedContext
@@ -72,19 +74,35 @@ final class JwtUserResolver
         $session = UserSession::query()->find($context->sessionId);
 
         if ($session === null || ! $session->isUsable()) {
-            throw new DomainException('TOKEN_REVOKED', __('This session has been revoked.'), 401);
+            throw new DomainException('TOKEN_REVOKED', __('identity::messages.session_revoked'), 401);
         }
 
         $user = User::query()->find($context->userId);
 
         if ($user === null) {
-            throw new DomainException('INVALID_TOKEN', __('The access token is invalid.'), 401);
+            throw new DomainException('INVALID_TOKEN', __('identity::messages.token_invalid'), 401);
         }
 
         if (! $user->isActive()) {
-            throw DomainException::forbidden('ACCOUNT_SUSPENDED', __('This account is not active.'));
+            throw DomainException::forbidden('ACCOUNT_SUSPENDED', __('identity::messages.account_inactive'));
         }
 
+        $this->applyPreferredLocale($user);
+
         return new AuthenticatedContext($user, $session, $context);
+    }
+
+    /**
+     * La langue choisie par l'utilisateur prime sur `Accept-Language` : un
+     * navigateur envoie sa propre langue sans que l'utilisateur l'ait demandé,
+     * alors que le profil est un choix explicite.
+     */
+    private function applyPreferredLocale(User $user): void
+    {
+        $locale = (string) ($user->language ?? '');
+
+        if ($locale !== '' && ResolveLocale::isSupported($locale)) {
+            App::setLocale($locale);
+        }
     }
 }

@@ -30,14 +30,14 @@ final class SwitchOrganization
         if ($membership === null) {
             throw DomainException::notFound(
                 'MEMBERSHIP_NOT_FOUND',
-                __('You are not a member of this organization.'),
+                __('identity::messages.membership_missing'),
             );
         }
 
         if (! $membership->organization?->isActive()) {
             throw DomainException::forbidden(
                 'ORGANIZATION_SUSPENDED',
-                __('This organization is suspended.'),
+                __('identity::messages.organization_suspended'),
             );
         }
 

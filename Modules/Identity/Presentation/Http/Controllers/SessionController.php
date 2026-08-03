@@ -62,7 +62,7 @@ final class SessionController
         if ($session === null) {
             throw DomainException::notFound(
                 'RESOURCE_NOT_FOUND',
-                __('This session does not exist.'),
+                __('identity::messages.session_not_found'),
             );
         }
 

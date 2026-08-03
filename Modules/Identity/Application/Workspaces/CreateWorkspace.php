@@ -31,7 +31,7 @@ final class CreateWorkspace
                 if (self::isUniqueViolation($e)) {
                     throw DomainException::conflict(
                         'DUPLICATE_RESOURCE',
-                        __('A workspace with this slug already exists in this organization.'),
+                        __('identity::messages.workspace_slug_taken'),
                     );
                 }
 

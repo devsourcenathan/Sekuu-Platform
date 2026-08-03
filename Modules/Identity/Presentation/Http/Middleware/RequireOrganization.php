@@ -26,7 +26,7 @@ final class RequireOrganization
         if (! $this->resolver->require($request)->token->hasOrganization()) {
             throw DomainException::forbidden(
                 'ORGANIZATION_REQUIRED',
-                __('Select an active organization before calling this endpoint.'),
+                __('platform.organization_required'),
             );
         }
 

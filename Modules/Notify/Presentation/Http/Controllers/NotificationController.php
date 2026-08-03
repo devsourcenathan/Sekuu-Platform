@@ -26,7 +26,7 @@ final class NotificationController
         $organizationId = $context->token->organizationId
             ?? throw DomainException::forbidden(
                 'ORGANIZATION_REQUIRED',
-                __('Select an active organization before calling this endpoint.'),
+                __('platform.organization_required'),
             );
 
         $query = Notification::query()
@@ -55,7 +55,7 @@ final class NotificationController
         if ($notification === null) {
             throw DomainException::notFound(
                 'NOTIFICATION_NOT_FOUND',
-                __('This notification does not exist.'),
+                __('notify::messages.notification_not_found'),
             );
         }
 
@@ -83,7 +83,7 @@ final class NotificationController
         $filters = $request->query('filter', []);
 
         if (! is_array($filters)) {
-            throw new DomainException('INVALID_FILTER', __('The filter parameter is malformed.'), 400);
+            throw new DomainException('INVALID_FILTER', __('platform.filter_malformed'), 400);
         }
 
         $allowed = ['status', 'channel', 'category', 'template_key', 'user_id'];
@@ -92,7 +92,7 @@ final class NotificationController
             if (! in_array($field, $allowed, true)) {
                 throw new DomainException(
                     'INVALID_FILTER',
-                    __('Unknown filter: :field', ['field' => (string) $field]),
+                    __('platform.filter_unknown', ['field' => (string) $field]),
                     400,
                 );
             }

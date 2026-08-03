@@ -45,7 +45,7 @@ final class OAuthController
         if (! is_string($code) || ! is_string($state)) {
             throw new DomainException(
                 'OAUTH_STATE_INVALID',
-                __('The authorization request is invalid or has expired.'),
+                __('identity::messages.oauth_state_invalid'),
                 400,
             );
         }
@@ -105,7 +105,7 @@ final class OAuthController
         if ($account === null) {
             throw DomainException::notFound(
                 'RESOURCE_NOT_FOUND',
-                __('This linked account does not exist.'),
+                __('identity::messages.oauth_account_not_found'),
             );
         }
 
@@ -140,7 +140,7 @@ final class OAuthController
         if ($remaining === 0) {
             throw DomainException::conflict(
                 'RESOURCE_CONFLICT',
-                __('This is your only sign-in method. Set a password before unlinking it.'),
+                __('identity::messages.oauth_last_method'),
             );
         }
     }

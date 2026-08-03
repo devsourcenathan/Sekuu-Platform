@@ -30,7 +30,7 @@ final class AcceptInvitation
         if ($invitation === null) {
             throw DomainException::notFound(
                 'INVITATION_NOT_FOUND',
-                __('This invitation does not exist.'),
+                __('identity::messages.invitation_not_found'),
             );
         }
 
@@ -41,7 +41,7 @@ final class AcceptInvitation
         if ($authenticatedUser !== null && ! $this->emailsMatch($authenticatedUser->email, $invitation->email)) {
             throw DomainException::forbidden(
                 'INVITATION_EMAIL_MISMATCH',
-                __('This invitation was issued for a different email address.'),
+                __('identity::messages.invitation_email_mismatch'),
             );
         }
 
@@ -75,7 +75,7 @@ final class AcceptInvitation
             if ($membership !== null) {
                 throw DomainException::conflict(
                     'ALREADY_MEMBER',
-                    __('You are already a member of this organization.'),
+                    __('identity::messages.membership_already'),
                 );
             }
 
@@ -100,21 +100,21 @@ final class AcceptInvitation
         if ($invitation->accepted_at !== null) {
             throw DomainException::conflict(
                 'INVITATION_ALREADY_ACCEPTED',
-                __('This invitation has already been accepted.'),
+                __('identity::messages.invitation_accepted'),
             );
         }
 
         if ($invitation->revoked_at !== null) {
             throw DomainException::notFound(
                 'INVITATION_NOT_FOUND',
-                __('This invitation does not exist.'),
+                __('identity::messages.invitation_not_found'),
             );
         }
 
         if ($invitation->expires_at->isPast()) {
             throw new DomainException(
                 'INVITATION_EXPIRED',
-                __('This invitation has expired.'),
+                __('identity::messages.invitation_expired'),
                 410,
             );
         }
@@ -130,7 +130,7 @@ final class AcceptInvitation
         if ($missing !== []) {
             throw DomainException::unprocessable(
                 'VALIDATION_ERROR',
-                __('An account must be created to accept this invitation.'),
+                __('identity::messages.invitation_needs_account'),
             );
         }
     }

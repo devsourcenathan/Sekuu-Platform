@@ -31,6 +31,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Langues supportées
+    |--------------------------------------------------------------------------
+    |
+    | Toute langue absente de cette liste est ignorée, y compris si elle est
+    | demandée par `Accept-Language` ou enregistrée dans un profil : mieux vaut
+    | répondre dans la langue par défaut qu'exposer des clés de traduction
+    | brutes.
+    |
+    | @see app/Platform/Http/Middleware/ResolveLocale.php
+    |
+    */
+
+    'locales' => ['en', 'fr'],
+
+    /*
+    |--------------------------------------------------------------------------
     | Pagination
     |--------------------------------------------------------------------------
     |

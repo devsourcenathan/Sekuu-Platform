@@ -31,14 +31,14 @@ final class ChangePassword
         if ($user->password_hash === null) {
             throw DomainException::conflict(
                 'RESOURCE_CONFLICT',
-                __('This account has no password. Use the password reset flow to set one.'),
+                __('identity::messages.password_missing'),
             );
         }
 
         if (! Hash::check($currentPassword, $user->password_hash)) {
             throw new DomainException(
                 'INVALID_CREDENTIALS',
-                __('The current password is incorrect.'),
+                __('identity::messages.current_password_invalid'),
                 401,
             );
         }

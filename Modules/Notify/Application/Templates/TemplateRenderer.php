@@ -30,7 +30,7 @@ final class TemplateRenderer
         if ($content === null) {
             throw DomainException::notFound(
                 'TEMPLATE_NOT_FOUND',
-                __('The template :key has no content in a usable language.', ['key' => $template->key]),
+                __('notify::messages.template_no_content', ['key' => $template->key]),
             );
         }
 
@@ -54,7 +54,7 @@ final class TemplateRenderer
         if ($missing !== []) {
             throw DomainException::unprocessable(
                 'TEMPLATE_VARIABLE_MISSING',
-                __('Missing required variables: :names', ['names' => implode(', ', $missing)]),
+                __('notify::messages.template_variables_missing', ['names' => implode(', ', $missing)]),
             );
         }
     }

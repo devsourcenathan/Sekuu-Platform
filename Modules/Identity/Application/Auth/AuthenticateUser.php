@@ -37,13 +37,13 @@ final class AuthenticateUser
         if ($user === null || ! $matches) {
             throw new DomainException(
                 'INVALID_CREDENTIALS',
-                __('The provided credentials are incorrect.'),
+                __('identity::messages.credentials_invalid'),
                 401,
             );
         }
 
         if (! $user->isActive()) {
-            throw DomainException::forbidden('ACCOUNT_SUSPENDED', __('This account is not active.'));
+            throw DomainException::forbidden('ACCOUNT_SUSPENDED', __('identity::messages.account_inactive'));
         }
 
         $user->forceFill(['last_login_at' => now()])->save();

@@ -62,7 +62,7 @@ final class ActionTokenService
             if ($token === null || ! $token->isUsable()) {
                 throw new DomainException(
                     'RESET_TOKEN_INVALID',
-                    __('This link is invalid or has expired.'),
+                    __('identity::messages.action_token_invalid'),
                     400,
                 );
             }
@@ -74,7 +74,7 @@ final class ActionTokenService
             if ($user === null) {
                 throw new DomainException(
                     'RESET_TOKEN_INVALID',
-                    __('This link is invalid or has expired.'),
+                    __('identity::messages.action_token_invalid'),
                     400,
                 );
             }

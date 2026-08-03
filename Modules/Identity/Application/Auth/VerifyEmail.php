@@ -31,7 +31,7 @@ final class VerifyEmail
         if ($user->email_verified_at !== null) {
             throw DomainException::conflict(
                 'RESOURCE_CONFLICT',
-                __('This email address is already verified.'),
+                __('identity::messages.email_already_verified'),
             );
         }
 

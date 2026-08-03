@@ -54,7 +54,7 @@ final class PreferenceController
             if (! Category::isOptional($preference['category'])) {
                 throw DomainException::unprocessable(
                     'TRANSACTIONAL_CANNOT_BE_DISABLED',
-                    __('Transactional messages cannot be disabled.'),
+                    __('notify::messages.transactional_locked'),
                 );
             }
 

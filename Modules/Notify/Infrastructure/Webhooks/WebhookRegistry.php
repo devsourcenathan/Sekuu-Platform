@@ -27,7 +27,7 @@ final class WebhookRegistry
         if (! isset($this->handlers[$provider])) {
             throw DomainException::notFound(
                 'ENDPOINT_NOT_FOUND',
-                __('No webhook handler is registered for :provider.', ['provider' => $provider]),
+                __('notify::messages.webhook_handler_missing', ['provider' => $provider]),
             );
         }
 

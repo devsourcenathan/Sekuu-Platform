@@ -44,21 +44,21 @@ final class ApiExceptionRenderer
 
             $e instanceof ValidationException => ApiResponse::error(
                 'VALIDATION_ERROR',
-                __('Validation failed.'),
+                __('platform.validation_failed'),
                 422,
                 $e->errors(),
             ),
 
             $e instanceof AuthenticationException => ApiResponse::error(
                 'UNAUTHENTICATED',
-                __('Authentication is required.'),
+                __('platform.authentication_required'),
                 401,
             ),
 
             $e instanceof AuthorizationException,
             $e instanceof AccessDeniedHttpException => ApiResponse::error(
                 'FORBIDDEN',
-                __('Access denied.'),
+                __('platform.access_denied'),
                 403,
             ),
 
@@ -66,19 +66,19 @@ final class ApiExceptionRenderer
             // indiscernable d'une ressource inexistante.
             $e instanceof ModelNotFoundException => ApiResponse::error(
                 'RESOURCE_NOT_FOUND',
-                __('The requested resource does not exist.'),
+                __('platform.resource_not_found'),
                 404,
             ),
 
             $e instanceof NotFoundHttpException => ApiResponse::error(
                 'ENDPOINT_NOT_FOUND',
-                __('The requested endpoint does not exist.'),
+                __('platform.endpoint_not_found'),
                 404,
             ),
 
             $e instanceof MethodNotAllowedHttpException => ApiResponse::error(
                 'BAD_REQUEST',
-                __('The HTTP method is not allowed for this endpoint.'),
+                __('platform.method_not_allowed'),
                 405,
             ),
 
@@ -86,7 +86,7 @@ final class ApiExceptionRenderer
 
             $e instanceof HttpExceptionInterface => ApiResponse::error(
                 $this->codeForStatus($e->getStatusCode()),
-                $e->getMessage() !== '' ? $e->getMessage() : __('Request failed.'),
+                $e->getMessage() !== '' ? $e->getMessage() : __('platform.request_failed'),
                 $e->getStatusCode(),
             ),
 
@@ -98,7 +98,7 @@ final class ApiExceptionRenderer
     {
         $response = ApiResponse::error(
             'RATE_LIMIT_EXCEEDED',
-            __('Too many requests.'),
+            __('platform.too_many_requests'),
             429,
         );
 
@@ -119,7 +119,7 @@ final class ApiExceptionRenderer
             'INTERNAL_ERROR',
             config('app.debug')
                 ? $e->getMessage()
-                : __('An unexpected error occurred.'),
+                : __('platform.unexpected_error'),
             500,
         );
     }

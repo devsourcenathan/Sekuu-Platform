@@ -25,7 +25,7 @@ final class SendInvitation
         if ($role === null) {
             throw DomainException::unprocessable(
                 'VALIDATION_ERROR',
-                __('The requested role does not exist.'),
+                __('identity::messages.role_not_found'),
             );
         }
 
@@ -48,7 +48,7 @@ final class SendInvitation
             if ($e->getCode() === '23505' || str_contains(strtolower($e->getMessage()), 'unique')) {
                 throw DomainException::conflict(
                     'DUPLICATE_RESOURCE',
-                    __('An invitation is already pending for this email address.'),
+                    __('identity::messages.invitation_pending'),
                 );
             }
 
@@ -71,7 +71,7 @@ final class SendInvitation
         if ($alreadyMember) {
             throw DomainException::conflict(
                 'ALREADY_MEMBER',
-                __('This user is already a member of the organization.'),
+                __('identity::messages.membership_already_other'),
             );
         }
     }

@@ -24,14 +24,14 @@ final class ManageWorkspaceMembers
         if ($membership === null) {
             throw DomainException::notFound(
                 'MEMBERSHIP_NOT_FOUND',
-                __('This user is not a member of the organization.'),
+                __('identity::messages.membership_missing_other'),
             );
         }
 
         if ($workspace->hasMember($membership->id)) {
             throw DomainException::conflict(
                 'DUPLICATE_RESOURCE',
-                __('This member already belongs to the workspace.'),
+                __('identity::messages.workspace_member_already'),
             );
         }
 
@@ -51,7 +51,7 @@ final class ManageWorkspaceMembers
         if ($member === null) {
             throw DomainException::notFound(
                 'MEMBERSHIP_NOT_FOUND',
-                __('This member does not belong to the workspace.'),
+                __('identity::messages.workspace_member_missing'),
             );
         }
 

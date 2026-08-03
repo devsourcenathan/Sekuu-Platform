@@ -48,7 +48,7 @@ final class AuditLogController
         $filters = $request->query('filter', []);
 
         if (! is_array($filters)) {
-            throw new DomainException('INVALID_FILTER', __('The filter parameter is malformed.'), 400);
+            throw new DomainException('INVALID_FILTER', __('platform.filter_malformed'), 400);
         }
 
         $allowed = ['action', 'user_id', 'target_type'];
@@ -57,7 +57,7 @@ final class AuditLogController
             if (! in_array($field, $allowed, true)) {
                 throw new DomainException(
                     'INVALID_FILTER',
-                    __('Unknown filter: :field', ['field' => (string) $field]),
+                    __('platform.filter_unknown', ['field' => (string) $field]),
                     400,
                 );
             }

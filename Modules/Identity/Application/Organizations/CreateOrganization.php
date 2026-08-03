@@ -34,7 +34,7 @@ final class CreateOrganization
                 if (str_contains(strtolower($e->getMessage()), 'unique') || $e->getCode() === '23505') {
                     throw DomainException::conflict(
                         'ORGANIZATION_SLUG_TAKEN',
-                        __('This organization slug is already taken.'),
+                        __('identity::messages.organization_slug_taken'),
                     );
                 }
 

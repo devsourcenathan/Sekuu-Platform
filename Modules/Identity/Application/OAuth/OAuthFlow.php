@@ -80,7 +80,7 @@ final class OAuthFlow
         if ($identity->email === null || $identity->email === '') {
             throw DomainException::unprocessable(
                 'OAUTH_PROVIDER_ERROR',
-                __('The identity provider did not return an email address.'),
+                __('identity::messages.oauth_no_email'),
             );
         }
 
@@ -101,7 +101,7 @@ final class OAuthFlow
         if (! $this->emailIsTrusted($provider)) {
             throw DomainException::conflict(
                 'OAUTH_EMAIL_TAKEN',
-                __('An account already uses this email address. Sign in and link this provider from your profile.'),
+                __('identity::messages.oauth_email_taken'),
             );
         }
 
@@ -150,7 +150,7 @@ final class OAuthFlow
         if ($alreadyLinked) {
             throw DomainException::conflict(
                 'OAUTH_ACCOUNT_ALREADY_LINKED',
-                __('Another :provider account is already linked to this user.', ['provider' => $provider]),
+                __('identity::messages.oauth_already_linked', ['provider' => $provider]),
             );
         }
 
@@ -171,7 +171,7 @@ final class OAuthFlow
         if ($expected !== $provider) {
             throw new DomainException(
                 'OAUTH_STATE_INVALID',
-                __('The authorization request is invalid or has expired.'),
+                __('identity::messages.oauth_state_invalid'),
                 400,
             );
         }
@@ -180,7 +180,7 @@ final class OAuthFlow
     private function assertUsable(User $user): void
     {
         if (! $user->isActive()) {
-            throw DomainException::forbidden('ACCOUNT_SUSPENDED', __('This account is not active.'));
+            throw DomainException::forbidden('ACCOUNT_SUSPENDED', __('identity::messages.account_inactive'));
         }
     }
 
@@ -189,7 +189,7 @@ final class OAuthFlow
         if (! in_array($provider, (array) config('identity.oauth.providers'), true)) {
             throw DomainException::unprocessable(
                 'OAUTH_PROVIDER_NOT_SUPPORTED',
-                __('This identity provider is not supported.'),
+                __('identity::messages.oauth_provider_unsupported'),
             );
         }
     }

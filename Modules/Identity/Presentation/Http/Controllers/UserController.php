@@ -31,7 +31,7 @@ final class UserController
         if ($userId !== $context->user->id) {
             throw DomainException::forbidden(
                 'FORBIDDEN',
-                __('You can only change your own password.'),
+                __('identity::messages.password_not_yours'),
             );
         }
 
@@ -50,7 +50,7 @@ final class UserController
         );
 
         return ApiResponse::success([
-            'message' => __('Your password has been changed. Other devices have been signed out.'),
+            'message' => __('identity::messages.password_changed'),
         ]);
     }
 

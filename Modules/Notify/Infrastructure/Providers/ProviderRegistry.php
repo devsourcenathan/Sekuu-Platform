@@ -39,7 +39,7 @@ final class ProviderRegistry
         if ($providers === []) {
             throw new DomainException(
                 'CHANNEL_NOT_CONFIGURED',
-                __('No provider is configured for the :channel channel.', ['channel' => $channel]),
+                __('notify::messages.channel_not_configured', ['channel' => $channel]),
                 503,
             );
         }

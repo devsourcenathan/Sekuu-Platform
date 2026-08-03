@@ -170,15 +170,15 @@ final class SendNotification
         return match ($code) {
             'RECIPIENT_SUPPRESSED' => DomainException::forbidden(
                 $code,
-                __('This destination is on the suppression list.'),
+                __('notify::messages.recipient_suppressed'),
             ),
             'RECIPIENT_OPTED_OUT' => DomainException::forbidden(
                 $code,
-                __('The recipient has disabled this category.'),
+                __('notify::messages.recipient_opted_out'),
             ),
             default => DomainException::unprocessable(
                 'CHANNEL_NOT_AVAILABLE',
-                __('The recipient has no usable address for this message.'),
+                __('notify::messages.channel_not_available'),
             ),
         };
     }
@@ -196,7 +196,7 @@ final class SendNotification
         if (! $valid) {
             throw DomainException::unprocessable(
                 'RECIPIENT_INVALID',
-                __('The recipient is not valid for the :channel channel.', ['channel' => $channel]),
+                __('notify::messages.recipient_invalid', ['channel' => $channel]),
             );
         }
     }

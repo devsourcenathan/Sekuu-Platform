@@ -1,0 +1,77 @@
+A verification link has been sent.
+A workspace with this slug already exists in this organization.
+Access denied.
+An account already uses this email address. Sign in and link this provider from your profile.
+An account must be created to accept this invitation.
+An invitation is already pending for this email address.
+An unexpected error occurred.
+Another :provider account is already linked to this user.
+Authentication is required.
+If an account matches this address, a reset link has been sent.
+Missing required variables: :names
+No provider is configured for the :channel channel.
+No refresh token was provided.
+No template is registered for :key.
+No webhook handler is registered for :provider.
+Request failed.
+Select an active organization before calling this endpoint.
+The HTTP method is not allowed for this endpoint.
+The access token has expired.
+The access token is invalid.
+The access token is not intended for this service.
+The access token was issued by an unknown party.
+The authorization request is invalid or has expired.
+The current password is incorrect.
+The filter parameter is malformed.
+The identity provider could not be reached.
+The identity provider did not return an email address.
+The provided credentials are incorrect.
+The recipient has disabled this category.
+The recipient has no usable address for this message.
+The recipient is not valid for the :channel channel.
+The refresh token has already been used. The session has been revoked.
+The refresh token has expired.
+The refresh token is invalid.
+The requested endpoint does not exist.
+The requested resource does not exist.
+The requested role does not exist.
+The session is no longer active.
+The template :key has no content in a usable language.
+The webhook signature is invalid.
+This account has no password. Use the password reset flow to set one.
+This account is not active.
+This destination is on the suppression list.
+This email address is already linked to an account.
+This email address is already verified.
+This identity provider is not supported.
+This invitation does not exist or is no longer valid.
+This invitation does not exist.
+This invitation has already been accepted.
+This invitation has expired.
+This invitation was issued for a different email address.
+This is your only sign-in method. Set a password before unlinking it.
+This link is invalid or has expired.
+This linked account does not exist.
+This member already belongs to the workspace.
+This member does not belong to the workspace.
+This notification does not exist.
+This organization does not exist.
+This organization is suspended.
+This organization slug is already taken.
+This password was used recently. Choose a different one.
+This session does not exist.
+This session has been revoked.
+This user is already a member of the organization.
+This user is not a member of the organization.
+This workspace does not exist.
+Too many requests.
+Transactional messages cannot be disabled.
+Unknown filter: :field
+Validation failed.
+You are already a member of this organization.
+You are not a member of this organization.
+You are not a member of this workspace.
+You can only change your own password.
+Your password has been changed. Other devices have been signed out.
+Your password has been reset. Please sign in again.
+Your role does not allow this action.

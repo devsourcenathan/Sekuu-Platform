@@ -106,7 +106,7 @@ final class AuthController
             ?? $request->input('refresh_token');
 
         if (! is_string($presented) || $presented === '') {
-            throw new DomainException('INVALID_TOKEN', __('No refresh token was provided.'), 401);
+            throw new DomainException('INVALID_TOKEN', __('identity::messages.refresh_missing'), 401);
         }
 
         $pair = $this->tokens->rotate($presented);
@@ -143,7 +143,7 @@ final class AuthController
             );
         }
 
-        $payload = ['message' => __('If an account matches this address, a reset link has been sent.')];
+        $payload = ['message' => __('identity::messages.password_reset_sent')];
 
         // Le jeton n'est exposé qu'en développement : en production il
         // n'existe que dans le message envoyé par Notify.
@@ -175,7 +175,7 @@ final class AuthController
         );
 
         return ApiResponse::success([
-            'message' => __('Your password has been reset. Please sign in again.'),
+            'message' => __('identity::messages.password_reset_done'),
         ])->withCookie(AuthPayload::forgetRefreshCookie());
     }
 
@@ -206,7 +206,7 @@ final class AuthController
             expiresInHours: (int) ceil(config('identity.tokens.email_verification_ttl') / 3600),
         );
 
-        $payload = ['message' => __('A verification link has been sent.')];
+        $payload = ['message' => __('identity::messages.verification_sent')];
 
         if (app()->environment('local', 'testing')) {
             $payload['token'] = $token;

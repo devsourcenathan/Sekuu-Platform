@@ -34,7 +34,7 @@ final class RequireScope
 
         throw DomainException::forbidden(
             'INSUFFICIENT_PERMISSIONS',
-            __('Your role does not allow this action.'),
+            __('identity::messages.role_insufficient'),
         );
     }
 }

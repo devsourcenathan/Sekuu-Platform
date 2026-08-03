@@ -45,7 +45,7 @@ final class TemplateResolver
         if ($templates->isEmpty()) {
             throw DomainException::notFound(
                 'TEMPLATE_NOT_FOUND',
-                __('No template is registered for :key.', ['key' => $key]),
+                __('notify::messages.template_not_found', ['key' => $key]),
             );
         }
 

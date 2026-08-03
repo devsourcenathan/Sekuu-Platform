@@ -35,7 +35,7 @@ final class SocialiteGateway implements OAuthGateway
         } catch (Throwable) {
             throw new DomainException(
                 'OAUTH_PROVIDER_ERROR',
-                __('The identity provider could not be reached.'),
+                __('identity::messages.oauth_provider_unreachable'),
                 503,
             );
         }

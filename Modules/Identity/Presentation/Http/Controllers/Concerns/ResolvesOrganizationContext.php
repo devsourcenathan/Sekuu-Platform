@@ -20,7 +20,7 @@ trait ResolvesOrganizationContext
         return $context->token->organizationId
             ?? throw DomainException::forbidden(
                 'ORGANIZATION_REQUIRED',
-                __('Select an active organization before calling this endpoint.'),
+                __('platform.organization_required'),
             );
     }
 
@@ -34,7 +34,7 @@ trait ResolvesOrganizationContext
         if ($this->organizationId($context) !== $organizationId) {
             throw DomainException::notFound(
                 'ORGANIZATION_NOT_FOUND',
-                __('This organization does not exist.'),
+                __('identity::messages.organization_not_found'),
             );
         }
 
@@ -46,7 +46,7 @@ trait ResolvesOrganizationContext
         return $context->user->activeMembershipIn($this->organizationId($context))
             ?? throw DomainException::notFound(
                 'MEMBERSHIP_NOT_FOUND',
-                __('You are not a member of this organization.'),
+                __('identity::messages.membership_missing'),
             );
     }
 
@@ -62,7 +62,7 @@ trait ResolvesOrganizationContext
             ->first()
             ?? throw DomainException::notFound(
                 'WORKSPACE_NOT_FOUND',
-                __('This workspace does not exist.'),
+                __('identity::messages.workspace_not_found'),
             );
     }
 
@@ -81,7 +81,7 @@ trait ResolvesOrganizationContext
         if (! $workspace->hasMember($membership->id)) {
             throw DomainException::forbidden(
                 'WORKSPACE_ACCESS_DENIED',
-                __('You are not a member of this workspace.'),
+                __('identity::messages.workspace_access_denied'),
             );
         }
     }
