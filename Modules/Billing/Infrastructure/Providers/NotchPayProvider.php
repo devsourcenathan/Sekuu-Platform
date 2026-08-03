@@ -60,7 +60,7 @@ final class NotchPayProvider implements PaymentProvider
     {
         // --- Étape 1 : initialisation. Aucune invite ne part ici. ---------
         try {
-            $init = $this->client()->post($this->url('/payments'), [
+            $init = $this->client()->post($this->url('/payments'), array_filter([
                 'amount' => $request->money->amount,
                 'currency' => $request->money->currency,
                 'phone' => $request->msisdn->value,
@@ -68,7 +68,19 @@ final class NotchPayProvider implements PaymentProvider
                 // c'est la clé de corrélation exigée par l'ADR-0008.
                 'reference' => $request->merchantReference,
                 'description' => $request->description,
-            ]);
+
+                // URL de rappel **par paiement**, quand elle est configurée.
+                //
+                // Le tableau de bord n'en accepte qu'une : avec un seul compte
+                // marchand, recette et production ne peuvent pas y coexister.
+                // La renseigner ici permet à chaque environnement de recevoir
+                // ses propres callbacks.
+                //
+                // Vide par défaut : le tableau de bord reste le mode normal, et
+                // une URL figée dans des transactions passées survivrait à un
+                // changement d'hébergement.
+                'callback' => config('billing.notchpay.callback_url') ?: null,
+            ], static fn ($value) => $value !== null));
         } catch (Throwable $exception) {
             // **Basculable malgré la temporisation.** L'initialisation ne
             // présente rien au client : au pire elle laisse un paiement orphelin

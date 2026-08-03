@@ -73,11 +73,55 @@ final class NotchPayWebhookTest extends TestCase
         $this->assertFalse($this->handler->verify($this->request($body, $this->sign($body))));
     }
 
-    public function test_the_event_id_combines_type_and_payload_id(): void
+    /**
+     * Corps **réel** d'un callback, capturé sur le bac à sable.
+     *
+     * La documentation annonce `type` et `data.id` ; Notch Pay envoie `event`
+     * et un `id` de premier niveau. La première version retombait donc
+     * toujours sur l'empreinte du corps — ce qui marchait par accident, mais
+     * aurait laissé passer deux fois un **renvoi** de la même livraison.
+     */
+    public function test_the_event_id_is_the_delivery_id(): void
     {
-        $body = json_encode(['type' => 'payment.complete', 'data' => ['id' => 'trx-1']]);
+        $body = json_encode($this->realPayload());
 
-        $this->assertSame('payment.complete:trx-1', $this->handler->eventId($this->request($body, null)));
+        $this->assertSame(
+            'whc_test.RBbtPFQbBiIXebt7',
+            $this->handler->eventId($this->request($body, null)),
+        );
+    }
+
+    public function test_the_reference_is_read_from_a_real_payload(): void
+    {
+        $body = json_encode($this->realPayload());
+
+        $this->assertSame(
+            'trx.test_xRV6AHATJGClY8RGngx3efVK',
+            $this->handler->providerRef($this->request($body, null)),
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function realPayload(): array
+    {
+        return [
+            'id' => 'whc_test.RBbtPFQbBiIXebt7',
+            'event' => 'payment.complete',
+            'data' => [
+                'fees' => [],
+                'amount' => 100,
+                'charge' => 'business',
+                'status' => 'complete',
+                'trxref' => 'SKU57352EA63744B5D4',
+                'amounts' => ['rate' => 1, 'total' => 100, 'currency' => 'XAF', 'converted' => 100],
+                'sandbox' => 1,
+                'currency' => 'XAF',
+                'reference' => 'trx.test_xRV6AHATJGClY8RGngx3efVK',
+                'merchant_reference' => 'SKU57352EA63744B5D4',
+            ],
+        ];
     }
 
     /**
@@ -97,9 +141,33 @@ final class NotchPayWebhookTest extends TestCase
 
     public function test_the_reference_is_extracted_from_the_payload(): void
     {
-        $body = json_encode(['type' => 'payment.complete', 'data' => ['reference' => 'trx-9']]);
+        $body = json_encode(['event' => 'payment.complete', 'data' => ['reference' => 'trx-9']]);
 
         $this->assertSame('trx-9', $this->handler->providerRef($this->request($body, null)));
+    }
+
+    /**
+     * Notch Pay a envoyé **trois** livraisons pour un seul paiement, dans
+     * l'ordre `processing`, `pending`, `complete` — un `pending` arrivé
+     * **après** un `complete`.
+     *
+     * C'est la démonstration en conditions réelles de la règle « le corps ne
+     * décide jamais de l'issue » : croire ce statut aurait fait régresser un
+     * paiement encaissé vers « en attente ».
+     */
+    public function test_three_deliveries_of_one_payment_have_distinct_ids(): void
+    {
+        $ids = [];
+
+        foreach (['processing', 'pending', 'complete'] as $index => $status) {
+            $payload = $this->realPayload();
+            $payload['id'] = 'whc_test.delivery'.$index;
+            $payload['data']['status'] = $status;
+
+            $ids[] = $this->handler->eventId($this->request((string) json_encode($payload), null));
+        }
+
+        $this->assertCount(3, array_unique($ids));
     }
 
     private function sign(string $body): string

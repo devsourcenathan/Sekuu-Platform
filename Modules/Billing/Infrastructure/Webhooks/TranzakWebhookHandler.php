@@ -46,11 +46,24 @@ class TranzakWebhookHandler implements PaymentWebhookHandler
         return is_string($provided) && hash_equals($expected, $provided);
     }
 
+    /**
+     * Clé de déduplication : `eventType` + ressource, **délibérément pas**
+     * l'identifiant de livraison.
+     *
+     * Le corps réel porte pourtant un `webhookId` par livraison, qui serait le
+     * choix naturel — c'est celui retenu pour Notch Pay. Mais Notch Pay **signe**
+     * ses callbacks : un rejeu modifié y est impossible.
+     *
+     * Tranzak n'authentifie que par un secret partagé dans le corps. Un
+     * callback capté peut donc être rejoué avec un `webhookId` différent, et
+     * serait traité une seconde fois. `eventType` + ressource résiste à cela :
+     * le même fait produit la même clé, quel que soit l'habillage.
+     *
+     * Deux agrégateurs, deux clés — parce qu'ils n'offrent pas les mêmes
+     * garanties.
+     */
     public function eventId(Request $request): string
     {
-        // Tranzak ne documente pas d'identifiant d'événement propre. On en
-        // reconstruit un stable à partir de la ressource et du type : rejouer
-        // le même fait produit la même clé, donc un seul traitement.
         $resource = $this->providerRef($request);
         $type = (string) $request->input('eventType', 'UNKNOWN');
 

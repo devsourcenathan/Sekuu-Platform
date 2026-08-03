@@ -56,16 +56,32 @@ class NotchPayWebhookHandler implements PaymentWebhookHandler
         return hash_equals($expected, $provided);
     }
 
+    /**
+     * Identifiant de livraison, pour la déduplication.
+     *
+     * **La documentation décrit un champ `type` et un `data.id` ; le corps réel
+     * porte `event` et un `id` de premier niveau** — vérifié contre un callback
+     * authentique. La première version retombait donc systématiquement sur
+     * l'empreinte du corps.
+     *
+     * Cela fonctionnait par accident : deux livraisons distinctes ont des corps
+     * distincts. Mais un renvoi de la **même** livraison, avec ne serait-ce
+     * qu'un horodatage différent, aurait été traité deux fois.
+     *
+     * `id` vaut `whc_test.RBbtPFQbBiIXebt7` : un identifiant par livraison,
+     * exactement ce qu'il faut.
+     */
     public function eventId(Request $request): string
     {
-        $type = (string) $request->input('type', 'unknown');
-        $id = $request->input('data.id');
+        $id = $request->input('id');
 
         if (is_string($id) && $id !== '') {
-            return $type.':'.$id;
+            return $id;
         }
 
-        return $type.':'.hash('sha256', $request->getContent());
+        $event = (string) ($request->input('event') ?? $request->input('type') ?? 'unknown');
+
+        return $event.':'.hash('sha256', $request->getContent());
     }
 
     public function providerRef(Request $request): ?string

@@ -14,7 +14,7 @@
 | Modules non démarrés | Verify, Storage, AI, Search, Analytics |
 | Endpoints | 85 sous `/api/v1` + `/.well-known/jwks.json` |
 | Migrations | 26 |
-| Tests | 429, sur PostgreSQL |
+| Tests | 437, sur PostgreSQL |
 | Contrats | `Modules/*/openapi.yaml`, vérifiés par test |
 | Collection de test | `postman/` |
 
@@ -124,7 +124,17 @@ Billing ne connaissant ni utilisateurs ni adresses, il obtient le destinataire d
 
 Le plafond de dépense de Notify n'est pas supprimé pour autant. Il était un substitut aux quotas par plan ; il redevient ce qu'il aurait dû être d'emblée, un garde-fou absolu contre une boucle ou une clé fuitée — sans lui, une organisation au plan illimité n'aurait plus aucune borne.
 
-**Jamais éprouvé** — les callbacks. Ni Notch Pay ni Tranzak n'en ont envoyé un vrai : cela suppose une URL publique. Le sondage couvre la même fonction, plus lentement.
+**Callbacks vérifiés chez les deux agrégateurs** — chaîne complète éprouvée à travers un tunnel public : authentification, déduplication, rattachement à la tentative, facture réglée, registre écrit.
+
+Trois enseignements que seuls de vrais callbacks pouvaient donner.
+
+Chez Notch Pay, le corps porte `event` et un `id` de premier niveau, là où la documentation annonce `type` et `data.id` — la déduplication retombait donc sur une empreinte du corps, ce qui marchait par accident mais aurait laissé passer deux fois un renvoi.
+
+Un paiement produit **trois** livraisons dans un ordre variable : croire le statut annoncé aurait fait régresser un paiement encaissé vers « en attente ». La règle « le corps ne décide jamais de l'issue » s'est justifiée en conditions réelles.
+
+Les deux agrégateurs n'utilisent **pas la même clé de déduplication**, et c'est délibéré. Notch Pay signe ses callbacks : son identifiant de livraison suffit. Tranzak n'authentifie que par un secret dans le corps, donc rejouable avec un identifiant forgé — sa clé ne dépend que du fait rapporté.
+
+Le paiement Tranzak a produit la ligne `fee −3 XAF` attendue : la séparation brut / net est éprouvée contre du réel, ce que le bac à sable de Notch Pay ne permet pas.
 
 ---
 

@@ -112,6 +112,56 @@ La première version lisait `fee` et `amount_received` — aucun des deux n'exis
 
 `charge: "business"` indique que la commission est à la charge du marchand.
 
+## 2.0.2 Le corps des callbacks contredit la documentation
+
+Callback authentique reçu à travers un tunnel public :
+
+```json
+{
+  "id": "whc_test.RBbtPFQbBiIXebt7",
+  "event": "payment.complete",
+  "data": {
+    "status": "complete",
+    "reference": "trx.test_xRV6AHATJGClY8RGngx3efVK",
+    "merchant_reference": "SKU57352EA63744B5D4",
+    "trxref": "SKU57352EA63744B5D4",
+    "amount": 100, "fees": [], "charge": "business"
+  }
+}
+```
+
+La documentation annonce un champ `type` et un `data.id`. Le corps réel porte **`event`** et un **`id` de premier niveau**.
+
+La première version retombait donc systématiquement sur l'empreinte du corps comme clé de déduplication. Cela fonctionnait *par accident* — deux livraisons distinctes ont des corps distincts —, mais un **renvoi** de la même livraison, avec ne serait-ce qu'un horodatage différent, aurait été traité deux fois. `id` est un identifiant par livraison : c'est la bonne clé.
+
+## 2.0.3 Un paiement produit trois callbacks, dans un ordre variable
+
+Un seul paiement a déclenché `pending`, `processing` et `complete`. **L'ordre observé a changé d'un essai à l'autre** — une fois `processing` puis `pending`, une fois l'inverse.
+
+C'est la démonstration en conditions réelles de la règle « le corps ne décide jamais de l'issue » : croire le statut annoncé aurait fait régresser un paiement encaissé vers « en attente ». Le statut est relu chez l'agrégateur, et une intention réussie n'est jamais rétrogradée.
+
+## 2.0.4 Vérification de bout en bout
+
+Chaîne complète éprouvée contre le bac à sable, callbacks compris :
+
+| Étape | Constat |
+| --- | --- |
+| Signature HMAC-SHA256 sur le corps brut | Valide |
+| Déduplication par `id` de livraison | Trois livraisons, trois clés |
+| Rattachement à la tentative par `data.reference` | Trouvé |
+| Issue | Tentative et intention `succeeded`, facture `paid` 100/100 |
+| Registre | `charge +100 XAF` |
+
+Aucune ligne `fee` : le bac à sable renvoie `fees: []`. La commission reste le seul point non vérifié de cet adaptateur.
+
+Les callbacks arrivés sans tentative correspondante — sondes antérieures appelant l'adaptateur sans passer par `InitiatePayment` — ont été enregistrés, signalés `unknown_reference`, et **laissés visibles**. C'est le comportement voulu : un callback qu'on ne sait pas rattacher signale une erreur de configuration entre environnements, et doit se voir.
+
+## 2.0.5 URL de rappel par paiement
+
+Notch Pay accepte un champ `callback` à l'initialisation, qui prime sur celle du tableau de bord.
+
+C'est ce qui permet à plusieurs environnements de partager un compte marchand : le tableau de bord n'accepte qu'une URL. `NOTCHPAY_CALLBACK_URL` reste **vide par défaut** — une URL figée dans des transactions passées survivrait à un changement d'hébergement.
+
 ## 2.0.1 Le bac à sable a des numéros déterministes
 
 Ils ne sont pas dans la documentation — l'API les renvoie dans le message d'erreur d'un numéro non conforme.
@@ -309,6 +359,44 @@ Deux conséquences, non négociables :
 2. La déduplication par `(provider, provider_event_id)` devient une protection de sécurité, pas seulement de propreté.
 
 Ces règles s'appliquent d'ailleurs aussi à Notch Pay. La signature HMAC y rend le rejeu modifié impossible, mais le rejeu à l'identique reste possible — c'est ce que la contrainte d'unicité en base neutralise.
+
+## 3.3.1 Le corps réel d'un callback
+
+Callback authentique reçu à travers un tunnel public :
+
+```json
+{
+  "name": "Tranzak Payment Notification (TPN)",
+  "eventType": "REQUEST.COMPLETED",
+  "webhookId": "WHXBE74T9H7BCMHURDMQJG",
+  "resourceId": "REQ2608031551VZY4IDS",
+  "authKey": "…",
+  "resource": {
+    "amount": 100,
+    "status": "SUCCESSFUL",
+    "payer":    { "fee": 0, "amount": 100, "netAmountPaid": 100, "isGuest": true },
+    "merchant": { "fee": 3, "amount": 100, "netAmountReceived": 97 }
+  }
+}
+```
+
+Il porte un `webhookId` **par livraison** — le choix naturel comme clé de déduplication, et celui retenu pour Notch Pay.
+
+**Il n'est délibérément pas utilisé ici.** Notch Pay signe ses callbacks : un rejeu modifié y est impossible. Tranzak n'authentifie que par un secret partagé dans le corps ; un callback capté peut donc être rejoué avec un `webhookId` forgé, et serait traité une seconde fois. La clé retenue — `eventType` + ressource — ne dépend que du fait rapporté, et résiste à cela.
+
+Deux agrégateurs, deux clés, parce qu'ils n'offrent pas les mêmes garanties.
+
+## 3.3.2 Vérification de bout en bout
+
+| Étape | Constat |
+| --- | --- |
+| `authKey` dans le corps | Accepté |
+| Rattachement à la tentative par `resourceId` | Trouvé |
+| Relecture du statut chez Tranzak | `SUCCESSFUL` |
+| Issue | Tentative et intention `succeeded`, facture `paid` 100/100 |
+| Registre | `charge +100 XAF` **et `fee −3 XAF`** |
+
+La ligne de commission apparaît — ce que le bac à sable de Notch Pay ne peut pas produire, `fees` y étant toujours vide. La séparation brut / net est donc éprouvée **une fois**, contre Tranzak.
 
 ## 3.4 Commissions
 

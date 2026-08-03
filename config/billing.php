@@ -72,6 +72,11 @@ return [
         // secret partagé de Tranzak.
         'webhook_hash' => env('NOTCHPAY_WEBHOOK_HASH'),
 
+        // URL de rappel par paiement. Vide = celle du tableau de bord.
+        // Utile quand un seul compte marchand sert plusieurs environnements :
+        // le tableau de bord n'accepte qu'une URL.
+        'callback_url' => env('NOTCHPAY_CALLBACK_URL'),
+
         'timeout' => 20,
     ],
 
