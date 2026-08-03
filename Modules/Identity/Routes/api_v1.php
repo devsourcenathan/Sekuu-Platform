@@ -7,7 +7,10 @@ use Modules\Identity\Presentation\Http\Controllers\AuditLogController;
 use Modules\Identity\Presentation\Http\Controllers\AuthController;
 use Modules\Identity\Presentation\Http\Controllers\HealthController;
 use Modules\Identity\Presentation\Http\Controllers\InvitationController;
+use Modules\Identity\Presentation\Http\Controllers\OAuthController;
 use Modules\Identity\Presentation\Http\Controllers\OrganizationController;
+use Modules\Identity\Presentation\Http\Controllers\SessionController;
+use Modules\Identity\Presentation\Http\Controllers\UserController;
 use Modules\Identity\Presentation\Http\Controllers\WorkspaceController;
 use Modules\Identity\Presentation\Http\Controllers\WorkspaceMemberController;
 
@@ -54,6 +57,28 @@ Route::prefix('auth')->name('auth.')->group(function (): void {
 Route::middleware('auth:api')->group(function (): void {
     Route::get('organizations', [OrganizationController::class, 'index'])->name('organizations.index');
     Route::post('organizations', [OrganizationController::class, 'store'])->name('organizations.store');
+
+    // Profil : ces routes ne dépendent pas d'une organisation active.
+    Route::post('users/{user}/change-password', [UserController::class, 'changePassword'])
+        ->middleware('throttle:5,1')->name('users.change-password');
+
+    Route::get('sessions', [SessionController::class, 'index'])->name('sessions.index');
+    Route::delete('sessions/{session}', [SessionController::class, 'destroy'])->name('sessions.destroy');
+
+    Route::get('oauth/accounts', [OAuthController::class, 'index'])->name('oauth.accounts.index');
+    Route::delete('oauth/accounts/{account}', [OAuthController::class, 'destroy'])
+        ->name('oauth.accounts.destroy');
+});
+
+/*
+| Flux OAuth : routes publiques. La protection contre le CSRF repose sur le
+| paramètre `state`, à usage unique et vérifié côté serveur.
+*/
+Route::middleware('throttle:20,1')->group(function (): void {
+    Route::get('oauth/{provider}/redirect', [OAuthController::class, 'redirect'])
+        ->name('oauth.redirect');
+    Route::get('oauth/{provider}/callback', [OAuthController::class, 'callback'])
+        ->name('oauth.callback');
 });
 
 /*

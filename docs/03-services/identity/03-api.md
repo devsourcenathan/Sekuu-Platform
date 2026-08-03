@@ -119,6 +119,19 @@ Le refresh token n'apparaît pas dans le corps sur les clients web : il est pos�
 
 `GET /users` est **toujours** filtré sur l'organisation du token. Il n'existe aucune route listant tous les utilisateurs de la plateforme.
 
+## 3.1 Changement de mot de passe
+
+Un utilisateur ne peut changer que **son propre** mot de passe, quel que soit son rôle : un administrateur passe par la réinitialisation. Tout autre `{id}` renvoie `403` / `FORBIDDEN`.
+
+L'appelant fournit `current_password` et `password`. Différence avec la réinitialisation :
+
+| | Réinitialisation | Changement depuis le profil |
+| --- | --- | --- |
+| Preuve apportée | Maîtrise de la boîte mail | Connaissance du mot de passe actuel |
+| Sessions révoquées | **Toutes**, sans exception | Toutes **sauf** la session courante |
+
+Dans les deux cas, les 5 derniers mots de passe sont refusés (`422` / `PASSWORD_RECENTLY_USED`).
+
 ---
 
 # 4. Organisations
@@ -261,7 +274,43 @@ Ces ressources sont en lecture seule : les rôles système ne sont pas modifiabl
 | `GET` | `/oauth/accounts` | auth | Comptes externes liés |
 | `DELETE` | `/oauth/accounts/{id}` | auth | Délier un compte |
 
-Délier le dernier moyen de connexion d'un compte sans mot de passe renvoie `409` / `RESOURCE_CONFLICT`.
+## 10.1 Démarrage du flux
+
+`redirect` ne renvoie **pas** de redirection HTTP : l'API est consommée par des clients web et mobiles qui pilotent eux-mêmes la navigation.
+
+```json
+{
+  "success": true,
+  "data": {
+    "authorization_url": "https://accounts.google.com/o/oauth2/auth?…",
+    "state": "…"
+  },
+  "meta": { "request_id": "req_8b94d7d0" }
+}
+```
+
+Le paramètre `state` protège du CSRF. L'API étant sans état, il est conservé côté serveur (cache, 10 minutes), lié au fournisseur, et **à usage unique** : rejoué, expiré, ou présenté sur un autre fournisseur, il renvoie `400` / `OAUTH_STATE_INVALID`.
+
+## 10.2 Rattachement à un compte existant
+
+C'est le point sensible du flux. Rattacher un compte sur la seule foi de l'adresse email permettrait une prise de contrôle si le fournisseur ne vérifie pas les adresses qu'il rapporte.
+
+| Situation | Comportement |
+| --- | --- |
+| Le lien `(provider, provider_id)` existe déjà | Connexion |
+| Aucun compte pour cette adresse | Création du compte, sans mot de passe |
+| Un compte existe, fournisseur **de confiance** | Rattachement automatique, adresse marquée vérifiée |
+| Un compte existe, fournisseur **non listé** | `409` / `OAUTH_EMAIL_TAKEN` — l'utilisateur doit se connecter et lier depuis son profil |
+
+La liste des fournisseurs de confiance est configurable (`IDENTITY_OAUTH_TRUSTED_PROVIDERS`) et vaut par défaut `google,microsoft,apple`.
+
+Un compte créé via un fournisseur non listé n'a **pas** son adresse marquée vérifiée.
+
+## 10.3 Déliaison
+
+Délier le dernier moyen de connexion d'un compte sans mot de passe renvoie `409` / `RESOURCE_CONFLICT` : l'utilisateur se retrouverait enfermé dehors.
+
+Le compte externe d'un autre utilisateur renvoie `404`, jamais `403`.
 
 ---
 

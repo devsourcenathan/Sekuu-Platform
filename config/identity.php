@@ -47,6 +47,27 @@ return [
         'ttl' => (int) env('IDENTITY_SESSION_TTL', 2592000),
     ],
 
+    'oauth' => [
+        // Fournisseurs activés. Chacun doit avoir sa configuration dans
+        // config/services.php.
+        'providers' => array_values(array_filter(
+            explode(',', (string) env('IDENTITY_OAUTH_PROVIDERS', 'google,microsoft,github'))
+        )),
+
+        // Fournisseurs dont on accepte l'adresse email comme preuve
+        // d'identité, donc pour un rattachement automatique à un compte
+        // existant. En dehors de cette liste, l'utilisateur doit lier le
+        // fournisseur depuis son profil, une fois connecté : sinon, un
+        // fournisseur laxiste sur la vérification des emails permettrait une
+        // prise de contrôle de compte.
+        'trusted_email_providers' => array_values(array_filter(
+            explode(',', (string) env('IDENTITY_OAUTH_TRUSTED_PROVIDERS', 'google,microsoft,apple'))
+        )),
+
+        // Durée de validité du paramètre `state`, à usage unique.
+        'state_ttl' => (int) env('IDENTITY_OAUTH_STATE_TTL', 600),
+    ],
+
     'tokens' => [
         // Jetons d'action à usage unique.
         'password_reset_ttl' => (int) env('IDENTITY_PASSWORD_RESET_TTL', 3600),

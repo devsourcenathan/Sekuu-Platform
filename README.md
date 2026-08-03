@@ -121,10 +121,18 @@ SEKUU_DOMAIN_VERIFY=verify.sekuu.com
 
 | Module | État |
 | --- | --- |
-| **Identity** | Authentification, organisations, workspaces, invitations, journal d'audit, réinitialisation de mot de passe et vérification d'adresse |
+| **Identity** | **Complet** — authentification, OAuth, organisations, workspaces, invitations, sessions, mots de passe, vérification d'adresse, journal d'audit |
 | Verify · Notify · Billing · Storage · AI · Search · Analytics | Non démarrés |
 
-Reste à faire sur Identity : OAuth, changement de mot de passe depuis le profil, gestion des sessions.
+### OAuth
+
+Fournisseurs activés via `IDENTITY_OAUTH_PROVIDERS` (défaut `google,microsoft,github`), chacun configuré dans [`config/services.php`](config/services.php). Les identifiants proviennent de `.env` :
+
+```bash
+GOOGLE_CLIENT_ID= GOOGLE_CLIENT_SECRET=
+```
+
+`IDENTITY_OAUTH_TRUSTED_PROVIDERS` liste les fournisseurs dont l'adresse email suffit à rattacher un compte existant. En dehors de cette liste, l'utilisateur doit lier le fournisseur depuis son profil — sinon un fournisseur laxiste sur la vérification des emails permettrait une prise de contrôle de compte.
 
 Tant que **Notify** n'existe pas, aucun message n'est envoyé : les jetons d'invitation, de réinitialisation et de vérification sont renvoyés dans la réponse API en environnement local et de test uniquement.
 

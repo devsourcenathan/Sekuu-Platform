@@ -15,6 +15,8 @@ use Modules\Identity\Infrastructure\Console\GenerateJwtKeysCommand;
 use Modules\Identity\Infrastructure\Jwt\AccessTokenIssuer;
 use Modules\Identity\Infrastructure\Jwt\AccessTokenVerifier;
 use Modules\Identity\Infrastructure\Jwt\SigningKeys;
+use Modules\Identity\Infrastructure\OAuth\OAuthGateway;
+use Modules\Identity\Infrastructure\OAuth\SocialiteGateway;
 use Modules\Identity\Presentation\Http\Middleware\RequireOrganization;
 use Modules\Identity\Presentation\Http\Middleware\RequireScope;
 
@@ -71,6 +73,8 @@ final class IdentityServiceProvider extends ModuleServiceProvider
         );
 
         $this->app->singleton(JwtUserResolver::class);
+
+        $this->app->bind(OAuthGateway::class, SocialiteGateway::class);
 
         // Injectable directement dans les contrôleurs. La résolution part
         // toujours de la requête courante : rien n'est mémorisé dans le

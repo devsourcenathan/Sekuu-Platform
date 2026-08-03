@@ -603,8 +603,9 @@ Le vocabulaire des actions est fermé et stable — des rapports de conformité 
 user.registered            auth.login              auth.login_failed
 auth.logout                auth.logout_all         auth.organization_switched
 auth.token_replay_detected organization.created
-password.reset_requested   password.reset
-email.verification_sent    email.verified
+password.reset_requested   password.reset          password.changed
+email.verification_sent    email.verified          session.revoked
+oauth.linked               oauth.unlinked
 invitation.sent            invitation.accepted     invitation.revoked
 workspace.created          workspace.updated       workspace.deleted
 workspace.member_added     workspace.member_removed

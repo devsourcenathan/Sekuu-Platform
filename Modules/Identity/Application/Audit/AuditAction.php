@@ -34,6 +34,14 @@ final class AuditAction
 
     public const EMAIL_VERIFIED = 'email.verified';
 
+    public const PASSWORD_CHANGED = 'password.changed';
+
+    public const SESSION_REVOKED = 'session.revoked';
+
+    public const OAUTH_LINKED = 'oauth.linked';
+
+    public const OAUTH_UNLINKED = 'oauth.unlinked';
+
     public const ORGANIZATION_CREATED = 'organization.created';
 
     public const INVITATION_SENT = 'invitation.sent';
