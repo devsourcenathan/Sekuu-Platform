@@ -158,17 +158,41 @@ Détails et justification dans [ADR-0006](../../04-decisions/adr-0006-transactio
 Chaque canal accepte plusieurs fournisseurs, ordonnés par priorité.
 
 ```text
-email     →  postmark  →  ses          (bascule si le premier échoue)
-sms       →  operateur-local  →  twilio
+email     →  resend  →  postmark  →  mailer local
+sms       →  passerelle locale  →  twilio
 whatsapp  →  meta-cloud-api
 push      →  fcm
 ```
 
-Trois règles :
+Quatre règles :
 
 * Un fournisseur est une **implémentation d'interface**, jamais un appel direct depuis le domaine.
+* Un fournisseur **sans identifiants n'est pas essayé**. Le tenter produirait une tentative vouée à l'échec dans le journal de livraison, et masquerait les vraies pannes derrière du bruit. C'est ce qui permet de déclarer Resend en premier rang tout en développant sur le mailer local.
 * La bascule ne s'applique qu'aux erreurs **infrastructurelles** (timeout, 5xx). Un numéro invalide ne devient pas valide chez un autre opérateur.
 * Les identifiants proviennent du gestionnaire de secrets, jamais du dépôt.
+
+## 8.1 Deux chemins vers la liste de suppression
+
+Un rebond dur remonte normalement par webhook. Mais un fournisseur peut aussi **refuser l'envoi** parce qu'il sait déjà que l'adresse est morte — Postmark renvoie alors `InactiveRecipient`.
+
+Dans ce cas aucun webhook ne viendra : la suppression est inscrite au moment du rejet. Les deux chemins produisent exactement le même effet.
+
+Une distinction importante : un rejet **d'authentification** — clé absente ou révoquée — ne supprime jamais l'adresse. C'est un problème de configuration, pas de destinataire ; condamner l'adresse pour autant mettrait hors d'atteinte des comptes parfaitement valides.
+
+## 8.2 Mise en service du domaine expéditeur
+
+Le fournisseur ne suffit pas : le domaine d'expédition doit être vérifié chez lui, sinon les messages partent non signés et finissent en indésirables — auquel cas la liste de suppression ne mesure plus rien d'utile.
+
+Pour Resend et le domaine `sekuu.com` :
+
+1. Ajouter le domaine dans Resend, section *Domains*.
+2. Publier les enregistrements DNS proposés : **DKIM** (TXT), **Return-Path/MAIL FROM** (MX + TXT `SPF`), et **DMARC** (TXT sur `_dmarc.sekuu.com`).
+3. Attendre la vérification, puis renseigner `RESEND_API_KEY` et `RESEND_FROM`.
+4. Déclarer le webhook sur `https://notify.sekuu.com/api/v1/webhooks/resend` et reporter le secret dans `RESEND_WEBHOOK_SECRET`.
+
+Commencer DMARC en `p=none` : la politique stricte se durcit une fois les rapports propres, jamais avant.
+
+Sans l'étape 4, les rebonds ne remontent pas et la liste de suppression reste vide — le service semble fonctionner alors qu'il accumule une dette de délivrabilité invisible.
 
 Le contexte des marchés visés impose de traiter les opérateurs locaux comme des fournisseurs de premier rang, et non comme un cas particulier : sur ces marchés, un SMS acheminé localement est moins cher et mieux délivré qu'un SMS international.
 

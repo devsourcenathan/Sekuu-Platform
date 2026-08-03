@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Modules\Notify\Application\Delivery;
 
-use App\Platform\Events\DomainEvent;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -26,6 +25,8 @@ use Modules\Notify\Infrastructure\Webhooks\NormalisedDeliveryEvent;
  */
 final class RecordDeliveryEvent
 {
+    public function __construct(private readonly SuppressDestination $suppressor) {}
+
     public function handle(string $provider, NormalisedDeliveryEvent $event): ?NotificationEvent
     {
         $delivery = $event->providerMessageId === null
@@ -146,33 +147,7 @@ final class RecordDeliveryEvent
             default => Suppression::HARD_BOUNCE,
         };
 
-        $normalised = Suppression::normalise($destination);
-
-        $alreadySuppressed = Suppression::query()
-            ->where('channel', $channel)
-            ->where('destination', $normalised)
-            ->whereNull('expires_at')
-            ->exists();
-
-        if ($alreadySuppressed) {
-            return;
-        }
-
-        Suppression::create([
-            'channel' => $channel,
-            'destination' => $normalised,
-            'reason' => $reason,
-            'source' => $provider,
-            'notification_id' => $notification?->id,
-        ]);
-
-        // Une adresse en rebond dur n'est plus un moyen de récupération de
-        // compte : Identity doit pouvoir en tenir compte.
-        event(new DomainEvent('notify.recipient.suppressed', [
-            'channel' => $channel,
-            'destination' => $normalised,
-            'reason' => $reason,
-        ], $notification?->organization_id));
+        $this->suppressor->handle($channel, $destination, $reason, $provider, $notification);
     }
 
     private static function isUniqueViolation(QueryException $e): bool

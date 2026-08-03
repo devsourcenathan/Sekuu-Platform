@@ -30,6 +30,15 @@ final class LaravelMailProvider implements MessageProvider
         return Channel::EMAIL;
     }
 
+    /**
+     * Le mailer de Laravel est toujours disponible : il sert de dernier
+     * recours, y compris sur le driver `log` en développement.
+     */
+    public function isConfigured(): bool
+    {
+        return true;
+    }
+
     public function send(Notification $notification): ProviderResult
     {
         try {

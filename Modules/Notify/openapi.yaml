@@ -102,7 +102,7 @@ paths:
         - name: provider
           in: path
           required: true
-          schema: { type: string, enum: [postmark, local-gateway] }
+          schema: { type: string, enum: [resend, postmark, local-gateway] }
       requestBody:
         required: true
         description: Format propre au fournisseur.

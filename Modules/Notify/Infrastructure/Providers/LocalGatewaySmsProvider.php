@@ -31,13 +31,16 @@ final class LocalGatewaySmsProvider implements MessageProvider
         return Channel::SMS;
     }
 
-    public function send(Notification $notification): ProviderResult
+    public function isConfigured(): bool
     {
         $config = (array) config('notify.sms.local_gateway');
 
-        if (empty($config['endpoint']) || empty($config['token'])) {
-            return ProviderResult::failed('CHANNEL_NOT_CONFIGURED', 'Local SMS gateway is not configured.');
-        }
+        return ! empty($config['endpoint']) && ! empty($config['token']);
+    }
+
+    public function send(Notification $notification): ProviderResult
+    {
+        $config = (array) config('notify.sms.local_gateway');
 
         try {
             $response = Http::withToken($config['token'])

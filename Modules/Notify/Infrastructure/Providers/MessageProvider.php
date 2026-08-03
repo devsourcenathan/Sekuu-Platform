@@ -18,5 +18,13 @@ interface MessageProvider
 
     public function channel(): string;
 
+    /**
+     * Un fournisseur sans identifiants n'est pas essayé du tout.
+     *
+     * Le tenter produirait une tentative vouée à l'échec dans le journal de
+     * livraison, et masquerait les vraies pannes derrière du bruit.
+     */
+    public function isConfigured(): bool;
+
     public function send(Notification $notification): ProviderResult;
 }

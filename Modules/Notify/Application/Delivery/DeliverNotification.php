@@ -12,6 +12,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Modules\Notify\Domain\Models\Notification;
 use Modules\Notify\Domain\Models\NotificationDelivery;
+use Modules\Notify\Domain\Models\Suppression;
 use Modules\Notify\Infrastructure\Providers\ProviderRegistry;
 use Modules\Notify\Infrastructure\Providers\ProviderResult;
 
@@ -47,7 +48,7 @@ final class DeliverNotification implements ShouldQueue
         return $this->notificationId;
     }
 
-    public function handle(ProviderRegistry $registry): void
+    public function handle(ProviderRegistry $registry, SuppressDestination $suppressor): void
     {
         $notification = Notification::query()->find($this->notificationId);
 
@@ -70,6 +71,20 @@ final class DeliverNotification implements ShouldQueue
                 $this->markSent($notification);
 
                 return;
+            }
+
+            // Le fournisseur sait que cette destination ne reçoit plus : rien
+            // ne remontera par webhook, il faut l'inscrire maintenant.
+            if ($lastResult->suppressesDestination) {
+                $suppressor->handle(
+                    channel: $notification->channel,
+                    destination: $notification->recipient,
+                    reason: $lastResult->errorCode === 'RECIPIENT_INVALID'
+                        ? Suppression::INVALID
+                        : Suppression::HARD_BOUNCE,
+                    source: $provider->name(),
+                    notification: $notification,
+                );
             }
 
             // Un rejet métier n'est pas rattrapable par un autre fournisseur.

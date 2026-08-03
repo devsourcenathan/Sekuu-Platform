@@ -25,13 +25,16 @@ final class TwilioSmsProvider implements MessageProvider
         return Channel::SMS;
     }
 
-    public function send(Notification $notification): ProviderResult
+    public function isConfigured(): bool
     {
         $config = (array) config('notify.sms.twilio');
 
-        if (empty($config['account_sid']) || empty($config['token'])) {
-            return ProviderResult::failed('CHANNEL_NOT_CONFIGURED', 'Twilio is not configured.');
-        }
+        return ! empty($config['account_sid']) && ! empty($config['token']);
+    }
+
+    public function send(Notification $notification): ProviderResult
+    {
+        $config = (array) config('notify.sms.twilio');
 
         $endpoint = sprintf(
             'https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json',

@@ -34,9 +34,9 @@ final class ProviderRegistry
      */
     public function forChannel(string $channel): array
     {
-        $classes = $this->providers[$channel] ?? [];
+        $providers = $this->configuredFor($channel);
 
-        if ($classes === []) {
+        if ($providers === []) {
             throw new DomainException(
                 'CHANNEL_NOT_CONFIGURED',
                 __('No provider is configured for the :channel channel.', ['channel' => $channel]),
@@ -44,11 +44,27 @@ final class ProviderRegistry
             );
         }
 
-        return array_map(fn (string $class) => $this->container->make($class), $classes);
+        return $providers;
     }
 
     public function hasChannel(string $channel): bool
     {
-        return ($this->providers[$channel] ?? []) !== [];
+        return $this->configuredFor($channel) !== [];
+    }
+
+    /**
+     * @return list<MessageProvider>
+     */
+    private function configuredFor(string $channel): array
+    {
+        $providers = array_map(
+            fn (string $class) => $this->container->make($class),
+            $this->providers[$channel] ?? [],
+        );
+
+        return array_values(array_filter(
+            $providers,
+            static fn (MessageProvider $provider) => $provider->isConfigured(),
+        ));
     }
 }

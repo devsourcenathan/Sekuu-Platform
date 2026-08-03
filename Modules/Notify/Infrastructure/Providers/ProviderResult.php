@@ -15,7 +15,28 @@ final readonly class ProviderResult
         public bool $retryable = false,
         public ?float $costAmount = null,
         public ?string $costCurrency = null,
+        /** Le fournisseur sait que cette destination ne reçoit plus. */
+        public bool $suppressesDestination = false,
     ) {}
+
+    /**
+     * Certains rejets valent constat de mort : le fournisseur a déjà enregistré
+     * un rebond dur sur cette adresse. Attendre un webhook qui ne viendra pas
+     * laisserait la liste de suppression incomplète.
+     */
+    public function suppressingDestination(): self
+    {
+        return new self(
+            $this->accepted,
+            $this->messageId,
+            $this->errorCode,
+            $this->errorMessage,
+            $this->retryable,
+            $this->costAmount,
+            $this->costCurrency,
+            suppressesDestination: true,
+        );
+    }
 
     public static function accepted(?string $messageId = null, ?float $cost = null, ?string $currency = null): self
     {

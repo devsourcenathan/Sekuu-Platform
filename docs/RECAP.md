@@ -62,9 +62,11 @@ Conséquence : un module ne formate jamais une erreur lui-même, et n'a rien à 
 
 **Branché sur Identity** — six événements produisent aujourd'hui de vrais messages : inscription, vérification d'adresse, réinitialisation, changement de mot de passe, invitation, création d'organisation.
 
-**Fournisseurs** — email : mailer Laravel. SMS : passerelle locale en premier rang, Twilio en bascule. Webhooks : Postmark (email) et passerelle locale (DLR SMS).
+**Fournisseurs** — email : **Resend** en premier rang, Postmark en bascule, mailer Laravel en dernier recours. SMS : passerelle locale en premier rang, Twilio en bascule. Webhooks : Resend (signature Svix), Postmark, passerelle locale (DLR SMS).
 
-**Non implémenté** — canaux WhatsApp, push et interne ; API d'envoi (`POST /notifications`) ; gestion des templates par API ; liens de désabonnement ; envois groupés ; fournisseur d'envoi Postmark (seul son webhook existe).
+Un fournisseur non configuré n'est jamais essayé : en développement, Resend est ignoré et le mailer Laravel prend la main sans configuration particulière.
+
+**Non implémenté** — canaux WhatsApp, push et interne ; API d'envoi (`POST /notifications`) ; gestion des templates par API ; liens de désabonnement ; envois groupés.
 
 Le déclenchement se fait donc **uniquement par événement de domaine** pour l'instant. C'est suffisant pour tous les besoins actuels, puisque aucun produit externe n'existe encore.
 
@@ -183,7 +185,7 @@ GET  /audit-logs                 →  trace des quatre étapes
 
 ## 8.1 Bloquant pour la production
 
-* **Un fournisseur email transactionnel** — le traitement des webhooks Postmark existe, mais l'envoi passe encore par le mailer Laravel. Tant que les messages ne partent pas par Postmark, aucun rebond ne remonte et la liste de suppression ne s'alimente pas.
+* **La mise en service du domaine expéditeur** — `sekuu.com` doit être vérifié chez Resend (DKIM, Return-Path, DMARC), puis `RESEND_API_KEY` et `RESEND_WEBHOOK_SECRET` renseignés. Sans cela les messages partent par le mailer Laravel, qui ne rapporte aucun rebond : le service paraît fonctionner tout en accumulant une dette de délivrabilité invisible. Procédure dans [Notify § 8.2](03-services/notify/01-overview.md).
 * **Redis** — pour les queues, le cache et la liste de révocation. Les envois passent aujourd'hui par la file `database`.
 * **Clés de signature** en gestionnaire de secrets, et procédure de rotation à 90 jours.
 * **CI** — la suite existe, rien ne l'exécute automatiquement.
