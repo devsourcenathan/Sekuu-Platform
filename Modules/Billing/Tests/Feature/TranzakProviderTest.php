@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Modules\Billing\Domain\AttemptStatus;
+use Modules\Billing\Domain\Models\PaymentAttempt;
 use Modules\Billing\Domain\Money;
 use Modules\Billing\Domain\Msisdn;
 use Modules\Billing\Infrastructure\Providers\ChargeRequest;
@@ -50,13 +51,24 @@ final class TranzakProviderTest extends TestCase
     }
 
     /**
-     * Le seul cas qui autorise une bascule : la demande a été refusée avant
-     * toute sollicitation du client.
+     * **Le statut HTTP ne fait pas autorité chez Tranzak.**
+     *
+     * Un refus de validation arrive en `HTTP 200` avec `success: false` —
+     * constaté contre le bac à sable. Classer par code HTTP rendait tous ces
+     * refus « incertains », donc non basculables : la mécanique de bascule
+     * était inerte.
+     *
+     * Réponse réelle du bac à sable pour un numéro non attribué.
      */
-    public function test_a_validation_error_is_a_rejection_and_allows_failover(): void
+    public function test_a_validation_refusal_arrives_as_http_200_and_allows_failover(): void
     {
         $this->fakeAuth();
-        Http::fake(['*create-mobile-wallet-charge' => Http::response(['errorMsg' => 'Numéro invalide'], 422)]);
+        Http::fake(['*create-mobile-wallet-charge' => Http::response([
+            'data' => [],
+            'success' => false,
+            'errorMsg' => 'Mobile phone number is invalid: +237000000000',
+            'errorCode' => 1002,
+        ], 200)]);
 
         $outcome = $this->provider->charge($this->request());
 
@@ -65,14 +77,86 @@ final class TranzakProviderTest extends TestCase
         $this->assertTrue($outcome->status->allowsFailover());
     }
 
-    public function test_a_failed_authentication_is_a_rejection(): void
+    /**
+     * Autre réponse réelle du bac à sable : `errorCode` vaut `null`.
+     *
+     * C'est pourquoi la décision ne repose pas sur une liste de codes — ils
+     * vont de `1002` à `40022` en passant par `0` et `null`, et une liste
+     * incomplète échouerait « ouvert ».
+     */
+    public function test_a_refusal_without_an_error_code_is_still_a_rejection(): void
     {
-        Http::fake(['*auth/token' => Http::response(['message' => 'refusé'], 401)]);
+        $this->fakeAuth();
+        Http::fake(['*create-mobile-wallet-charge' => Http::response([
+            'data' => [],
+            'success' => false,
+            'errorMsg' => 'Amount the must be greater than zero.',
+            'errorCode' => null,
+        ], 200)]);
+
+        $this->assertTrue($this->provider->charge($this->request())->status->allowsFailover());
+    }
+
+    /**
+     * Un refus **accompagné** d'une référence signifie qu'une transaction
+     * existe : le client a pu être sollicité, donc aucune bascule.
+     */
+    public function test_a_refusal_carrying_a_reference_blocks_failover(): void
+    {
+        $this->fakeAuth();
+        Http::fake(['*create-mobile-wallet-charge' => Http::response([
+            'data' => ['requestId' => 'req-1'],
+            'success' => false,
+            'errorMsg' => 'Rejeté',
+        ], 200)]);
+
+        $outcome = $this->provider->charge($this->request());
+
+        $this->assertSame(AttemptStatus::Failed, $outcome->status);
+        $this->assertFalse($outcome->status->allowsFailover());
+    }
+
+    /**
+     * L'authentification échoue elle aussi en `HTTP 200` : `->throw()` ne
+     * l'aurait jamais vue. Réponse réelle du bac à sable.
+     */
+    public function test_a_failed_authentication_arrives_as_http_200_and_is_a_rejection(): void
+    {
+        Http::fake(['*auth/token' => Http::response([
+            'data' => [],
+            'errorMsg' => 'Authentication Error',
+            'errorCode' => 40022,
+            'success' => false,
+        ], 200)]);
 
         $outcome = $this->provider->charge($this->request());
 
         $this->assertSame(AttemptStatus::Rejected, $outcome->status);
         $this->assertSame('PROVIDER_AUTH_FAILED', $outcome->failureCode);
+    }
+
+    /**
+     * Au sondage, `success: false` n'a pas le même sens qu'au débit : Tranzak
+     * ne sait pas répondre sur cette transaction, il n'a pas refusé une
+     * demande. Rétrograder la tentative en `rejected` rouvrirait la bascule
+     * alors que l'invite est peut-être partie.
+     */
+    public function test_polling_an_unknown_reference_never_downgrades_to_rejected(): void
+    {
+        $this->fakeAuth();
+        Http::fake(['*request/details' => Http::response([
+            'data' => [],
+            'success' => false,
+            'errorMsg' => 'The requested resource was not found.',
+            'errorCode' => 0,
+        ], 200)]);
+
+        $attempt = new PaymentAttempt(['provider_ref' => 'req-1']);
+
+        $outcome = $this->provider->poll($attempt);
+
+        $this->assertFalse($outcome->status->allowsFailover());
+        $this->assertTrue($outcome->customerPrompted);
     }
 
     /**
@@ -129,9 +213,12 @@ final class TranzakProviderTest extends TestCase
     }
 
     /**
-     * `CANCELLED` — annulation système — est ambigu. Faute de certitude sur son
-     * sens exact, il est traité comme un échec et **non** comme un rejet : cela
-     * interdit la bascule.
+     * `CANCELLED` reste traité comme un échec, jamais comme un rejet.
+     *
+     * Le bac à sable a montré qu'il ne se produit **pas** sur ce flux : une
+     * annulation ressort en `FAILED` / `TXN_CANCELLED`. La correspondance est
+     * conservée par prudence — un statut documenté qu'on n'a jamais observé
+     * reste un statut possible.
      */
     public function test_a_system_cancellation_is_treated_as_a_failure_not_a_rejection(): void
     {
@@ -140,6 +227,28 @@ final class TranzakProviderTest extends TestCase
         $outcome = $this->provider->charge($this->request());
 
         $this->assertSame(AttemptStatus::Failed, $outcome->status);
+        $this->assertFalse($outcome->status->allowsFailover());
+    }
+
+    /**
+     * Forme réelle d'une annulation dans le bac à sable : `success: true` au
+     * sommet, statut `FAILED`, et le motif dans `errorMessage` — pas dans
+     * `statusMessage`, qui n'existe pas.
+     */
+    public function test_a_cancelled_request_reports_its_real_reason(): void
+    {
+        $this->fakeCharge([
+            'requestId' => 'req-1',
+            'status' => 'FAILED',
+            'transactionStatus' => 'FAILED',
+            'errorCode' => 3008,
+            'errorMessage' => 'TXN_CANCELLED',
+        ]);
+
+        $outcome = $this->provider->charge($this->request());
+
+        $this->assertSame(AttemptStatus::Failed, $outcome->status);
+        $this->assertSame('TXN_CANCELLED', $outcome->failureReason);
         $this->assertFalse($outcome->status->allowsFailover());
     }
 
@@ -156,22 +265,51 @@ final class TranzakProviderTest extends TestCase
         $this->assertFalse($outcome->status->allowsFailover());
     }
 
-    public function test_a_success_carries_the_three_amounts(): void
+    /**
+     * Forme réelle d'un paiement abouti dans le bac à sable.
+     *
+     * **La commission vit dans `merchant`, pas à la racine.** La première
+     * version la cherchait au sommet : elle ressortait toujours nulle, et la
+     * ligne `fee` du registre n'était jamais écrite — toute la séparation
+     * brut / net du module restait inerte.
+     *
+     * Et surtout pas `payer.fee`, qui porte la part éventuellement mise à la
+     * charge du client : ici 0, contre 3 côté marchand. Lire l'une pour l'autre
+     * enregistrerait un chiffre faux.
+     */
+    public function test_a_success_reads_the_fee_from_the_merchant_section(): void
     {
         $this->fakeCharge([
             'requestId' => 'req-1',
             'status' => 'SUCCESSFUL',
-            'amount' => 45000,
-            'merchantFee' => 900,
-            'netAmountReceived' => 44100,
+            'amount' => 100,
+            'mchTransactionRef' => 'SKUTESTREFERENCE1',
+            'payer' => ['amount' => 100, 'fee' => 0, 'netAmountPaid' => 100],
+            'merchant' => ['amount' => 100, 'fee' => 3, 'netAmountReceived' => 97],
         ]);
 
         $outcome = $this->provider->charge($this->request());
 
         $this->assertSame(AttemptStatus::Succeeded, $outcome->status);
-        $this->assertSame(45000, $outcome->grossAmount);
-        $this->assertSame(900, $outcome->feeAmount);
-        $this->assertSame(44100, $outcome->netAmount);
+        $this->assertSame(100, $outcome->grossAmount);
+        $this->assertSame(3, $outcome->feeAmount);
+        $this->assertSame(97, $outcome->netAmount);
+    }
+
+    /**
+     * Un paiement abouti sans section `merchant` ne doit pas faire échouer la
+     * lecture : la facture se règle sur le brut, la commission est simplement
+     * inconnue.
+     */
+    public function test_a_success_without_a_merchant_section_still_settles(): void
+    {
+        $this->fakeCharge(['requestId' => 'req-1', 'status' => 'SUCCESSFUL', 'amount' => 100]);
+
+        $outcome = $this->provider->charge($this->request());
+
+        $this->assertSame(AttemptStatus::Succeeded, $outcome->status);
+        $this->assertSame(100, $outcome->grossAmount);
+        $this->assertNull($outcome->feeAmount);
     }
 
     /**
@@ -221,7 +359,13 @@ final class TranzakProviderTest extends TestCase
 
     private function fakeAuth(): void
     {
-        Http::fake(['*auth/token' => Http::response(['data' => ['token' => 'jeton']])]);
+        // Forme réelle du bac à sable : enveloppe `data`, `success` au sommet,
+        // `expiresIn` de 7200 s — d'où la mise en cache à 90 min, soit 75 % de
+        // la validité comme le recommande Tranzak.
+        Http::fake(['*auth/token' => Http::response([
+            'data' => ['token' => 'jeton', 'expiresIn' => 7200, 'scope' => 'collections'],
+            'success' => true,
+        ])]);
     }
 
     /**
@@ -231,7 +375,7 @@ final class TranzakProviderTest extends TestCase
     {
         Http::fake([
             '*auth/token' => Http::response(['data' => ['token' => 'jeton']]),
-            '*create-mobile-wallet-charge' => Http::response(['data' => $data]),
+            '*create-mobile-wallet-charge' => Http::response(['data' => $data, 'success' => true]),
         ]);
     }
 }

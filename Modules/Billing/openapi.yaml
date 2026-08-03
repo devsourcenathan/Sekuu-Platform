@@ -585,13 +585,19 @@ paths:
       tags: [Webhooks]
       summary: Callback d'un agrégateur
       description: |
-        Publique au sens réseau, authentifiée par signature ou secret partagé.
+        Publique au sens réseau, authentifiée selon le schéma propre à chaque
+        agrégateur :
 
-        **Un callback n'est jamais cru sur parole.** Il déclenche une relecture
-        du statut chez l'agrégateur, il ne le dicte pas. Chez Tranzak,
-        l'authentification passe par un `authKey` transporté dans le corps :
-        cela prouve que l'émetteur connaît le secret, jamais que le corps est
-        intact — un callback intercepté peut être rejoué modifié.
+        - **Notch Pay** — HMAC-SHA256 sur le corps brut, en-tête
+          `x-notch-signature`. Une modification en transit est détectable.
+        - **Tranzak** — `authKey` transporté dans le corps. Cela prouve que
+          l'émetteur connaît le secret, jamais que le corps est intact : un
+          callback intercepté peut être rejoué modifié.
+
+        **Un callback n'est jamais cru sur parole**, quel que soit son schéma
+        d'authentification. Il déclenche une relecture du statut chez
+        l'agrégateur, il ne le dicte pas. Une signature valide prouve l'origine,
+        pas que le paiement a réussi.
 
         Une signature invalide renvoie `401`, et le callback est **tout de même
         enregistré** : le jeter en silence priverait de toute trace en cas de
@@ -609,7 +615,7 @@ paths:
         - name: provider
           in: path
           required: true
-          schema: { type: string, enum: [tranzak] }
+          schema: { type: string, enum: [notchpay, tranzak] }
       requestBody:
         content:
           application/json:
@@ -866,7 +872,7 @@ components:
     PaymentAttempt:
       type: object
       properties:
-        provider: { type: string, example: tranzak }
+        provider: { type: string, enum: [notchpay, tranzak] }
         status:
           type: string
           enum: [created, rejected, prompted, processing, succeeded, failed, expired]

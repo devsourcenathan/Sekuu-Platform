@@ -90,6 +90,18 @@
     {
       "key": "unsubscribe_token",
       "value": ""
+    },
+    {
+      "key": "plan_key",
+      "value": ""
+    },
+    {
+      "key": "invoice_id",
+      "value": ""
+    },
+    {
+      "key": "payment_id",
+      "value": ""
     }
   ],
   "item": [
@@ -3404,6 +3416,732 @@
                   "pm.test('400 UNSUBSCRIBE_TOKEN_INVALID', function () {",
                   "  pm.response.to.have.status(400);",
                   "  pm.expect(pm.response.json().error.code).to.eql('UNSUBSCRIBE_TOKEN_INVALID');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "12 — Billing",
+      "description": "Plans, abonnements prepayes, factures et paiements Mobile Money.\n\nCette API ne repond **jamais** a la question « ai-je acces a ce produit ? ». Elle se pose a Identity, sur `organization_products` : y repondre ici creerait une seconde verite.\n\nDeux decisions gouvernent tout le reste. Les abonnements sont **prepayes** (ADR-0007), parce qu'aucun prelevement automatique n'existe en Mobile Money. Et la bascule entre agregateurs est **volontairement etroite** (ADR-0008) : on ne reessaie ailleurs que si l'invite n'est jamais partie sur le telephone du client.\n\nTous les montants sont des entiers, en plus petite unite de leur devise. **Le franc CFA n'a pas de centime** : 45 000 XAF s'ecrit 45000.",
+      "item": [
+        {
+          "name": "Sante du service",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/billing/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "billing",
+                "health"
+              ]
+            },
+            "description": "Indique quels agregateurs sont **reellement configures**. Un agregateur sans identifiants n'est jamais essaye.\n\n`can_collect` a false signifie qu'aucun paiement ne peut aboutir : sur un modele prepaye, ne plus encaisser ferme les acces un par un.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Service operationnel', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('Agregateurs listes', () => pm.expect(d).to.have.property('providers'));",
+                  "if (!d.can_collect) console.log('Aucun agregateur configure : aucun paiement ne partira.');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Catalogue des plans",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/plans",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "plans"
+              ]
+            },
+            "description": "**Public, sans authentification** : une page de tarifs doit etre lisible avant d'avoir un compte.\n\nIl n'y a pas de creation : les plans sont versionnes avec le code, comme les templates de plateforme de Notify. Changer un prix consiste a archiver l'ancien tarif, une operation de migration.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Catalogue lisible', () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json().data.find(x => x.key === 'clinic-pro');",
+                  "if (p) pm.collectionVariables.set('plan_key', p.key);",
+                  "pm.test('Le franc CFA n a pas de centime', function () {",
+                  "  pm.expect(p.prices[0].currency_exponent).to.eql(0);",
+                  "  pm.expect(p.prices[0].amount).to.eql(45000);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Detail d'un plan",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/plans/{{plan_key}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "plans",
+                "{{plan_key}}"
+              ]
+            },
+            "description": "Les plans non publics n'apparaissent jamais, y compris pour l'organisation qui en beneficie : leur existence est une information commerciale.",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Souscrire",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/subscription",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "subscription"
+              ]
+            },
+            "description": "Exige le role **Owner ou Admin** : engager une depense n'est pas une action de membre ordinaire.\n\n**Souscrire ne donne pas l'acces.** Sans essai, la souscription produit une facture et l'abonnement reste `pending` ; c'est le paiement qui ouvre le produit. Ouvrir d'abord et facturer ensuite reviendrait a accorder un credit a un inconnu.\n\n`pending` n'est pas `suspended` : un abonnement jamais paye n'a jamais rien eu a perdre.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plan_key\": \"clinic-pro\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 creee', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data;",
+                  "if (d.invoice) pm.collectionVariables.set('invoice_id', d.invoice.id);",
+                  "pm.test('Statut coherent', () => pm.expect(['pending','trialing']).to.include(d.subscription.status));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Abonnement courant",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/subscription",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "subscription"
+              ]
+            },
+            "description": "Ouvert a **tout membre** : un utilisateur doit pouvoir comprendre pourquoi une fonctionnalite lui est refusee sans avoir a demander a son patron.\n\n`access_open` est un **confort d'affichage, pas une autorisation**. La source de verite est `organization_products`, cote Identity.\n\n`grace` signifie periode echue avec acces **encore ouvert** : sans grace, un oubli d'une journee deviendrait une interruption d'activite.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Abonnement lisible', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('Solde de credit expose', () => pm.expect(d).to.have.property('credit_balance'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Changer de plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/subscription/change",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "subscription",
+                "change"
+              ]
+            },
+            "description": "Le sens commande le comportement, et la reponse le dit explicitement plutot que de laisser deviner.\n\n**Montee en gamme** : immediate. Le reliquat paye devient un credit imputé sur une facture de difference — jamais un remboursement, lent et couteux en Mobile Money.\n\n**Descente en gamme** : differee au terme. La periode en cours est payee ; l'ecourter obligerait a rembourser.\n\nUne descente est refusee si l'usage depasse le plan vise. Appliquer signifierait supprimer des workspaces du client, et aucun formulaire de facturation ne devrait pouvoir detruire des donnees.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plan_key\": \"business\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('Le sens est explicite', () => pm.expect(['upgrade','downgrade']).to.include(body.data.direction));",
+                  "  if (body.data.invoice) pm.collectionVariables.set('invoice_id', body.data.invoice.id);",
+                  "}",
+                  "if (pm.response.code === 409) {",
+                  "  pm.test('DOWNGRADE_NOT_ALLOWED detaille chaque limite', () => pm.expect(body.error.details).to.be.an('array'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Renouveler",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/subscription/renew",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "subscription",
+                "renew"
+              ]
+            },
+            "description": "**L'acte volontaire qui remplace la reconduction tacite.** Il n'existe aucun moyen technique de prelever un client en Mobile Money : la plateforme previent, le client paie.\n\nAppelable pendant la periode en cours — le temps s'ajoute, il ne se perd pas — comme pendant la grace.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('invoice_id', pm.response.json().data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resilier",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/subscription/cancel",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "subscription",
+                "cancel"
+              ]
+            },
+            "description": "Resilier **ne coupe pas l'acces** : la periode est payee. Couper immediatement obligerait a rembourser.\n\nLe motif est libre et facultatif : une liste fermee produit des statistiques flatteuses et sans valeur.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"trop cher\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Acces maintenu jusqu au terme', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.access_open).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Annuler la resiliation",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/subscription/resume",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "subscription",
+                "resume"
+              ]
+            },
+            "description": "Possible tant que le terme n'est pas atteint.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Historique des abonnements",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/subscription/history",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "subscription",
+                "history"
+              ]
+            },
+            "description": "Une organisation n'a qu'un abonnement **vivant**, mais en a necessairement plusieurs dans son historique.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Factures",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/invoices?per_page=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "invoices"
+              ],
+              "query": [
+                {
+                  "key": "per_page",
+                  "value": "20"
+                },
+                {
+                  "key": "filter[status]",
+                  "value": "open",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Aucune creation directe : une facture est la consequence d'une souscription, d'un changement de plan ou d'un renouvellement.\n\nAucune suppression non plus : une facture emise s'annule. La numerotation doit rester sans trou — un trou est une question a laquelle il faudra repondre lors d'un controle.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Factures listees', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "if (d.length) pm.collectionVariables.set('invoice_id', d[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Detail d'une facture",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/invoices/{{invoice_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "invoices",
+                "{{invoice_id}}"
+              ]
+            },
+            "description": "Le credit apparait comme une **ligne**, pas comme une soustraction silencieuse : un client doit pouvoir verifier son total a la main.\n\n`tax_rate` est **fige a l'emission** : si le taux change, les factures passees continuent d'afficher ce qui a ete reellement facture.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Facture lisible', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('Total recomposable a la main', function () {",
+                  "  pm.expect(d.total).to.eql(d.subtotal + d.tax_amount - d.credit_applied);",
+                  "});",
+                  "pm.test('TVA figee a l emission', () => pm.expect(d.tax_rate).to.eql(0.1925));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Telecharger une facture (503 attendu)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/invoices/{{invoice_id}}/download",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "invoices",
+                "{{invoice_id}}",
+                "download"
+              ]
+            },
+            "description": "Renverra une URL signee de Storage, qui n'existe pas encore.\n\n`503` franc plutot qu'un PDF genere a la volee dont personne ne garantit qu'il sera identique demain — pour un document legal, c'est un probleme.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('503 tant que Storage n existe pas', () => pm.response.to.have.status(503));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Payer une facture",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments"
+              ]
+            },
+            "description": "Exige **Owner ou Admin**.\n\n**Le montant n'est pas dans le corps** : il vient de la facture. L'accepter de l'appelant permettrait de regler 49 663 XAF avec 100 XAF — c'est une faille, pas une commodite.\n\n**L'agregateur non plus** : c'est un detail d'exploitation, et l'exposer figerait l'ordre de priorite dans les interfaces clientes. L'operateur, lui, est deduit du prefixe du numero — c'est un fait, pas un choix.\n\n`202` et non `201` : ce qui est cree est une **intention**. Sonder ensuite `GET /payments/{id}`.\n\nNumeros deterministes du bac a sable Notch Pay : `+237670000000` succes, `+237670000002` echec, `+237670000003` temporisation, `+237670000004` annule. Montant minimum : 5 XAF.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"invoice_id\": \"{{invoice_id}}\",\n  \"msisdn\": \"+237670000000\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 acceptee', () => pm.response.to.have.status(202));",
+                  "const d = pm.response.json().data;",
+                  "pm.collectionVariables.set('payment_id', d.id);",
+                  "pm.test('Operateur deduit du numero', () => pm.expect(d.operator).to.eql('mtn'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Statut d'un paiement",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/{{payment_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "{{payment_id}}"
+              ]
+            },
+            "description": "Fait pour etre **sonde**, toutes les 3 a 5 secondes ; `Retry-After` accompagne la reponse tant que le statut n'est pas definitif.\n\n`expired` n'est **pas** `failed` : il signifie *on ne sait pas*. Un paiement dont on ignore l'issue peut avoir ete encaisse ; le traiter comme un echec risquerait de facturer deux fois.\n\n`attempts[].customer_prompted` explique pourquoi la bascule s'est arretee la : une fois l'invite partie sur le telephone, on n'essaie plus ailleurs.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut lisible', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "if (d.attempts) console.log('Tentatives : ' + d.attempts.map(a => a.provider + '=' + a.status).join(', '));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Historique des paiements",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments"
+              ]
+            },
+            "description": "Intentions de paiement de l'organisation.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Callback a signature invalide (401 attendu)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-notch-signature",
+                "value": "signature-invalide"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/billing/webhooks/notchpay",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "billing",
+                "webhooks",
+                "notchpay"
+              ]
+            },
+            "description": "Publique au sens reseau, authentifiee par signature.\n\nNotch Pay signe en **HMAC-SHA256 sur le corps brut** (`x-notch-signature`). Tranzak se contente d'un `authKey` dans le corps : cela prouve que l'emetteur connait le secret, jamais que le corps est intact.\n\n**Un callback n'est jamais cru sur parole** : le statut est relu chez l'agregateur. Une signature valide prouve l'origine, pas que le paiement a reussi.\n\nUne signature invalide est refusee **mais enregistree** : la jeter en silence priverait de toute trace en cas de tentative de fraude.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"payment.complete\",\n  \"data\": { \"id\": \"trx.test\" }\n}"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 WEBHOOK_SIGNATURE_INVALID', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('WEBHOOK_SIGNATURE_INVALID');",
                   "});"
                 ]
               }

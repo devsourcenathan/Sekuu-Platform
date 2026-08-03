@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use Modules\Billing\Infrastructure\Providers\NotchPayProvider;
 use Modules\Billing\Infrastructure\Providers\TranzakProvider;
+use Modules\Billing\Infrastructure\Webhooks\NotchPayWebhookHandler;
 use Modules\Billing\Infrastructure\Webhooks\TranzakWebhookHandler;
 
 /*
@@ -33,6 +35,7 @@ return [
     */
 
     'providers' => [
+        NotchPayProvider::class,
         TranzakProvider::class,
     ],
 
@@ -48,7 +51,28 @@ return [
     */
 
     'webhooks' => [
+        'notchpay' => NotchPayWebhookHandler::class,
         'tranzak' => TranzakWebhookHandler::class,
+    ],
+
+    'notchpay' => [
+        'base_url' => env('NOTCHPAY_BASE_URL', 'https://api.notchpay.co'),
+
+        // `Authorization` porte la clé **publique**, sans préfixe `Bearer`.
+        // Une clé de test est préfixée `test_`.
+        'public_key' => env('NOTCHPAY_PUBLIC_KEY'),
+
+        // `X-Grant`. Exigé sur les soldes et les transferts uniquement — les
+        // paiements n'en ont pas besoin. Renseigné ici pour le jour où le
+        // module décaissera.
+        'private_key' => env('NOTCHPAY_PRIVATE_KEY'),
+
+        // Clé de signature des callbacks : HMAC-SHA256 sur le corps brut,
+        // en-tête `x-notch-signature`. Une vraie signature, contrairement au
+        // secret partagé de Tranzak.
+        'webhook_hash' => env('NOTCHPAY_WEBHOOK_HASH'),
+
+        'timeout' => 20,
     ],
 
     'tranzak' => [

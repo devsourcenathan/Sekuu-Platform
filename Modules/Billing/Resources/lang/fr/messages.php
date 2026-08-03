@@ -24,6 +24,7 @@ return [
     'payment_already_pending' => 'Un paiement est déjà en cours sur cette facture.',
     'payment_failed' => 'Le paiement a été refusé.',
     'payment_cancelled' => 'Le paiement a été annulé.',
+    'payment_expired' => 'La demande de paiement a expiré sans réponse.',
     'payment_cancelled_by_payer' => 'Vous avez annulé le paiement.',
     'payment_unresolved' => "L'agrégateur n'a pas confirmé l'issue de ce paiement.",
     'payment_instructions' => 'Validez la demande sur votre téléphone, ou composez le code de votre opérateur.',

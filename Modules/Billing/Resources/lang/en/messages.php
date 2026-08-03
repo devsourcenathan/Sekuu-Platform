@@ -24,6 +24,7 @@ return [
     'payment_already_pending' => 'A payment is already in progress for this invoice.',
     'payment_failed' => 'The payment was declined.',
     'payment_cancelled' => 'The payment was cancelled.',
+    'payment_expired' => 'The payment request expired without an answer.',
     'payment_cancelled_by_payer' => 'You cancelled the payment.',
     'payment_unresolved' => 'The aggregator never confirmed the outcome of this payment.',
     'payment_instructions' => 'Approve the request on your phone, or dial your operator code.',

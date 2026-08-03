@@ -56,6 +56,9 @@
         <env name="TRANZAK_APP_ID" value=""/>
         <env name="TRANZAK_APP_KEY" value=""/>
         <env name="TRANZAK_AUTH_KEY" value=""/>
+        <env name="NOTCHPAY_PUBLIC_KEY" value=""/>
+        <env name="NOTCHPAY_PRIVATE_KEY" value=""/>
+        <env name="NOTCHPAY_WEBHOOK_HASH" value=""/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>

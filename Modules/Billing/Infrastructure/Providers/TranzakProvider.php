@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Modules\Billing\Domain\Models\PaymentAttempt;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -90,27 +91,47 @@ final class TranzakProvider implements PaymentProvider
             return ChargeOutcome::unknown($exception->getMessage());
         }
 
-        // Erreurs d'authentification et de validation : la demande a été
-        // refusée avant toute sollicitation du client.
-        if (in_array($response->status(), [400, 401, 403, 422], true)) {
-            return ChargeOutcome::rejected(
-                'PROVIDER_REJECTED',
-                $this->errorMessage($response->json()),
-                $this->rawStatus($response->json()),
-            );
-        }
-
-        if ($response->failed()) {
+        if ($response->serverError()) {
             // 5xx : Tranzak a peut-être traité la demande avant d'échouer.
             return ChargeOutcome::unknown('HTTP '.$response->status());
         }
 
-        $data = $this->data($response->json());
+        $body = $response->json();
+        $data = $this->data($body);
         $providerRef = $this->providerRef($data);
 
+        // **Le statut HTTP ne fait pas autorité chez Tranzak.** Un refus de
+        // validation arrive en HTTP 200 avec `success: false` — vérifié contre
+        // le bac à sable. Classer par code HTTP rendait tous ces refus
+        // « incertains », donc non basculables : la mécanique de bascule était
+        // inerte.
+        if ($this->refused($body)) {
+            // Tranzak ne peut pas avoir sollicité un client pour une demande
+            // qu'il a refusé de créer : sans référence de transaction, il n'y a
+            // pas de transaction. C'est un fait observable, préférable à une
+            // liste blanche de codes d'erreur — ceux-ci varient (1002, 40022,
+            // 401, 0, null) et une liste incomplète échouerait « ouvert ».
+            if ($providerRef === null) {
+                return ChargeOutcome::rejected(
+                    'PROVIDER_REJECTED',
+                    $this->errorMessage($body),
+                    $this->errorCode($body),
+                );
+            }
+
+            // Refus **avec** une référence : une transaction existe, donc le
+            // client a pu être sollicité. Aucune bascule.
+            return ChargeOutcome::failed(
+                'PAYMENT_FAILED',
+                $this->errorMessage($body),
+                $providerRef,
+                $this->errorCode($body),
+            );
+        }
+
         if ($providerRef === null) {
-            // Réponse acceptée sans référence : on ne pourra plus rien
-            // retrouver. Traité comme incertain, jamais comme un rejet.
+            // Acceptée sans référence : on ne pourra plus rien retrouver.
+            // Traité comme incertain, jamais comme un rejet.
             return ChargeOutcome::unknown('Réponse sans identifiant de transaction.');
         }
 
@@ -138,7 +159,17 @@ final class TranzakProvider implements PaymentProvider
             return ChargeOutcome::unknown('HTTP '.$response->status(), $attempt->provider_ref);
         }
 
-        return $this->translate($this->data($response->json()), $attempt->provider_ref);
+        $body = $response->json();
+
+        // Au sondage, `success: false` n'a **pas** le même sens qu'au débit :
+        // il signifie que Tranzak ne sait pas répondre sur cette transaction,
+        // pas qu'il a refusé une demande. On ne rétrograde donc jamais une
+        // tentative en `rejected` ici — l'invite est peut-être partie.
+        if ($this->refused($body)) {
+            return ChargeOutcome::unknown($this->errorMessage($body), $attempt->provider_ref);
+        }
+
+        return $this->translate($this->data($body), $attempt->provider_ref);
     }
 
     /**
@@ -165,8 +196,13 @@ final class TranzakProvider implements PaymentProvider
             'SUCCESSFUL' => ChargeOutcome::succeeded(
                 providerRef: $providerRef,
                 gross: $this->intOrNull($data, 'amount'),
-                fee: $this->intOrNull($data, 'merchantFee') ?? $this->intOrNull($data, 'fee'),
-                net: $this->intOrNull($data, 'netAmountReceived'),
+                // La commission vit dans `merchant`, **pas** à la racine — et
+                // surtout pas dans `payer`, qui porte la part éventuellement
+                // mise à la charge du client. Lire la mauvaise enregistrerait
+                // un chiffre faux au registre : sur ce paiement, `payer.fee`
+                // vaut 0 et `merchant.fee` vaut 3.
+                fee: $this->intOrNull($this->section($data, 'merchant'), 'fee'),
+                net: $this->intOrNull($this->section($data, 'merchant'), 'netAmountReceived'),
                 raw: $status,
             ),
 
@@ -180,9 +216,12 @@ final class TranzakProvider implements PaymentProvider
                 $status,
             ),
 
+            // Le motif se lit dans `errorMessage` — vérifié contre le bac à
+            // sable, où une annulation marchande ressort en `FAILED` /
+            // `TXN_CANCELLED`. `statusMessage` n'existe pas.
             'FAILED' => ChargeOutcome::failed(
                 'PAYMENT_FAILED',
-                (string) ($data['statusMessage'] ?? __('billing::messages.payment_failed')),
+                (string) ($data['errorMessage'] ?? __('billing::messages.payment_failed')),
                 $providerRef,
                 $status,
             ),
@@ -230,17 +269,34 @@ final class TranzakProvider implements PaymentProvider
                 ->post($this->url('/auth/token'), [
                     'appId' => config('billing.tranzak.app_id'),
                     'appKey' => config('billing.tranzak.app_key'),
-                ])
-                ->throw();
+                ]);
 
-            $token = $this->data($response->json())['token'] ?? null;
+            $body = $response->json();
+
+            // `->throw()` ne suffirait pas : une authentification refusée
+            // revient en HTTP 200 avec `success: false`. C'est le corps qui
+            // fait autorité.
+            if ($response->failed() || $this->refused($body)) {
+                throw new RuntimeException('Tranzak : '.$this->errorMessage($body));
+            }
+
+            $token = $this->data($body)['token'] ?? null;
 
             if (! is_string($token) || $token === '') {
-                throw new \RuntimeException('Tranzak : jeton absent de la réponse.');
+                throw new RuntimeException('Tranzak : jeton absent de la réponse.');
             }
 
             return $token;
         });
+    }
+
+    /**
+     * Tranzak signale ses refus par `success: false` dans le corps, le plus
+     * souvent avec un HTTP 200. Vérifié contre le bac à sable.
+     */
+    private function refused(mixed $body): bool
+    {
+        return is_array($body) && ($body['success'] ?? null) === false;
     }
 
     private function url(string $path): string
@@ -280,6 +336,17 @@ final class TranzakProvider implements PaymentProvider
     }
 
     /**
+     * Sous-objet d'une réponse, tolérant à son absence.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function section(array $data, string $key): array
+    {
+        return is_array($data[$key] ?? null) ? $data[$key] : [];
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      */
     private function intOrNull(array $data, string $key): ?int
@@ -302,8 +369,19 @@ final class TranzakProvider implements PaymentProvider
         return __('billing::messages.provider_rejected');
     }
 
-    private function rawStatus(mixed $body): ?string
+    /**
+     * Code d'erreur brut, conservé pour le diagnostic. Il n'est **pas** utilisé
+     * pour décider d'une bascule : Tranzak en renvoie de toutes formes — `1002`,
+     * `40022`, `401`, `0`, `null` — et une liste incomplète échouerait « ouvert ».
+     */
+    private function errorCode(mixed $body): ?string
     {
-        return is_array($body) && is_string($body['status'] ?? null) ? $body['status'] : null;
+        if (! is_array($body)) {
+            return null;
+        }
+
+        $code = $body['errorCode'] ?? null;
+
+        return $code === null ? null : (string) $code;
     }
 }

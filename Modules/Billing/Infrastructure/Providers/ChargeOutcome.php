@@ -36,11 +36,19 @@ final readonly class ChargeOutcome
      *
      * **Le seul cas qui autorise à essayer l'agrégateur suivant.**
      */
-    public static function rejected(string $code, string $reason, ?string $raw = null): self
-    {
+    public static function rejected(
+        string $code,
+        string $reason,
+        ?string $raw = null,
+        ?string $providerRef = null,
+    ): self {
         return new self(
             status: AttemptStatus::Rejected,
+            // Une référence peut exister sans qu'aucune invite ne soit partie :
+            // chez un agrégateur en deux étapes, la transaction est créée avant
+            // d'être présentée au client.
             customerPrompted: false,
+            providerRef: $providerRef,
             rawStatus: $raw,
             failureCode: $code,
             failureReason: $reason,

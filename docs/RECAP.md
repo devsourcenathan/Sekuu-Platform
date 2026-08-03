@@ -10,11 +10,11 @@
 | | |
 | --- | --- |
 | Application | Monolithe modulaire Laravel 13, PHP 8.3, PostgreSQL 18 |
-| Modules livrés | **Identity** (complet) · **Notify** (email, SMS, interne) · **Billing** (Tranzak) |
+| Modules livrés | **Identity** (complet) · **Notify** (email, SMS, interne) · **Billing** (Tranzak + Notch Pay) |
 | Modules non démarrés | Verify, Storage, AI, Search, Analytics |
-| Endpoints | 84 sous `/api/v1` + `/.well-known/jwks.json` |
-| Migrations | 26 |
-| Tests | 368, sur PostgreSQL |
+| Endpoints | 80 sous `/api/v1` + `/.well-known/jwks.json` |
+| Migrations | 25 |
+| Tests | 411, sur PostgreSQL |
 | Contrats | `Modules/*/openapi.yaml`, vérifiés par test |
 | Collection de test | `postman/` |
 
@@ -90,7 +90,7 @@ C'est aussi le seul recours contre un faux positif de fournisseur, qui bloquait 
 
 ## 2.4 Module Billing
 
-**Implémenté** — catalogue de plans, abonnements prépayés, factures numérotées avec TVA figée, paiements Mobile Money via **Tranzak**, registre append-only, callbacks et réconciliation par sondage.
+**Implémenté** — catalogue de plans, abonnements prépayés, factures numérotées avec TVA figée, paiements Mobile Money via **Notch Pay puis Tranzak**, registre append-only, callbacks et réconciliation par sondage.
 
 **Ce qui alimente enfin `organization_products`.** Cette table existait, était lue à chaque requête, et se modifiait à la main. Identity consomme désormais les événements de Billing et applique un **état cible** — jamais un delta, puisqu'un même événement peut être livré deux fois.
 
@@ -102,11 +102,15 @@ Le consommateur ne touche jamais les lignes `source = 'manual'` : une activation
 
 **Le sondage n'est pas optionnel.** `billing:reconcile` interroge les agrégateurs toutes les 5 minutes. Un callback perdu retarde une confirmation, il ne la fait pas disparaître — sans quoi un client peut être débité sans obtenir son accès.
 
-**Le montant d'un callback n'est jamais cru** : le statut est relu chez l'agrégateur. Tranzak authentifie par un `authKey` transporté dans le corps, ce qui prouve que l'émetteur connaît le secret mais rien sur l'intégrité du corps.
+**Le montant d'un callback n'est jamais cru** : le statut est relu chez l'agrégateur. Notch Pay signe en HMAC-SHA256 sur le corps brut ; Tranzak se contente d'un `authKey` transporté dans le corps, ce qui prouve que l'émetteur connaît le secret mais rien sur l'intégrité du corps.
+
+**Les deux adaptateurs ont été exécutés contre leur bac à sable**, et chacun a démenti deux hypothèses — jamais les mêmes. Le détail est dans [05-providers.md](03-services/billing/05-providers.md) ; le résumé est qu'aucune de ces erreurs n'était visible en test unitaire, puisque les fixtures reproduisaient les suppositions.
 
 **Ce qui a changé ailleurs** — la table `products` d'Identity n'était seedée nulle part ; elle l'est désormais (6 produits). Sans elle, aucun plan n'avait rien à ouvrir.
 
-**Non implémenté** — NotchPay, Tara (aucune documentation publique), PDF de facture (appartient à Storage, renvoie `503`), facturation à l'usage.
+**Non implémenté** — Tara (aucune documentation publique), PDF de facture (appartient à Storage, renvoie `503`), facturation à l'usage.
+
+**Jamais éprouvé** — les callbacks. Ni Notch Pay ni Tranzak n'en ont envoyé un vrai : cela suppose une URL publique. Le sondage couvre la même fonction, plus lentement.
 
 ---
 
@@ -230,17 +234,20 @@ GET  /audit-logs                 →  trace des quatre étapes
 
 ## 8.2 Prochaines étapes
 
-Notify est fonctionnellement complet, hors WhatsApp et push.
+**Le trou le plus urgent : Billing publie ses rappels d'échéance dans le vide.**
 
-Billing est implémenté avec **Tranzak**, le seul agrégateur documentant un bac à sable — c'est pourquoi il a été écrit en premier, quel que soit son rang de priorité à l'exécution.
+`AdvanceLifecycle` émet `billing.subscription.expiring` à J-7, J-3 et J-1, plus `grace_started`, `payment.failed` et `invoice.issued`. Notify n'a **aucune route** pour ces événements et **aucun template** correspondant : ils sont publiés, personne ne les écoute, rien ne part.
 
-**Rien n'a encore été prouvé contre un vrai compte marchand.** Le module est complet et testé, mais aucun paiement réel n'a transité : c'est exactement la situation du canal SMS de Notify, écrit intégralement et jamais exécuté contre une vraie passerelle. L'obtention des comptes marchands est administrative et longue, et reste le prochain jalon.
+C'est le pilier de l'[ADR-0007](04-decisions/adr-0007-mobile-money-prepaid-subscriptions.md) qui manque. La plateforme ne pouvant pas prélever, la seule chose qu'elle puisse faire pour être payée est de **prévenir** — et aujourd'hui elle ne prévient pas. Un client verra son accès se fermer sans avoir rien reçu. Rien ne bloque ce chantier.
 
-Restent à écrire : **NotchPay** (documentation publique complète, signature HMAC déjà maîtrisée) et **Tara**, dont la documentation technique n'est pas publique et doit être demandée directement.
+Ensuite, par ordre décroissant de valeur :
 
-Deux agrégateurs suffisent à supprimer le point de défaillance unique ; avec un seul, la bascule n'existe que sur le papier — c'est le cas aujourd'hui.
+* **Les quotas.** Billing publie `limits` dans ses événements et personne ne s'en sert. Le plafond de dépense de Notify reste global — la dette que Billing était censé résorber.
+* **Les callbacks, réellement reçus.** Dernière branche du chemin de paiement jamais éprouvée contre du réel ; suppose une URL publique.
+* **Les comptes marchands de production**, Notch Pay et Tranzak. Administratif et long, à engager en parallèle.
+* **La documentation Tara**, à réclamer directement — elle n'est pas publique.
 
-Puis Verify.
+Puis Verify, et Storage — dont dépend le PDF de facture, qui renvoie `503` aujourd'hui.
 
 Le canal WhatsApp reste le plus attendu au Cameroun ; il suppose un compte Business vérifié et des modèles approuvés par Meta, donc un délai externe qu'il vaut mieux engager tôt.
 

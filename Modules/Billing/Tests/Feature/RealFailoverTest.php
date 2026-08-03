@@ -1,0 +1,147 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Modules\Billing\Tests\Feature;
+
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Modules\Billing\Application\Payments\InitiatePayment;
+use Modules\Billing\Domain\AttemptStatus;
+use Modules\Billing\Domain\Models\PaymentIntent;
+use Modules\Billing\Infrastructure\Providers\NotchPayProvider;
+use Modules\Billing\Infrastructure\Providers\ProviderRegistry;
+use Modules\Billing\Infrastructure\Providers\TranzakProvider;
+use Modules\Billing\Tests\Concerns\BillsAnOrganization;
+use Tests\TestCase;
+
+/**
+ * La bascule avec les **deux vrais adaptateurs**, pas des doubles.
+ *
+ * `PaymentFailoverTest` éprouve la règle sur des agrégateurs factices ; ici on
+ * vérifie que les deux traductions réelles — codes HTTP chez Notch Pay, drapeau
+ * `success` chez Tranzak — se combinent correctement.
+ *
+ * @see docs/04-decisions/adr-0008-payment-aggregators-failover.md
+ */
+final class RealFailoverTest extends TestCase
+{
+    use BillsAnOrganization;
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config()->set('billing.notchpay.base_url', 'https://api.notchpay.co');
+        config()->set('billing.notchpay.public_key', 'test_public_key');
+        config()->set('billing.tranzak.base_url', 'https://sandbox.dsapi.tranzak.me');
+        config()->set('billing.tranzak.app_id', 'app');
+        config()->set('billing.tranzak.app_key', 'key');
+        config()->set('billing.providers', [NotchPayProvider::class, TranzakProvider::class]);
+
+        $this->app->forgetInstance(ProviderRegistry::class);
+        $this->app->singleton(ProviderRegistry::class, function ($app): ProviderRegistry {
+            $registry = new ProviderRegistry($app);
+
+            foreach ((array) config('billing.providers') as $provider) {
+                $registry->register($provider);
+            }
+
+            return $registry;
+        });
+
+        $this->signInAsOwner();
+    }
+
+    /**
+     * Notch Pay refuse en `422`, Tranzak prend le relais et sollicite le client.
+     * Deux conventions d'erreur opposées, une seule règle.
+     */
+    public function test_a_notchpay_refusal_falls_over_to_tranzak(): void
+    {
+        Http::fake([
+            'https://api.notchpay.co/payments' => Http::response(['message' => 'Invalid phone'], 422),
+            '*auth/token' => Http::response(['data' => ['token' => 'jeton'], 'success' => true]),
+            '*create-mobile-wallet-charge' => Http::response([
+                'data' => ['requestId' => 'req-1', 'status' => 'PENDING'],
+                'success' => true,
+            ]),
+        ]);
+
+        $intent = $this->pay();
+
+        $attempts = $intent->attempts()->orderBy('priority')->get();
+
+        $this->assertCount(2, $attempts);
+        $this->assertSame('notchpay', $attempts[0]->provider);
+        $this->assertSame(AttemptStatus::Rejected, $attempts[0]->status);
+        $this->assertSame('tranzak', $attempts[1]->provider);
+        $this->assertSame(AttemptStatus::Prompted, $attempts[1]->status);
+    }
+
+    /**
+     * Le refus « HTTP 200 + success:false » de Tranzak est aussi basculable que
+     * le `422` de Notch Pay — c'est précisément ce que le bac à sable avait
+     * démenti dans la première version.
+     */
+    public function test_a_tranzak_refusal_is_recognised_despite_its_http_200(): void
+    {
+        Http::fake([
+            'https://api.notchpay.co/payments' => Http::response(['message' => 'nope'], 422),
+            '*auth/token' => Http::response(['data' => ['token' => 'jeton'], 'success' => true]),
+            '*create-mobile-wallet-charge' => Http::response([
+                'data' => [],
+                'success' => false,
+                'errorMsg' => 'Mobile phone number is invalid',
+                'errorCode' => 1002,
+            ], 200),
+        ]);
+
+        $invoice = $this->subscribe();
+
+        // Les deux agrégateurs refusent : aucune invite n'est partie, donc
+        // aucun client n'a été débité.
+        $this->withToken($this->ownerToken)
+            ->postJson('/api/v1/payments', ['invoice_id' => $invoice->id, 'msisdn' => '+237650000000'])
+            ->assertStatus(503)
+            ->assertJsonPath('error.code', 'PROVIDER_UNAVAILABLE');
+
+        $intent = PaymentIntent::query()->firstOrFail();
+
+        $this->assertSame(PaymentIntent::FAILED, $intent->status);
+        $this->assertSame(2, $intent->attempts()->count());
+        $this->assertSame(0, $intent->attempts()->where('customer_prompted', true)->count());
+    }
+
+    /**
+     * Notch Pay a sollicité le client : Tranzak n'est jamais appelé, même si
+     * l'issue reste inconnue.
+     */
+    public function test_a_prompted_notchpay_customer_stops_the_chain(): void
+    {
+        Http::fake([
+            'https://api.notchpay.co/payments' => Http::response([
+                'transaction' => 'trx-1',
+                'code' => 201,
+            ], 201),
+            'https://api.notchpay.co/payments/*' => Http::response([
+                'transaction' => ['reference' => 'trx-1', 'status' => 'processing'],
+            ], 202),
+        ]);
+
+        $intent = $this->pay();
+
+        $this->assertSame(1, $intent->attempts()->count());
+        $this->assertSame('notchpay', $intent->attempts()->firstOrFail()->provider);
+
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'tranzak'));
+    }
+
+    private function pay(): PaymentIntent
+    {
+        $invoice = $this->subscribe();
+
+        return $this->app->make(InitiatePayment::class)->handle($invoice, '+237650000000')->fresh();
+    }
+}

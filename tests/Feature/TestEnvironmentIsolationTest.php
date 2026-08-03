@@ -35,6 +35,9 @@ final class TestEnvironmentIsolationTest extends TestCase
             'Tranzak (identifiant)' => ['billing.tranzak.app_id', 'TRANZAK_APP_ID'],
             'Tranzak (clé)' => ['billing.tranzak.app_key', 'TRANZAK_APP_KEY'],
             'Tranzak (callback)' => ['billing.tranzak.auth_key', 'TRANZAK_AUTH_KEY'],
+            'Notch Pay (clé publique)' => ['billing.notchpay.public_key', 'NOTCHPAY_PUBLIC_KEY'],
+            'Notch Pay (clé privée)' => ['billing.notchpay.private_key', 'NOTCHPAY_PRIVATE_KEY'],
+            'Notch Pay (callback)' => ['billing.notchpay.webhook_hash', 'NOTCHPAY_WEBHOOK_HASH'],
             'Twilio' => ['notify.sms.twilio.token', 'TWILIO_TOKEN'],
         ];
     }

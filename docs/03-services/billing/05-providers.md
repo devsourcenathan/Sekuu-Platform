@@ -80,12 +80,93 @@ Dès `processing`, l'invite est considérée comme partie. La documentation ne l
 
 Signature HMAC sur le corps brut, comparée en temps constant : c'est exactement le schéma déjà implémenté pour Resend dans Notify. L'adaptateur est donc structurellement connu.
 
-## 2.4 À vérifier
+## 2.0 Ce que le bac à sable a démenti
 
-* **Le verbe HTTP du débit** — la documentation le présente en `POST` sur la page Mobile Money et en `PUT` dans la référence d'API. À trancher avant d'écrire l'adaptateur.
-* Les noms exacts des en-têtes d'authentification, dont un `X-Sync` évoqué dans les réponses `401`.
-* La liste exhaustive des codes d'erreur `422`, pour distinguer une validation refusée d'un opérateur indisponible.
-* Le barème de commission — absent de la documentation technique.
+**`transaction` est un objet, pas la chaîne que montre la documentation.**
+
+L'exemple documenté de l'initialisation donne `"transaction": "81fca0c3-…"`. La réponse réelle donne un objet :
+
+```json
+"transaction": {
+  "reference": "trx.test_N1d3HSS8n7C2oyUICJ6kK86t",
+  "merchant_reference": "SKUB4ED89758696",
+  "trxref": "SKUB4ED89758696",
+  "status": "pending",
+  "amount": 100,
+  "sandbox": true
+}
+```
+
+C'était **le piège le plus coûteux de cet adaptateur**. Un code n'attendant que la chaîne aurait lu une absence de référence — traitée comme un rejet, donc comme un cas **basculable**, alors qu'un paiement existe. La tolérance aux deux formes avait été écrite par précaution ; elle s'est avérée nécessaire.
+
+**La commission n'est pas un scalaire.** `fees` est un **tableau**, vide en bac à sable, et il n'existe aucun champ de montant net :
+
+```json
+"amount": 100,
+"fees": [],
+"amounts": { "total": 100, "converted": 100, "currency": "XAF", "rate": null },
+"charge": "business"
+```
+
+La première version lisait `fee` et `amount_received` — aucun des deux n'existe. La forme des entrées de `fees` en production reste **non vérifiée** : la lecture est au mieux, l'échec est journalisé, et le net est **déduit** plutôt qu'inventé. Une commission inconnue n'affecte ni le client ni la facture, qui se règle sur le brut.
+
+`charge: "business"` indique que la commission est à la charge du marchand.
+
+## 2.0.1 Le bac à sable a des numéros déterministes
+
+Ils ne sont pas dans la documentation — l'API les renvoie dans le message d'erreur d'un numéro non conforme.
+
+| Numéro | Cas | Statut final observé | Traduction Sekuu |
+| --- | --- | --- | --- |
+| `+237670000000` | succès | `complete` | `succeeded` |
+| `+237670000001` | solde insuffisant | `complete` | `succeeded` |
+| `+237670000002` | échec | `failed` | `failed` |
+| `+237670000003` | temporisation | `expired` | `failed` |
+| `+237670000004` | annulé | `canceled` | `failed` |
+
+Les six statuts documentés ont donc tous été observés. **Aucun n'autorise de bascule** : à ce stade le traitement a été accepté, donc le client a été sollicité.
+
+Deux réserves honnêtes : le numéro « solde insuffisant » aboutit en `complete` — le bac à sable ne l'honore pas —, et les cas `expired` et `canceled` mettent plusieurs secondes à converger, ce qui confirme que le sondage n'est pas optionnel.
+
+Le montant minimum est de **5 XAF**.
+
+## 2.4 Deux étapes, et pourquoi cela compte
+
+Le débit se fait en **deux appels** : `POST /payments` initialise, `POST /payments/{reference}` traite.
+
+C'est une différence structurelle avec Tranzak, et elle **rétrécit la fenêtre dangereuse** :
+
+| Appel | Le client peut-il avoir été sollicité ? | Temporisation |
+| --- | --- | --- |
+| Initialisation | **Non**, rien ne lui est présenté | **Basculable** |
+| Traitement | Oui — c'est lui qui déclenche l'invite | Non basculable |
+
+Une temporisation à l'initialisation reste donc sûre : au pire elle laisse un paiement orphelin chez Notch Pay, sur lequel aucun argent ne bouge. Chez Tranzak, l'appel unique rend toute temporisation incertaine.
+
+La documentation est par ailleurs explicite sur le moment de l'invite : après le traitement, *« the customer receives a prompt on their mobile device »*. C'est le seul agrégateur à le dire noir sur blanc.
+
+## 2.5 Authentification
+
+| En-tête | Contenu | Requis pour |
+| --- | --- | --- |
+| `Authorization` | Clé **publique**, **sans** préfixe `Bearer` | Tous les appels |
+| `X-Grant` | Clé privée | Soldes, transferts, bénéficiaires, gestion des webhooks |
+| `X-Sync` | Identifiant de compte synchronisé | Comptes synchronisés |
+
+Les paiements n'exigent que `Authorization`. Une clé de test est préfixée `test_`.
+
+## 2.6 Le champ `transaction` change de forme
+
+À l'initialisation, `transaction` est une **chaîne**. Au traitement, c'est un **objet** portant `reference`, `trxref` et `status`.
+
+Un adaptateur qui n'attend qu'une forme lirait l'autre comme une absence de référence — et une réponse acceptée sans référence est traitée comme un rejet, donc **basculable à tort**. Les deux formes sont donc reconnues.
+
+`trxref` renvoie notre `reference` d'initialisation : c'est la clé de corrélation exigée par l'[ADR-0008](../../04-decisions/adr-0008-payment-aggregators-failover.md), équivalente au `mchTransactionRef` de Tranzak.
+
+## 2.7 À vérifier
+
+* **La forme des entrées de `fees`** en production. Vide en bac à sable, donc jamais observée. C'est le seul point encore supposé de cet adaptateur.
+* Le barème réel de commission.
 
 Notch Pay recommande les webhooks plutôt que le sondage. **On fera les deux.** Un callback perdu, chez un agrégateur qui déconseille le sondage, produirait exactement la défaillance que ce module doit rendre impossible : un client débité sans accès.
 
@@ -93,7 +174,81 @@ Notch Pay recommande les webhooks plutôt que le sondage. **On fera les deux.** 
 
 # 3. Tranzak
 
-> Source : [docs.developer.tranzak.me](https://docs.developer.tranzak.me/)
+> Source : [docs.developer.tranzak.me](https://docs.developer.tranzak.me/), **plus des appels réels au bac à sable** (août 2026).
+
+## 3.0 Ce que le bac à sable a démenti
+
+**Le statut HTTP ne fait pas autorité.** Tranzak signale ses refus par
+`success: false` **dans le corps**, avec un `HTTP 200`.
+
+```json
+{ "data": [], "success": false, "errorMsg": "Mobile phone number is invalid: +237000000000", "errorCode": 1002 }
+{ "data": [], "success": false, "errorMsg": "Amount the must be greater than zero.", "errorCode": null }
+{ "data": [], "success": false, "errorMsg": "Authentication Error", "errorCode": 40022 }
+```
+
+Seul un jeton invalide produit un vrai `401`.
+
+La première version de l'adaptateur classait les refus par code HTTP. Tous
+tombaient donc dans « issue inconnue », donc « invite partie », donc **bascule
+interdite** : la mécanique de l'[ADR-0008](../../04-decisions/adr-0008-payment-aggregators-failover.md)
+était inerte. Le défaut penchait du bon côté — on ne double-débitait pas — mais
+les trois agrégateurs n'auraient servi à rien.
+
+**Les codes d'erreur ne peuvent pas servir de critère** : `1002`, `40022`,
+`401`, `0`, `null`. Une liste blanche incomplète échouerait « ouvert », c'est-à-dire
+en autorisant une bascule à tort.
+
+La règle retenue est **structurelle** : Tranzak ne peut pas avoir sollicité un
+client pour une demande qu'il a refusé de créer. Un `success: false` **sans
+référence de transaction** signifie qu'aucune transaction n'existe — donc aucune
+invite. Avec référence, la bascule reste interdite.
+
+Au **sondage**, le même `success: false` ne veut pas dire la même chose : il
+signifie que Tranzak ne sait pas répondre sur cette transaction, pas qu'il a
+refusé une demande. Une tentative n'y est jamais rétrogradée en `rejected`.
+
+## 3.0.2 La commission n'est pas là où la documentation le laissait croire
+
+Sur un paiement abouti, les montants sont **imbriqués** :
+
+```json
+"amount": 100,
+"payer":    { "amount": 100, "fee": 0, "netAmountPaid": 100 },
+"merchant": { "amount": 100, "fee": 3, "netAmountReceived": 97 }
+```
+
+La première version lisait `merchantFee` et `netAmountReceived` **à la racine**. Les deux ressortaient nuls, donc la ligne `fee` du registre n'était jamais écrite : toute la séparation brut / net du module restait inerte, sans qu'aucun test ne le voie.
+
+`payer.fee` et `merchant.fee` sont deux chiffres différents — 0 et 3 sur ce paiement. Lire l'un pour l'autre enregistrerait un montant faux au registre. La commission observée est de **3 %**.
+
+## 3.0.3 `CANCELLED` ne se produit pas sur ce flux
+
+C'était le seul point susceptible d'élargir la règle de bascule. Vérification faite : une annulation marchande ressort en
+
+```json
+{ "status": "FAILED", "errorCode": 3008, "errorMessage": "TXN_CANCELLED", "success": true }
+```
+
+Donc `FAILED`, pas `CANCELLED`. Et `success` vaut `true` au sommet — un échec **métier** n'est pas un refus de demande, la distinction tient.
+
+La correspondance de `CANCELLED` est conservée par prudence : un statut documenté qu'on n'a jamais observé reste un statut possible.
+
+Le motif se lit dans `errorMessage`. `statusMessage`, que lisait la première version, n'existe pas.
+
+## 3.0.1 Ce que le bac à sable a confirmé
+
+| Supposition | Vérifiée |
+| --- | --- |
+| Enveloppe `data` sur toutes les réponses | Oui, plus un `success` booléen au sommet |
+| `POST /auth/token` renvoie `data.token` | Oui, avec `expiresIn: 7200` et `scope` |
+| Mise en cache du jeton à 75 % de sa validité | 90 min sur 120 : exact |
+| Montants en unité brute, sans conversion | Oui — soldes en `XAF` entiers, exposant 0 |
+| Compte de collecte distinct du compte de reversement | Oui, `type` les distingue |
+| `mchTransactionRef` renvoyé tel quel | Oui — la corrélation marchande fonctionne |
+| Premier statut après un débit accepté | `PAYMENT_IN_PROGRESS`, pas `PENDING` |
+
+**Le bac à sable valide automatiquement** : le payeur y apparaît en `isGuest: true` sous un nom généré, et aucune invite n'atteint le téléphone. Le chemin « client sollicité » est donc simulé, jamais éprouvé — seul un compte de production le vérifiera.
 
 ## 3.1 Ce qui est confirmé
 
@@ -207,13 +362,39 @@ La documentation technique doit être demandée **directement à Tara**, avant t
 
 L'ordre de priorité à l'exécution — NotchPay, Tranzak, Tara — n'est pas l'ordre dans lequel il faut les écrire.
 
-| Rang de développement | Agrégateur | Motif |
-| --- | --- | --- |
-| 1 | **Tranzak** | Bac à sable documenté, statuts explicites, rafraîchissement de statut, commissions décrites |
-| 2 | **Notch Pay** | Signature HMAC déjà maîtrisée, mais pas de bac à sable documenté |
-| 3 | **Tara** | Spécification indisponible |
+| Agrégateur | État |
+| --- | --- |
+| **Tranzak** | Écrit, **vérifié contre le bac à sable** |
+| **Notch Pay** | Écrit, **vérifié contre le bac à sable** |
+| **Tara** | Spécification indisponible |
 
-Développer d'abord celui qui possède un bac à sable est ce qui distingue un adaptateur testé d'un adaptateur supposé correct. C'est la leçon du canal SMS de Notify, écrit intégralement et jamais exécuté contre une vraie passerelle.
+Développer d'abord celui qui possède un bac à sable est ce qui distingue un adaptateur testé d'un adaptateur supposé correct. Le choix s'est justifié dès le premier appel.
+
+**Chaque bac à sable a démenti deux hypothèses, et jamais les mêmes** :
+
+| | Tranzak | Notch Pay |
+| --- | --- | --- |
+| Détection des refus | Classée par code HTTP — **la bascule était inerte** | Correcte d'emblée |
+| Forme de la référence | Correcte d'emblée | Chaîne supposée, **objet en réalité** |
+| Montants | Cherchés à la racine, **imbriqués dans `merchant`** | Scalaires supposés, **`fees` est un tableau** |
+| Motif d'échec | `statusMessage` lu, `errorMessage` réel | Correct d'emblée |
+
+Aucune de ces erreurs n'était visible en test unitaire : les fixtures reproduisaient les suppositions. C'est l'argument entier pour ne jamais mettre un adaptateur de paiement en production sans l'avoir exécuté contre un vrai environnement.
+
+---
+
+# 6. Ce que les deux agrégateurs ont en commun, et ce qui les sépare
+
+| | Notch Pay | Tranzak |
+| --- | --- | --- |
+| Signalement d'un refus | **Code HTTP** (`422`, `401`) | **`success: false` dans le corps**, en `HTTP 200` |
+| Nombre d'appels pour débiter | **Deux** — l'initialisation ne sollicite personne | Un seul |
+| Temporisation basculable | **Oui à l'initialisation**, non au traitement | Jamais |
+| Authentification des callbacks | **HMAC-SHA256** sur le corps brut | Secret partagé dans le corps |
+| Corrélation marchande | `reference` → `trxref` | `mchTransactionRef` |
+| Bac à sable | Non documenté | Oui |
+
+Rien de tout cela n'est factorisable. C'est exactement pourquoi la traduction vit dans un adaptateur par agrégateur, et pourquoi elle est le premier sujet de tests de chacun : **c'est le seul endroit du module où une approximation coûte de l'argent réel à un tiers.**
 
 ---
 
