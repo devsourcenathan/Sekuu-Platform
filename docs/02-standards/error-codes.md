@@ -194,8 +194,16 @@ Un `INTERNAL_ERROR` ne doit jamais exposer de trace, de requête SQL ou de nom d
 | `SUBSCRIPTION_NOT_FOUND` | 404 | Abonnement inexistant |
 | `SUBSCRIPTION_ALREADY_ACTIVE` | 409 | Un abonnement actif existe déjà pour cette organisation |
 | `SUBSCRIPTION_EXPIRED` | 403 | Abonnement expiré |
-| `PAYMENT_FAILED` | 402 | Paiement refusé |
-| `PAYMENT_METHOD_REQUIRED` | 422 | Aucun moyen de paiement enregistré |
+| `PLAN_ARCHIVED` | 409 | Plan retiré du catalogue |
+| `PAYMENT_FAILED` | 402 | Paiement refusé — solde insuffisant, code erroné, annulation |
+| `PAYMENT_PENDING` | 202 | Paiement en cours, issue encore inconnue |
+| `PAYMENT_ALREADY_PENDING` | 409 | Une intention de paiement est déjà en cours sur cette facture |
+| `PAYMENT_METHOD_REQUIRED` | 422 | Aucun moyen de paiement enregistré — **inutilisé** : le Mobile Money n'en conserve aucun |
+| `INVALID_MSISDN` | 422 | Numéro de téléphone invalide, ou opérateur non reconnu |
+| `PROVIDER_UNAVAILABLE` | 503 | Aucun fournisseur de paiement configuré pour cet opérateur |
+| `INVOICE_NOT_FOUND` | 404 | Facture inexistante |
+| `INVOICE_ALREADY_PAID` | 409 | Facture déjà réglée |
+| `INVOICE_VOIDED` | 409 | Facture annulée, non payable |
 | `CURRENCY_NOT_SUPPORTED` | 422 | Devise non prise en charge |
 | `DOWNGRADE_NOT_ALLOWED` | 409 | L'usage courant dépasse les limites du plan visé |
 

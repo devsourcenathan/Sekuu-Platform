@@ -11,10 +11,11 @@
 | --- | --- |
 | Application | Monolithe modulaire Laravel 13, PHP 8.3, PostgreSQL 18 |
 | Modules livrés | **Identity** (complet) · **Notify** (email, SMS, interne) |
-| Modules non démarrés | Verify, Billing, Storage, AI, Search, Analytics |
-| Endpoints | 54 sous `/api/v1` + `/.well-known/jwks.json` |
+| Module spécifié, non implémenté | **Billing** |
+| Modules non démarrés | Verify, Storage, AI, Search, Analytics |
+| Endpoints | 68 sous `/api/v1` + `/.well-known/jwks.json` |
 | Migrations | 21 |
-| Tests | 302, sur PostgreSQL |
+| Tests | 326, sur PostgreSQL |
 | Contrats | `Modules/*/openapi.yaml`, vérifiés par test |
 | Collection de test | `postman/` |
 
@@ -210,7 +211,21 @@ GET  /audit-logs                 →  trace des quatre étapes
 
 ## 8.2 Prochaines étapes
 
-Notify est fonctionnellement complet, hors WhatsApp et push. La suite naturelle est **Billing** — son contrat d'événements avec Identity est déjà défini — puis Verify.
+Notify est fonctionnellement complet, hors WhatsApp et push.
+
+**Billing est spécifié** ([vision](03-services/billing/01-overview.md) · [modèle de données](03-services/billing/02-data-model.md) · [API](03-services/billing/03-api.md) · [événements](03-services/billing/04-events.md) · [ADR-0007](04-decisions/adr-0007-mobile-money-prepaid-subscriptions.md) · [ADR-0008](04-decisions/adr-0008-payment-aggregators-failover.md)), pas encore implémenté. C'est lui qui alimentera `organization_products`, aujourd'hui lue à chaque requête et modifiée à la main.
+
+Les paiements passeront par des agrégateurs — NotchPay, Tranzak, Tara — avec une bascule **volontairement étroite** : on ne réessaie ailleurs que si l'invite n'est jamais partie sur le téléphone du client. Tout le reste double-débiterait.
+
+La documentation publique des agrégateurs a été dépouillée dans [05-providers.md](03-services/billing/05-providers.md). Trois constats en sortent :
+
+* **Aucun agrégateur n'expose l'information dont dépend la bascule.** « L'invite est-elle partie ? » doit être déduite de l'issue de l'appel de débit.
+* **Tara n'a pas de documentation technique publique.** Son adaptateur est repoussé ; deux agrégateurs suffisent à supprimer le point de défaillance unique.
+* **Tranzak est le seul à documenter un bac à sable**, donc le premier à écrire — quel que soit son rang de priorité à l'exécution.
+
+L'obtention des comptes marchands est **administrative et longue**, à engager en parallèle avant l'implémentation. Sinon le module sera écrit sans qu'aucun paiement ait pu être prouvé — exactement la situation du canal SMS, dont la passerelle n'a jamais été configurée.
+
+Puis Verify.
 
 Le canal WhatsApp reste le plus attendu au Cameroun ; il suppose un compte Business vérifié et des modèles approuvés par Meta, donc un délai externe qu'il vaut mieux engager tôt.
 

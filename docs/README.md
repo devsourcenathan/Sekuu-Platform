@@ -54,9 +54,9 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | Service | État | Documentation |
 | --- | --- | --- |
 | **Identity** | **Implémenté** | [vision](03-services/identity/01-overview.md) · [modèle de données](03-services/identity/02-data-model.md) · [API](03-services/identity/03-api.md) · [contrat OpenAPI](../Modules/Identity/openapi.yaml) |
-| **Notify** | **Partiellement implémenté** — canal email, consommation d'événements | [vision](03-services/notify/01-overview.md) · [modèle de données](03-services/notify/02-data-model.md) · [API](03-services/notify/03-api.md) · [événements](03-services/notify/04-events.md) · [contrat OpenAPI](../Modules/Notify/openapi.yaml) |
+| **Notify** | **Implémenté** — canaux email, SMS et interne ; WhatsApp et push non développés | [vision](03-services/notify/01-overview.md) · [modèle de données](03-services/notify/02-data-model.md) · [API](03-services/notify/03-api.md) · [événements](03-services/notify/04-events.md) · [contrat OpenAPI](../Modules/Notify/openapi.yaml) |
 | Verify | À spécifier | — |
-| Billing | À spécifier | — |
+| **Billing** | **Spécifié** — non implémenté | [vision](03-services/billing/01-overview.md) · [modèle de données](03-services/billing/02-data-model.md) · [API](03-services/billing/03-api.md) · [événements](03-services/billing/04-events.md) · [agrégateurs](03-services/billing/05-providers.md) |
 | Storage | À spécifier | — |
 | AI | Esquissé dans [architecture.md](01-overview/architecture.md) | — |
 | Search | À spécifier | — |
@@ -72,6 +72,8 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | [ADR-0004](04-decisions/adr-0004-jwt-stateless-tokens.md) | Access tokens JWT stateless, refresh tokens opaques |
 | [ADR-0005](04-decisions/adr-0005-notify-asynchronous-delivery.md) | Notify : envoi asynchrone, contenu figé à l'acceptation |
 | [ADR-0006](04-decisions/adr-0006-transactional-vs-marketing.md) | Catégories de messages et liste de suppression |
+| [ADR-0007](04-decisions/adr-0007-mobile-money-prepaid-subscriptions.md) | Billing : abonnements prépayés plutôt que reconduction automatique |
+| [ADR-0008](04-decisions/adr-0008-payment-aggregators-failover.md) | Billing : agrégateurs de paiement et règle de bascule |
 
 ---
 
@@ -119,7 +121,7 @@ Les confusions les plus fréquentes, tranchées une fois pour toutes :
 
 Documents identifiés comme nécessaires, non encore rédigés :
 
-* Spécifications des services Verify, Notify, Billing, Storage, AI, Search, Analytics.
+* Spécifications des services Verify, Storage, AI, Search, Analytics.
 * Contrats `openapi.yaml` par service.
 * Spécification du SDK et du Design System.
 * Conventions de code et de contribution.
