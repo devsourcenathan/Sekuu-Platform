@@ -39,6 +39,18 @@ final class DomainEventSubscriber implements ShouldQueue
         'identity.organization.created' => 'organization.created',
         'identity.session.new_device' => 'security.new_device',
         'identity.membership.removed' => 'membership.removed',
+
+        // Billing ne peut pas prélever : la seule chose que la plateforme
+        // puisse faire pour être payée est de prévenir. Ces correspondances
+        // sont donc le pilier de l'ADR-0007, pas un confort.
+        'billing.subscription.activated' => 'subscription.activated',
+        'billing.subscription.renewed' => 'subscription.activated',
+        'billing.subscription.expiring' => 'subscription.expiring',
+        'billing.subscription.grace_started' => 'subscription.grace',
+        'billing.subscription.suspended' => 'subscription.suspended',
+        'billing.invoice.issued' => 'invoice.issued',
+        'billing.invoice.paid' => 'invoice.paid',
+        'billing.payment.failed' => 'payment.failed',
     ];
 
     public function __construct(private readonly SendNotification $send) {}

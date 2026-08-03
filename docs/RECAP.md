@@ -12,9 +12,9 @@
 | Application | Monolithe modulaire Laravel 13, PHP 8.3, PostgreSQL 18 |
 | Modules livrés | **Identity** (complet) · **Notify** (email, SMS, interne) · **Billing** (Tranzak + Notch Pay) |
 | Modules non démarrés | Verify, Storage, AI, Search, Analytics |
-| Endpoints | 80 sous `/api/v1` + `/.well-known/jwks.json` |
-| Migrations | 25 |
-| Tests | 411, sur PostgreSQL |
+| Endpoints | 85 sous `/api/v1` + `/.well-known/jwks.json` |
+| Migrations | 26 |
+| Tests | 420, sur PostgreSQL |
 | Contrats | `Modules/*/openapi.yaml`, vérifiés par test |
 | Collection de test | `postman/` |
 
@@ -33,8 +33,12 @@ Dans `app/Platform/`, commun à tous les futurs modules :
 | `DomainException` | Exception métier portant un code du catalogue |
 | `ApiExceptionRenderer` | Traduit **toute** exception en réponse normalisée |
 | `ModuleServiceProvider` | Socle de module : routes versionnées, sous-domaine, migrations, traductions |
+| `DomainEvent` | Événement générique — le type est une chaîne, pas une classe : aucune dépendance de compilation entre modules |
+| `IdentityContract` | Première interface de la couche de contrats : lecture synchrone d'Identity par les autres modules |
 
 Conséquence : un module ne formate jamais une erreur lui-même, et n'a rien à câbler pour exposer ses routes.
+
+`IdentityContract` est le seul moyen dont dispose un module pour interroger Identity — jamais son modèle Eloquent, jamais sa table. Le jour où Identity est extrait, seule l'implémentation change : l'appel local devient un appel HTTP, et les appelants ne sont pas modifiés.
 
 ## 2.2 Module Identity
 
@@ -109,6 +113,10 @@ Le consommateur ne touche jamais les lignes `source = 'manual'` : une activation
 **Ce qui a changé ailleurs** — la table `products` d'Identity n'était seedée nulle part ; elle l'est désormais (6 produits). Sans elle, aucun plan n'avait rien à ouvrir.
 
 **Non implémenté** — Tara (aucune documentation publique), PDF de facture (appartient à Storage, renvoie `503`), facturation à l'usage.
+
+**Branché sur Notify** — huit événements produisent de vrais messages : activation, renouvellement, rappels d'échéance, entrée en grâce, suspension, facture émise, facture réglée, paiement échoué. Tous transactionnels ; trois portent aussi un SMS, aux seuls moments où une action du client est attendue.
+
+Billing ne connaissant ni utilisateurs ni adresses, il obtient le destinataire d'Identity par son **contrat public** — premier usage de la couche `app/Platform/Contracts/`, et le cas exact pour lequel elle était prévue.
 
 **Jamais éprouvé** — les callbacks. Ni Notch Pay ni Tranzak n'en ont envoyé un vrai : cela suppose une URL publique. Le sondage couvre la même fonction, plus lentement.
 
@@ -234,13 +242,7 @@ GET  /audit-logs                 →  trace des quatre étapes
 
 ## 8.2 Prochaines étapes
 
-**Le trou le plus urgent : Billing publie ses rappels d'échéance dans le vide.**
-
-`AdvanceLifecycle` émet `billing.subscription.expiring` à J-7, J-3 et J-1, plus `grace_started`, `payment.failed` et `invoice.issued`. Notify n'a **aucune route** pour ces événements et **aucun template** correspondant : ils sont publiés, personne ne les écoute, rien ne part.
-
-C'est le pilier de l'[ADR-0007](04-decisions/adr-0007-mobile-money-prepaid-subscriptions.md) qui manque. La plateforme ne pouvant pas prélever, la seule chose qu'elle puisse faire pour être payée est de **prévenir** — et aujourd'hui elle ne prévient pas. Un client verra son accès se fermer sans avoir rien reçu. Rien ne bloque ce chantier.
-
-Ensuite, par ordre décroissant de valeur :
+Par ordre décroissant de valeur :
 
 * **Les quotas.** Billing publie `limits` dans ses événements et personne ne s'en sert. Le plafond de dépense de Notify reste global — la dette que Billing était censé résorber.
 * **Les callbacks, réellement reçus.** Dernière branche du chemin de paiement jamais éprouvée contre du réel ; suppose une URL publique.

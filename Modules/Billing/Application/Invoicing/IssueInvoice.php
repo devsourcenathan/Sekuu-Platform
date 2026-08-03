@@ -7,6 +7,7 @@ namespace Modules\Billing\Application\Invoicing;
 use App\Platform\Events\PublishesDomainEvents;
 use Illuminate\Support\Facades\DB;
 use Modules\Billing\Application\Ledger\CreditLedger;
+use Modules\Billing\Application\Notifications\AddressesTheOrganization;
 use Modules\Billing\Domain\Models\Invoice;
 use Modules\Billing\Domain\Models\Subscription;
 use Modules\Billing\Domain\Money;
@@ -21,6 +22,7 @@ use Modules\Billing\Domain\Money;
  */
 final class IssueInvoice
 {
+    use AddressesTheOrganization;
     use PublishesDomainEvents;
 
     public function __construct(private readonly CreditLedger $credit) {}
@@ -102,6 +104,8 @@ final class IssueInvoice
                 $invoice->forceFill(['status' => Invoice::PAID, 'paid_at' => now()])->save();
             }
 
+            // Une facture déjà réglée — plan gratuit, crédit couvrant tout — ne
+            // vaut pas un message : personne n'a rien à payer.
             $this->publish('billing.invoice.issued', [
                 'invoice_id' => $invoice->id,
                 'number' => $invoice->number,
@@ -109,6 +113,11 @@ final class IssueInvoice
                 'currency' => $invoice->currency,
                 'status' => $invoice->status,
                 'due_at' => $invoice->due_at?->toIso8601ZuluString(),
+                ...($invoice->status === Invoice::PAID ? [] : $this->addressed($organizationId, [
+                    'invoice_number' => $invoice->number,
+                    'amount' => $invoice->totalMoney()->format(),
+                    'due_at' => $invoice->due_at?->translatedFormat('d F Y') ?? '',
+                ])),
             ], $organizationId);
 
             return $invoice->fresh(['lines']);

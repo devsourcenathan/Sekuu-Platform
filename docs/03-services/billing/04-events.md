@@ -116,7 +116,7 @@ Aucun événement d'usage. Facturer à la consommation supposerait un flux fiabl
 
 # 4. Correspondance avec les templates Notify
 
-Ces templates sont **à créer** dans Notify. Ils étaient déjà annoncés dans son [contrat d'événements](../notify/04-events.md#3-événements-à-venir).
+Ces templates **existent** dans Notify, traduits fr/en.
 
 | Événement | Template | Canal | Catégorie |
 | --- | --- | --- | --- |
@@ -140,7 +140,23 @@ C'est l'un des rares cas où le coût du SMS se justifie sans discussion.
 
 L'échéance est le moment où le modèle prépayé exige une **action du client**. Un email non lu produit une suspension évitable ; sur le marché visé, le SMS est lu. C'est aussi le canal du téléphone qui recevra l'invite Mobile Money — le rappel arrive là où le paiement se fera.
 
-Le SMS n'est pas envoyé aux trois rappels, seulement à J-1 et au démarrage de la grâce. Trois SMS par mois et par organisation coûteraient plus cher que le service qu'ils protègent.
+Le SMS n'est pas envoyé aux trois rappels, seulement à J-1, au démarrage de la grâce, et sur un paiement échoué. Trois SMS par mois et par organisation coûteraient plus cher que le service qu'ils protègent.
+
+La suspension, elle, n'a **pas** de SMS : l'accès est déjà fermé, et le SMS sert à faire agir avant, pas à constater après.
+
+Techniquement, cette limitation ne duplique aucun template. Billing n'inclut le numéro dans l'événement que lorsque le SMS se justifie ; un canal sans coordonnée est simplement ignoré par Notify.
+
+## 4.3 Comment le destinataire est résolu
+
+Les événements de Billing ne portaient au départ aucune coordonnée : Billing ne connaît ni utilisateurs ni adresses.
+
+Il les obtient d'Identity par son **contrat public** `IdentityContract::billingContact()` — jamais en lisant sa table. C'est le premier usage de la couche partagée décrite par [l'architecture § 11.1](../../01-overview/architecture.md), et le cas exact pour lequel elle était prévue : une lecture synchrone dont l'appelant a besoin immédiatement.
+
+Le contact est ensuite **porté par l'événement**. Notify reste donc ignorant d'Identity, et l'événement dit à qui l'on a écrit — pas qui serait destinataire aujourd'hui.
+
+Le contact est le **propriétaire le plus ancien** de l'organisation. Un champ dédié serait meilleur — la personne qui administre n'est pas toujours celle qui paie — mais le propriétaire est le seul destinataire dont l'existence est garantie, puisqu'une organisation en conserve toujours au moins un.
+
+Une organisation sans contact joignable est **journalisée en avertissement**. Sur un modèle prépayé, un client qu'on ne peut pas prévenir est un client qu'on va perdre sans jamais savoir pourquoi.
 
 ---
 

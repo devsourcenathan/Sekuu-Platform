@@ -132,20 +132,33 @@ Ce sont des **alertes de sécurité**. Un utilisateur qui reçoit « votre mot d
 
 ---
 
-# 3. Événements à venir
+# 3. Événements de Billing
 
-Non implémentés, listés pour que le contrat soit conçu dès maintenant.
+Implémentés. Le détail — variables, choix des canaux, résolution du destinataire — fait autorité dans [Billing § 4](../billing/04-events.md).
+
+| Événement | Template | Canaux |
+| --- | --- | --- |
+| `billing.subscription.activated` | `subscription.activated` | email |
+| `billing.subscription.renewed` | `subscription.activated` | email |
+| `billing.subscription.expiring` | `subscription.expiring` | email, **SMS à J-1** |
+| `billing.subscription.grace_started` | `subscription.grace` | email + SMS |
+| `billing.subscription.suspended` | `subscription.suspended` | email |
+| `billing.invoice.issued` | `invoice.issued` | email |
+| `billing.invoice.paid` | `invoice.paid` | email |
+| `billing.payment.failed` | `payment.failed` | email + SMS |
+
+Tous transactionnels : la plateforme ne pouvant pas prélever en Mobile Money, prévenir est la seule chose qu'elle puisse faire pour être payée — voir [ADR-0007](../../04-decisions/adr-0007-mobile-money-prepaid-subscriptions.md).
+
+Deux événements partagent un template. `renewed` et `activated` disent la même chose au client : votre abonnement est actif jusqu'à telle date. Distinguer les deux serait une nuance de vocabulaire interne, sans valeur pour qui lit.
+
+Leur ajout n'a demandé **aucune modification du pipeline** : une ligne de correspondance et des templates, comme prévu.
+
+## 3.1 Événements à venir
 
 | Module | Événement | Template envisagé |
 | --- | --- | --- |
-| **Billing** | `billing.subscription.activated` | `subscription.activated` |
-| **Billing** | `billing.subscription.expiring` | `subscription.expiring` |
-| **Billing** | `billing.payment.failed` | `payment.failed` |
-| **Billing** | `billing.invoice.issued` | `invoice.issued` |
 | **Verify** | `verify.verification.completed` | `verification.completed` |
 | **Verify** | `verify.verification.rejected` | `verification.rejected` |
-
-Aucun n'exige de modification de Notify : ajouter un événement, c'est ajouter une ligne de correspondance et un template.
 
 ---
 

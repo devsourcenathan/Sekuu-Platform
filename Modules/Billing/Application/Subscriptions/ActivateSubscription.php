@@ -6,6 +6,7 @@ namespace Modules\Billing\Application\Subscriptions;
 
 use App\Platform\Events\PublishesDomainEvents;
 use Carbon\CarbonImmutable;
+use Modules\Billing\Application\Notifications\AddressesTheOrganization;
 use Modules\Billing\Domain\Models\Invoice;
 use Modules\Billing\Domain\Models\Plan;
 use Modules\Billing\Domain\Models\Subscription;
@@ -22,6 +23,7 @@ use Modules\Billing\Domain\SubscriptionStatus;
  */
 final class ActivateSubscription
 {
+    use AddressesTheOrganization;
     use PublishesDomainEvents;
 
     public function fromInvoice(Invoice $invoice): ?Subscription
@@ -75,7 +77,13 @@ final class ActivateSubscription
 
         $this->publish(
             $renewal ? 'billing.subscription.renewed' : 'billing.subscription.activated',
-            $this->payload($subscription),
+            [
+                ...$this->payload($subscription),
+                ...$this->addressed($subscription->organization_id, [
+                    'plan_name' => $subscription->plan->name,
+                    'period_end' => $subscription->current_period_end->translatedFormat('d F Y'),
+                ]),
+            ],
             $subscription->organization_id,
         );
 

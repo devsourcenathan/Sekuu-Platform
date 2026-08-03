@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Identity;
 
+use App\Platform\Contracts\IdentityContract;
 use App\Platform\Events\DomainEvent;
 use App\Platform\Support\ModuleServiceProvider;
 use Illuminate\Routing\Router;
@@ -15,6 +16,7 @@ use Modules\Identity\Application\Products\ApplySubscriptionAccess;
 use Modules\Identity\Domain\AuthenticatedContext;
 use Modules\Identity\Infrastructure\Auth\JwtUserResolver;
 use Modules\Identity\Infrastructure\Console\GenerateJwtKeysCommand;
+use Modules\Identity\Infrastructure\Contracts\IdentityGateway;
 use Modules\Identity\Infrastructure\Jwt\AccessTokenIssuer;
 use Modules\Identity\Infrastructure\Jwt\AccessTokenVerifier;
 use Modules\Identity\Infrastructure\Jwt\SigningKeys;
@@ -92,6 +94,11 @@ final class IdentityServiceProvider extends ModuleServiceProvider
     public function boot(): void
     {
         parent::boot();
+
+        // Identity expose son contrat de lecture aux autres modules. C'est la
+        // seule façon dont ils peuvent l'interroger : jamais son modèle
+        // Eloquent, jamais sa table.
+        $this->app->singleton(IdentityContract::class, IdentityGateway::class);
 
         if ($this->app->runningInConsole()) {
             $this->commands([GenerateJwtKeysCommand::class]);

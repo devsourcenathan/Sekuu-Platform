@@ -8,6 +8,7 @@ use App\Platform\Events\PublishesDomainEvents;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Billing\Application\Ledger\CreditLedger;
+use Modules\Billing\Application\Notifications\AddressesTheOrganization;
 use Modules\Billing\Application\Subscriptions\ActivateSubscription;
 use Modules\Billing\Domain\AttemptStatus;
 use Modules\Billing\Domain\Models\Invoice;
@@ -25,6 +26,7 @@ use Modules\Billing\Infrastructure\Providers\ChargeOutcome;
  */
 final class SettlePayment
 {
+    use AddressesTheOrganization;
     use PublishesDomainEvents;
 
     public function __construct(
@@ -88,6 +90,13 @@ final class SettlePayment
                     'payment_intent_id' => $intent->id,
                     'invoice_id' => $intent->invoice_id,
                     'failure_code' => $intent->failure_code,
+                    // SMS : le client vient de tenter un paiement qui n'a pas
+                    // abouti. C'est le moment où il est le plus susceptible de
+                    // recommencer, et où il attend une réponse.
+                    ...$this->addressed($intent->organization_id, [
+                        'amount' => $intent->money()->format(),
+                        'reason' => (string) ($intent->failure_reason ?? ''),
+                    ], withPhone: true),
                 ], $intent->organization_id);
             }
 
@@ -162,6 +171,11 @@ final class SettlePayment
             'number' => $invoice->number,
             'total' => $invoice->total,
             'currency' => $invoice->currency,
+            ...$this->addressed($invoice->organization_id, [
+                'invoice_number' => $invoice->number,
+                'amount' => $invoice->totalMoney()->format(),
+                'paid_at' => now()->translatedFormat('d F Y'),
+            ]),
         ], $invoice->organization_id);
 
         if ($invoice->subscription_id !== null) {

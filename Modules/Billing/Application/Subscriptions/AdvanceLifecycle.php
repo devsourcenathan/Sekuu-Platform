@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Billing\Application\Subscriptions;
 
 use App\Platform\Events\PublishesDomainEvents;
+use Modules\Billing\Application\Notifications\AddressesTheOrganization;
 use Modules\Billing\Domain\Models\Subscription;
 use Modules\Billing\Domain\SubscriptionStatus;
 
@@ -19,6 +20,7 @@ use Modules\Billing\Domain\SubscriptionStatus;
  */
 final class AdvanceLifecycle
 {
+    use AddressesTheOrganization;
     use PublishesDomainEvents;
 
     public function __construct(private readonly ActivateSubscription $activation) {}
@@ -95,9 +97,18 @@ final class AdvanceLifecycle
                 'grace_ends_at' => now()->addDays((int) config('billing.grace_days', 7)),
             ])->save();
 
+            $graceEnd = $subscription->fresh()->grace_ends_at;
+
             $this->publish('billing.subscription.grace_started', [
                 'subscription_id' => $subscription->id,
-                'grace_ends_at' => $subscription->fresh()->grace_ends_at?->toIso8601ZuluString(),
+                'grace_ends_at' => $graceEnd?->toIso8601ZuluString(),
+                // SMS : la période est échue, l'accès va fermer. C'est le
+                // moment où le client doit agir.
+                ...$this->addressed($subscription->organization_id, [
+                    'plan_name' => $subscription->plan->name,
+                    'grace_days' => (string) (int) config('billing.grace_days', 7),
+                    'grace_ends_at' => $graceEnd?->translatedFormat('d F Y') ?? '',
+                ], withPhone: true),
             ], $subscription->organization_id);
         }
 
@@ -134,6 +145,11 @@ final class AdvanceLifecycle
         $this->publish('billing.subscription.suspended', [
             'subscription_id' => $subscription->id,
             'reason' => $cancelled ? 'cancelled' : 'unpaid',
+            // Pas de SMS : l'accès est déjà fermé. Le SMS sert à faire agir
+            // avant, pas à constater après.
+            ...$this->addressed($subscription->organization_id, [
+                'plan_name' => $subscription->plan?->name ?? '',
+            ]),
         ], $subscription->organization_id);
     }
 
@@ -184,6 +200,16 @@ final class AdvanceLifecycle
                     'plan_name' => $subscription->plan->name,
                     'days_remaining' => (int) $days,
                     'current_period_end' => $subscription->current_period_end->toIso8601ZuluString(),
+
+                    // Le SMS n'accompagne que le dernier rappel. Trois SMS par
+                    // mois et par organisation coûteraient plus cher que le
+                    // service qu'ils protègent — et le troisième serait le seul
+                    // encore lu.
+                    ...$this->addressed($subscription->organization_id, [
+                        'plan_name' => $subscription->plan->name,
+                        'days_remaining' => (string) (int) $days,
+                        'expires_at' => $subscription->current_period_end->translatedFormat('d F Y'),
+                    ], withPhone: (int) $days === 1),
                 ], $subscription->organization_id);
 
                 $count++;

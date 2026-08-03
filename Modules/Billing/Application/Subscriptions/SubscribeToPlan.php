@@ -10,6 +10,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Modules\Billing\Application\Invoicing\IssueInvoice;
+use Modules\Billing\Application\Notifications\AddressesTheOrganization;
 use Modules\Billing\Domain\Models\Invoice;
 use Modules\Billing\Domain\Models\Plan;
 use Modules\Billing\Domain\Models\PlanPrice;
@@ -27,6 +28,7 @@ use Modules\Billing\Domain\SubscriptionStatus;
  */
 final class SubscribeToPlan
 {
+    use AddressesTheOrganization;
     use PublishesDomainEvents;
 
     public function __construct(
@@ -56,9 +58,17 @@ final class SubscribeToPlan
 
         // L'essai ouvre l'accès sans paiement : c'est tout son objet.
         if ($subscription->status === SubscriptionStatus::Trialing) {
+            $subscription->load(['plan.products', 'price']);
+
             $this->publish(
                 'billing.subscription.activated',
-                $this->activation->payload($subscription->load(['plan.products', 'price'])),
+                [
+                    ...$this->activation->payload($subscription),
+                    ...$this->addressed($organizationId, [
+                        'plan_name' => $plan->name,
+                        'period_end' => $subscription->current_period_end->translatedFormat('d F Y'),
+                    ]),
+                ],
                 $organizationId,
             );
 
