@@ -10,11 +10,11 @@
 | | |
 | --- | --- |
 | Application | Monolithe modulaire Laravel 13, PHP 8.3, PostgreSQL 18 |
-| Modules livrés | **Identity** (complet) · **Notify** (canal email) |
+| Modules livrés | **Identity** (complet) · **Notify** (email, SMS, interne) |
 | Modules non démarrés | Verify, Billing, Storage, AI, Search, Analytics |
-| Endpoints | 40 sous `/api/v1` + `/.well-known/jwks.json` |
-| Migrations | 17 |
-| Tests | 178, sur PostgreSQL |
+| Endpoints | 53 sous `/api/v1` + `/.well-known/jwks.json` |
+| Migrations | 21 |
+| Tests | 290, sur PostgreSQL |
 | Contrats | `Modules/*/openapi.yaml`, vérifiés par test |
 | Collection de test | `postman/` |
 
@@ -66,9 +66,15 @@ Conséquence : un module ne formate jamais une erreur lui-même, et n'a rien à 
 
 Un fournisseur non configuré n'est jamais essayé : en développement, Resend est ignoré et le mailer Laravel prend la main sans configuration particulière.
 
-**Non implémenté** — canaux WhatsApp, push et interne ; API d'envoi (`POST /notifications`) ; gestion des templates par API ; liens de désabonnement ; envois groupés.
+**API d'envoi** — `POST /notifications`, `/bulk` et `/{id}/cancel`, protégées par une **clé d'API** portant `notifications.send`. L'organisation vient de la clé, jamais du corps.
 
-Le déclenchement se fait donc **uniquement par événement de domaine** pour l'instant. C'est suffisant pour tous les besoins actuels, puisque aucun produit externe n'existe encore.
+**Désabonnement par lien** — public, jeton signé sans expiration. Selon que le destinataire a un compte, l'effet est une préférence désactivée ou une suppression de la destination.
+
+**Canal interne** — `/inbox`, sans aucun fournisseur externe : le repli qui reste disponible quand tout le reste échoue.
+
+**Purge** — `php artisan notify:purge`, avec conservation d'un agrégat par jour, canal, catégorie et statut.
+
+**Non implémenté** — canaux WhatsApp et push ; gestion des templates par API ; gestion des suppressions par API.
 
 ---
 
@@ -167,7 +173,7 @@ Suite automatisée (PostgreSQL requis, base `sekuu_testing`) :
 php artisan test
 ```
 
-Exploration manuelle : importer [`postman/Sekuu-Platform.postman_collection.json`](../postman/Sekuu-Platform.postman_collection.json) et l'environnement associé. 61 requêtes couvrant les 42 routes des deux modules ; les jetons sont capturés automatiquement d'une requête à l'autre.
+Exploration manuelle : importer [`postman/Sekuu-Platform.postman_collection.json`](../postman/Sekuu-Platform.postman_collection.json) et l'environnement associé. 76 requêtes couvrant les 54 routes des deux modules ; les jetons sont capturés automatiquement d'une requête à l'autre.
 
 ## 7.3 Parcours minimal
 
@@ -200,5 +206,7 @@ Puis **Billing** — son contrat d'événements avec Identity est déjà défini
 
 * Aucun endpoint de listing des rôles globaux — la collection Postman doit lire l'identifiant en base.
 * `GET /users` et `PATCH /users/{id}` sont spécifiés mais pas implémentés.
-* Pas de MFA, de passkeys, ni d'API keys — prévus au modèle, non développés.
+* Pas de MFA ni de passkeys — prévus au modèle, non développés.
+* `notify:purge` n'est pas planifié : aucune tâche cron ne l'exécute.
+* `cost_amount` est renseigné par les fournisseurs SMS et jamais lu — ni plafond par organisation, ni refacturation.
 * Internationalisation limitée à `en` et `fr`. Ajouter une langue suppose de traduire les 93 clés et les 10 templates de Notify ; un test échoue tant qu'une clé manque.

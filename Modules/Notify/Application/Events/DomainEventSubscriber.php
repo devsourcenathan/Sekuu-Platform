@@ -56,6 +56,9 @@ final class DomainEventSubscriber implements ShouldQueue
         $recipients = array_filter([
             Channel::EMAIL => (string) $event->get('recipient', ''),
             Channel::SMS => (string) $event->get('phone', ''),
+            // Le canal interne s'adresse à un compte, pas à une coordonnée :
+            // il n'est possible que si l'événement identifie l'utilisateur.
+            Channel::IN_APP => (string) $event->get('user_id', ''),
         ]);
 
         if ($recipients === []) {

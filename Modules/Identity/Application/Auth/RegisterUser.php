@@ -19,7 +19,9 @@ final class RegisterUser
             'first_name' => $attributes['first_name'],
             'last_name' => $attributes['last_name'],
             'email' => $attributes['email'],
-            'language' => $attributes['language'] ?? 'fr',
+            // La langue par défaut est celle de la plateforme, pas une valeur
+            // codée en dur : les deux divergeraient au premier changement.
+            'language' => $attributes['language'] ?? config('app.locale'),
             'timezone' => $attributes['timezone'] ?? 'UTC',
         ]);
 

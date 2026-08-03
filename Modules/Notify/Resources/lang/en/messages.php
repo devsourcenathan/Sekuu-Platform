@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 return [
+    'unsubscribe_token_invalid' => 'This unsubscribe link is invalid.',
+    'idempotency_key_required' => 'The Idempotency-Key header is required for this endpoint.',
+    'bulk_limit_exceeded' => 'A bulk request carries at most :limit messages.',
+    'notification_not_cancellable' => 'This message has already left; it can no longer be cancelled.',
     'channel_not_available' => 'The recipient has no usable address for this message.',
     'channel_not_configured' => 'No provider is configured for the :channel channel.',
     'notification_not_found' => 'This notification does not exist.',

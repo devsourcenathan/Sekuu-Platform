@@ -3,6 +3,11 @@
 declare(strict_types=1);
 
 return [
+    'api_key_required' => "Une clé d'API de service est requise sur ce point d'entrée.",
+    'api_key_invalid' => "La clé d'API est invalide ou a été révoquée.",
+    'api_key_scope_missing' => "Cette clé d'API ne porte pas le scope requis.",
+    'api_key_unknown_scope' => 'Scopes inconnus : :scopes',
+    'api_key_not_found' => "Cette clé d'API n'existe pas.",
     'account_inactive' => 'Ce compte n\'est pas actif.',
     'action_token_invalid' => 'Ce lien est invalide ou a expiré.',
     'credentials_invalid' => 'Les identifiants fournis sont incorrects.',

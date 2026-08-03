@@ -8,6 +8,7 @@ use App\Platform\Events\DomainEvent;
 use App\Platform\Support\ModuleServiceProvider;
 use Illuminate\Support\Facades\Event;
 use Modules\Notify\Application\Events\DomainEventSubscriber;
+use Modules\Notify\Infrastructure\Console\PurgeNotificationsCommand;
 use Modules\Notify\Infrastructure\Providers\ProviderRegistry;
 use Modules\Notify\Infrastructure\Webhooks\WebhookRegistry;
 
@@ -58,5 +59,9 @@ final class NotifyServiceProvider extends ModuleServiceProvider
         // Notify écoute l'événement générique de la plateforme, pas des classes
         // d'un autre module : aucune dépendance de compilation vers Identity.
         Event::listen(DomainEvent::class, [DomainEventSubscriber::class, 'handle']);
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([PurgeNotificationsCommand::class]);
+        }
     }
 }

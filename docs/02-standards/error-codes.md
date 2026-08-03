@@ -148,6 +148,7 @@ Un `INTERNAL_ERROR` ne doit jamais exposer de trace, de requête SQL ou de nom d
 | `WORKSPACE_NOT_FOUND` | 404 | Workspace inexistant |
 | `WORKSPACE_ACCESS_DENIED` | 403 | L'utilisateur n'est pas membre de ce workspace |
 | `PRODUCT_NOT_FOUND` | 404 | Produit inconnu de la plateforme |
+| `API_KEY_INVALID` | 401 | Clé d'API inconnue, expirée ou révoquée — les trois cas sont indiscernables |
 | `OAUTH_ACCOUNT_ALREADY_LINKED` | 409 | Ce compte externe est déjà rattaché à un utilisateur |
 | `OAUTH_EMAIL_TAKEN` | 409 | Un compte utilise déjà cette adresse ; lier le fournisseur depuis le profil |
 | `OAUTH_STATE_INVALID` | 400 | Paramètre `state` absent, expiré, rejoué, ou émis pour un autre fournisseur |

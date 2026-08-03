@@ -1015,6 +1015,95 @@ paths:
           description: '`VALIDATION_ERROR` — champs d''inscription manquants'
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
 
+  # --------------------------------------------------------------- Clés d'API --
+
+  /api-keys:
+    get:
+      tags: [Sessions]
+      summary: Clés d'API de l'organisation
+      description: 'Requiert `organization.manage`. La valeur des clés n''est jamais relisible.'
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/ApiKey' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+    post:
+      tags: [Sessions]
+      summary: Créer une clé d'API
+      description: |
+        Requiert `organization.manage`.
+
+        Les clés d'API servent aux intégrations **serveur à serveur** : elles
+        agissent au nom d'une organisation, pas d'une personne. Déclencher un
+        envoi de message en est le premier usage — un utilisateur final ne doit
+        pas pouvoir écrire au nom de la plateforme.
+
+        La valeur est renvoyée **une seule fois**, à la création. Seul son
+        hachage est conservé : elle n'est jamais relisible.
+
+        Le préfixe distingue `sk_live_` de `sk_test_`, pour qu'une clé de test
+        utilisée par erreur en production se repère d'un coup d'œil.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, scopes]
+              properties:
+                name: { type: string, maxLength: 200, example: Intégration ClinicFlow }
+                scopes:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    enum: [notifications.send, notifications.read, notifications.manage]
+                expires_at: { type: [string, 'null'], format: date-time }
+      responses:
+        '201':
+          description: Clé créée — la valeur n'apparaîtra plus jamais
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/ApiKey'
+                          - type: object
+                            properties:
+                              key:
+                                type: string
+                                description: Valeur en clair, affichée une seule fois.
+                                example: sk_test_a1b2c3…
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api-keys/{apiKeyId}:
+    delete:
+      tags: [Sessions]
+      summary: Révoquer une clé d'API
+      description: 'Requiert `organization.manage`. La révocation est immédiate et définitive.'
+      parameters:
+        - name: apiKeyId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Clé révoquée }
+        '403': { $ref: '#/components/responses/InsufficientPermissions' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   # ------------------------------------------------------------------- Audit --
 
   /audit-logs:
@@ -1304,6 +1393,23 @@ components:
         last_activity: { type: string, format: date-time }
         expires_at: { type: string, format: date-time }
         is_current: { type: boolean }
+
+    ApiKey:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        prefix:
+          type: string
+          description: Début de la clé, conservé en clair pour l'identifier sans l'exposer.
+          example: sk_test_a1b2
+        scopes: { type: array, items: { type: string } }
+        last_used_at:
+          type: [string, 'null']
+          format: date-time
+          description: Permet de repérer les clés dormantes, qu'il faudra révoquer.
+        expires_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
 
     OAuthAccount:
       type: object

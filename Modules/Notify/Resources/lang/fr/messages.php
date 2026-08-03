@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 return [
+    'unsubscribe_token_invalid' => 'Ce lien de désabonnement est invalide.',
+    'idempotency_key_required' => "L'en-tête Idempotency-Key est obligatoire sur ce point d'entrée.",
+    'bulk_limit_exceeded' => 'Un envoi groupé porte au maximum :limit messages.',
+    'notification_not_cancellable' => 'Ce message est déjà parti ; il ne peut plus être annulé.',
     'channel_not_available' => 'Le destinataire n\'a aucune coordonnée utilisable pour ce message.',
     'channel_not_configured' => 'Aucun fournisseur n\'est configuré pour le canal :channel.',
     'notification_not_found' => 'Cette notification n\'existe pas.',

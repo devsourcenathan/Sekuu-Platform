@@ -66,6 +66,22 @@
     {
       "key": "notification_id",
       "value": ""
+    },
+    {
+      "key": "api_key",
+      "value": ""
+    },
+    {
+      "key": "api_key_id",
+      "value": ""
+    },
+    {
+      "key": "inbox_id",
+      "value": ""
+    },
+    {
+      "key": "unsubscribe_token",
+      "value": ""
     }
   ],
   "item": [
@@ -1428,6 +1444,98 @@
               ]
             }
           }
+        },
+        {
+          "name": "Creer une cle d'API",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/api-keys",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api-keys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Integration produit\",\n  \"scopes\": [\n    \"notifications.send\"\n  ]\n}"
+            },
+            "description": "Requiert `organization.manage`.\n\nLa valeur est renvoyee **une seule fois**. Seul son hachage est conserve : elle n'est jamais relisible."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cle creee', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data;",
+                  "pm.collectionVariables.set('api_key', d.key);",
+                  "pm.collectionVariables.set('api_key_id', d.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cles d'API de l'organisation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/api-keys",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api-keys"
+              ]
+            },
+            "description": "La valeur des cles n'apparait jamais ici : seul le prefixe permet de les identifier."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Aucune valeur exposee', () => pm.expect(pm.response.text()).to.not.include('sk_test_'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revoquer une cle d'API",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/api-keys/{{api_key_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api-keys",
+                "{{api_key_id}}"
+              ]
+            },
+            "description": "Revocation immediate et definitive."
+          }
         }
       ]
     },
@@ -1793,6 +1901,263 @@
           ]
         },
         {
+          "name": "Declencher un envoi (cle d'API)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template_key\": \"invitation.sent\",\n  \"recipient\": {\n    \"email\": \"john@gmail.com\"\n  },\n  \"variables\": {\n    \"organization_name\": \"SOS Clinique\",\n    \"role\": \"member\",\n    \"accept_url\": \"https://app.sekuu.com/invitations/abc\",\n    \"expires_at\": \"2026-08-10\"\n  }\n}"
+            },
+            "description": "Exige une **cle d'API** portant `notifications.send` : lancer d'abord « Creer une cle d'API » dans le dossier Sessions.\n\nL'organisation vient de la cle, jamais du corps.\n\n`202` et non `201` : la ressource creee est une **intention**.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{api_key}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 accepte', () => pm.response.to.have.status(202));",
+                  "const d = pm.response.json().data;",
+                  "if (d.queued.length) pm.collectionVariables.set('notification_id', d.queued[0].id);",
+                  "pm.test('Resultat par canal', function () {",
+                  "  pm.expect(d).to.have.property('queued');",
+                  "  pm.expect(d).to.have.property('blocked');",
+                  "  pm.expect(d).to.have.property('skipped');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Envoi sans cle d'API (401 attendu)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template_key\": \"invitation.sent\",\n  \"recipient\": {\n    \"email\": \"john@gmail.com\"\n  }\n}"
+            },
+            "description": "Un utilisateur connecte ne doit pas pouvoir ecrire au nom de la plateforme.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Envoi sans Idempotency-Key (422 attendu)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template_key\": \"invitation.sent\",\n  \"recipient\": {\n    \"email\": \"john@gmail.com\"\n  }\n}"
+            },
+            "description": "Un envoi est un effet de bord non reversible : sans cle, un rejeu reseau produirait un doublon.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{api_key}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 VALIDATION_ERROR', function () {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Envoi groupe",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/bulk",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "bulk"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template_key\": \"invitation.sent\",\n  \"messages\": [\n    {\n      \"recipient\": {\n        \"email\": \"un@gmail.com\"\n      },\n      \"variables\": {\n        \"organization_name\": \"SOS Clinique\",\n        \"role\": \"member\",\n        \"accept_url\": \"https://app.sekuu.com/i/1\",\n        \"expires_at\": \"2026-08-10\"\n      }\n    },\n    {\n      \"recipient\": {\n        \"email\": \"deux@gmail.com\"\n      },\n      \"variables\": {\n        \"organization_name\": \"SOS Clinique\",\n        \"role\": \"member\",\n        \"accept_url\": \"https://app.sekuu.com/i/2\",\n        \"expires_at\": \"2026-08-10\"\n      }\n    }\n  ]\n}"
+            },
+            "description": "Un destinataire supprime n'invalide pas les autres : chaque message est rapporte independamment.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{api_key}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202', () => pm.response.to.have.status(202));",
+                  "pm.test('Un resultat par message', () => pm.expect(pm.response.json().data.results.length).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Annuler un envoi programme",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/{{notification_id}}/cancel",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "{{notification_id}}",
+                "cancel"
+              ]
+            },
+            "description": "Seul un message encore en file peut etre annule. Un message deja remis au fournisseur renvoie `409`.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{api_key}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 409) {",
+                  "  pm.test('Deja parti', () => pm.expect(pm.response.json().error.code).to.eql('NOTIFICATION_NOT_CANCELLABLE'));",
+                  "} else { pm.test('Annule', () => pm.response.to.have.status(200)); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Historique d'envoi",
           "request": {
             "method": "GET",
@@ -2126,6 +2491,97 @@
               }
             }
           ]
+        },
+        {
+          "name": "Boite de reception",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/inbox",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox"
+              ]
+            },
+            "description": "Canal interne : aucun fournisseur externe, donc toujours disponible.\n\nC'est le seul endroit ou le corps d'un message est expose : une notification interne n'a pas d'autre support que cette reponse."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Boite lisible', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "if (d.length) pm.collectionVariables.set('inbox_id', d[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Non lues",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/inbox/unread-count",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "unread-count"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Marquer comme lue",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/inbox/{{inbox_id}}/read",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "{{inbox_id}}",
+                "read"
+              ]
+            },
+            "description": "Idempotent : relire ne deplace pas la date."
+          }
+        },
+        {
+          "name": "Tout marquer comme lu",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/inbox/read-all",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "read-all"
+              ]
+            }
+          }
         }
       ]
     },
@@ -2317,6 +2773,122 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Repli sur le defaut', () => pm.expect(pm.response.headers.get('Content-Language')).to.eql('en'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "11 — Desabonnement",
+      "item": [
+        {
+          "name": "Contexte du lien",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/preferences/unsubscribe/{{unsubscribe_token}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "preferences",
+                "unsubscribe",
+                "{{unsubscribe_token}}"
+              ]
+            },
+            "description": "**Public**. Exiger une connexion pour se desabonner est hostile, et pousse vers le bouton « spam », bien plus couteux puisqu'il alimente la liste de suppression.\n\nLe jeton se recupere depuis un lien d'email. En developpement, on peut le generer en tinker avec UnsubscribeToken::issue().",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('Adresse masquee', () => pm.expect(pm.response.json().data.destination).to.include('*'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Se desabonner",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/preferences/unsubscribe/{{unsubscribe_token}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "preferences",
+                "unsubscribe",
+                "{{unsubscribe_token}}"
+              ]
+            },
+            "description": "Deux effets selon que le destinataire a un compte :\n\n- `preference` : la categorie seule, reversible depuis le profil.\n- `suppression` : toute la destination, seul outil disponible sans compte.\n\nUne categorie transactionnelle ne peut jamais etre desabonnee.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('Effet rapporte', () => pm.expect(['preference','suppression']).to.include(pm.response.json().data.effect));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lien invalide (400 attendu)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/preferences/unsubscribe/nimporte-quoi",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "preferences",
+                "unsubscribe",
+                "nimporte-quoi"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 UNSUBSCRIBE_TOKEN_INVALID', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('UNSUBSCRIBE_TOKEN_INVALID');",
+                  "});"
                 ]
               }
             }

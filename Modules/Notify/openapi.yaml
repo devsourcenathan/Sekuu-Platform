@@ -50,8 +50,10 @@ servers:
 
 tags:
   - name: Service
+  - name: Envoi
   - name: Notifications
   - name: Préférences
+  - name: Boîte de réception
 
 security:
   - bearerAuth: []
@@ -148,6 +150,64 @@ paths:
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
 
   /notifications:
+    post:
+      tags: [Envoi]
+      summary: Déclencher un envoi
+      description: |
+        Exige une **clé d'API** portant le scope `notifications.send`.
+        Déclencher un envoi n'est jamais une action d'utilisateur final : sinon
+        n'importe quel compte connecté pourrait écrire au nom de la plateforme.
+
+        L'organisation vient de la clé, **jamais du corps** : une clé ne peut
+        pas envoyer au nom d'une autre organisation.
+
+        L'appelant ne choisit ni le canal ni le fournisseur — le canal
+        appartient au template. Il fournit les coordonnées dont il dispose ; si
+        la clé existe sur plusieurs canaux, le message part par chacun de ceux
+        qui sont renseignés.
+
+        Réponse `202`, pas `201` : la ressource créée est une **intention**.
+        Rien ne garantit encore qu'un message partira — le destinataire peut
+        être supprimé ou avoir refusé cette catégorie.
+      security:
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [template_key, recipient]
+              properties:
+                template_key: { type: string, example: invitation.sent }
+                recipient: { $ref: '#/components/schemas/Recipient' }
+                variables: { type: object, additionalProperties: true }
+                locale: { type: [string, 'null'], example: fr }
+                scheduled_for: { type: [string, 'null'], format: date-time }
+      responses:
+        '202':
+          description: Intention acceptée
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/SendOutcome' }
+        '401':
+          description: '`UNAUTHENTICATED`, `API_KEY_INVALID`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '403':
+          description: '`INSUFFICIENT_PERMISSIONS`, `RECIPIENT_OPTED_OUT`, `RECIPIENT_SUPPRESSED` — renvoyés avant la mise en file'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '404':
+          description: '`TEMPLATE_NOT_FOUND`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '422':
+          description: '`TEMPLATE_VARIABLE_MISSING`, `RECIPIENT_INVALID`, `CHANNEL_NOT_AVAILABLE`, `VALIDATION_ERROR`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
     get:
       tags: [Notifications]
       summary: Historique d'envoi de l'organisation
@@ -201,6 +261,88 @@ paths:
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/OrganizationRequired' }
+
+  /notifications/bulk:
+    post:
+      tags: [Envoi]
+      summary: Déclencher jusqu'à 100 envois
+      description: |
+        Même template pour tous, variables propres à chacun.
+
+        Un destinataire supprimé n'invalide pas les 99 autres : chaque message
+        est rapporté indépendamment dans `results`.
+      security:
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [template_key, messages]
+              properties:
+                template_key: { type: string }
+                locale: { type: [string, 'null'] }
+                messages:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: object
+                    required: [recipient]
+                    properties:
+                      recipient: { $ref: '#/components/schemas/Recipient' }
+                      variables: { type: object, additionalProperties: true }
+      responses:
+        '202':
+          description: Lot traité, message par message
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          results:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                index: { type: integer }
+                                accepted: { type: boolean }
+                                queued: { type: array, items: { type: object } }
+                                error: { type: object }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /notifications/{notificationId}/cancel:
+    post:
+      tags: [Envoi]
+      summary: Annuler un envoi programmé
+      description: |
+        Seul un message encore en file peut être annulé. Un message déjà remis
+        au fournisseur ne se rattrape pas : mieux vaut le dire que laisser
+        croire à une annulation.
+      security:
+        - apiKey: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Envoi annulé }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404':
+          description: '`NOTIFICATION_NOT_FOUND`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '409':
+          description: '`NOTIFICATION_NOT_CANCELLABLE`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
 
   /notifications/{notificationId}:
     get:
@@ -305,6 +447,177 @@ paths:
           description: '`TRANSACTIONAL_CANNOT_BE_DISABLED`, `VALIDATION_ERROR`'
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
 
+  /preferences/unsubscribe/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Préférences]
+      summary: Contexte d'un lien de désabonnement
+      description: |
+        **Public**. Exiger une connexion pour se désabonner est une pratique
+        hostile, et pousse vers le bouton « spam » — bien plus coûteux qu'un
+        désabonnement, puisqu'il alimente la liste de suppression.
+
+        Le jeton est signé et sans expiration : un message peut être rouvert
+        des mois plus tard, et un lien périmé n'aiderait personne.
+      security: []
+      responses:
+        '200':
+          description: Contexte
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          destination: { type: string, example: n*****@sekuu.com }
+                          channel: { type: string }
+                          category: { type: string }
+                          editable: { type: boolean }
+        '400':
+          description: '`UNSUBSCRIBE_TOKEN_INVALID`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    post:
+      tags: [Préférences]
+      summary: Se désabonner
+      description: |
+        Deux effets possibles selon que le destinataire a un compte :
+
+        | `effect` | Situation | Portée |
+        | --- | --- | --- |
+        | `preference` | Destinataire connu | La catégorie seule, réversible depuis le profil |
+        | `suppression` | Destinataire sans compte | **Toute** la destination — seul outil disponible faute de compte auquel rattacher une préférence |
+
+        Une catégorie transactionnelle ne peut jamais être désabonnée.
+      security: []
+      responses:
+        '200':
+          description: Désabonnement appliqué
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          category: { type: string }
+                          channel: { type: string }
+                          effect: { type: string, enum: [preference, suppression] }
+        '400':
+          description: '`UNSUBSCRIBE_TOKEN_INVALID`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '422':
+          description: '`TRANSACTIONAL_CANNOT_BE_DISABLED`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /inbox:
+    get:
+      tags: [Boîte de réception]
+      summary: Notifications internes de l'utilisateur
+      description: |
+        Le canal interne ne dépend d'aucun fournisseur externe : il reste
+        disponible quand tous les autres échouent, et sert de repli universel.
+
+        C'est le seul endroit où le corps d'un message est exposé — une
+        notification interne n'a pas d'autre support que cette réponse.
+
+        La boîte d'autrui est indiscernable d'une boîte vide.
+      parameters:
+        - name: unread
+          in: query
+          schema: { type: boolean }
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: per_page
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        '200':
+          description: Notifications internes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/InboxEntry' }
+                  meta: { $ref: '#/components/schemas/CursorMeta' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /inbox/unread-count:
+    get:
+      tags: [Boîte de réception]
+      summary: Nombre de notifications non lues
+      responses:
+        '200':
+          description: Compteur
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          unread: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /inbox/read-all:
+    post:
+      tags: [Boîte de réception]
+      summary: Tout marquer comme lu
+      responses:
+        '200':
+          description: Notifications marquées
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          marked: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /inbox/{notificationId}/read:
+    post:
+      tags: [Boîte de réception]
+      summary: Marquer une notification comme lue
+      description: Idempotent — relire une notification déjà lue ne déplace pas sa date.
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Notification marquée
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/InboxEntry' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404':
+          description: '`NOTIFICATION_NOT_FOUND`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
 components:
 
   securitySchemes:
@@ -316,7 +629,29 @@ components:
         Access token émis par Identity, vérifié par signature. Notify ne délivre
         aucun jeton.
 
+    apiKey:
+      type: http
+      scheme: bearer
+      description: |
+        Clé d'API d'organisation, émise par Identity (`POST /api-keys`) et
+        portant le scope `notifications.send`.
+
+        Préfixée `sk_live_` ou `sk_test_`, ce qui la distingue sans ambiguïté
+        d'un access token JWT sur le même schéma `Bearer`.
+
   parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        **Obligatoire** sur tout envoi : un message est un effet de bord non
+        réversible, et sans clé un rejeu réseau produirait un doublon.
+
+        La même clé réutilisée renvoie la notification d'origine plutôt que
+        d'en créer une seconde.
+      schema: { type: string, format: uuid }
+
     AcceptLanguage:
       name: Accept-Language
       in: header
@@ -343,6 +678,9 @@ components:
       content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
     OrganizationRequired:
       description: '`ORGANIZATION_REQUIRED` — le token ne porte aucune organisation active'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    ValidationError:
+      description: '`VALIDATION_ERROR`'
       content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
 
   schemas:
@@ -433,6 +771,62 @@ components:
           enum: [delivered, bounced, complained, rejected, opened, clicked, unsubscribed]
         provider: { type: string }
         occurred_at: { type: string, format: date-time }
+
+    Recipient:
+      type: object
+      description: |
+        Coordonnées dont dispose l'appelant. Aucune n'est obligatoire
+        individuellement, mais au moins une doit être fournie. Un canal sans
+        coordonnée est ignoré, ce n'est pas une erreur.
+      properties:
+        email: { type: [string, 'null'], format: email }
+        phone:
+          type: [string, 'null']
+          description: Format E.164 — un numéro national est ambigu entre opérateurs.
+          example: '+237690000000'
+        user_id:
+          type: [string, 'null']
+          format: uuid
+          description: Requis pour le canal interne, qui s'adresse à un compte et non à une coordonnée.
+
+    SendOutcome:
+      type: object
+      description: Résultat canal par canal — un message peut partir par email et être bloqué en SMS.
+      properties:
+        queued:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              channel: { type: string }
+              status: { type: string }
+              scheduled_for: { type: [string, 'null'], format: date-time }
+        blocked:
+          type: array
+          description: Enregistrés avec leur motif, pour que le journal reste complet.
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              channel: { type: string }
+              reason: { type: string, example: RECIPIENT_SUPPRESSED }
+        skipped:
+          type: object
+          description: Canaux sans coordonnée fournie.
+          additionalProperties: { type: string }
+
+    InboxEntry:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        template_key: { type: string }
+        category: { type: string }
+        organization_id: { type: [string, 'null'], format: uuid }
+        subject: { type: [string, 'null'] }
+        body: { type: string }
+        read_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
 
     Preference:
       type: object

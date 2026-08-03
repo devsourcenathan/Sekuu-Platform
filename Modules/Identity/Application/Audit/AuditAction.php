@@ -42,6 +42,10 @@ final class AuditAction
 
     public const OAUTH_UNLINKED = 'oauth.unlinked';
 
+    public const API_KEY_CREATED = 'api_key.created';
+
+    public const API_KEY_REVOKED = 'api_key.revoked';
+
     public const ORGANIZATION_CREATED = 'organization.created';
 
     public const INVITATION_SENT = 'invitation.sent';

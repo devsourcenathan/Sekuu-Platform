@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Modules\Notify\Domain\Channel;
+use Modules\Notify\Infrastructure\Providers\InAppProvider;
 use Modules\Notify\Infrastructure\Providers\LaravelMailProvider;
 use Modules\Notify\Infrastructure\Providers\LocalGatewaySmsProvider;
 use Modules\Notify\Infrastructure\Providers\PostmarkMailProvider;
@@ -51,6 +52,12 @@ return [
 
         Channel::WHATSAPP => [],
         Channel::PUSH => [],
+
+        // Aucun fournisseur externe : le canal interne reste disponible quand
+        // tous les autres échouent.
+        Channel::IN_APP => [
+            InAppProvider::class,
+        ],
     ],
 
     /*

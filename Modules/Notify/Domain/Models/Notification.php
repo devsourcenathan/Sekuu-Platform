@@ -58,6 +58,7 @@ final class Notification extends Model
         return [
             'payload' => 'array',
             'scheduled_for' => 'datetime',
+            'read_at' => 'datetime',
         ];
     }
 

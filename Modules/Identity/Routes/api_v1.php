@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Modules\Identity\Presentation\Http\Controllers\ApiKeyController;
 use Modules\Identity\Presentation\Http\Controllers\AuditLogController;
 use Modules\Identity\Presentation\Http\Controllers\AuthController;
 use Modules\Identity\Presentation\Http\Controllers\HealthController;
@@ -114,6 +115,15 @@ Route::middleware(['auth:api', 'organization'])->group(function (): void {
 
     Route::get('audit-logs', [AuditLogController::class, 'index'])
         ->middleware('scope:audit.read')->name('audit-logs.index');
+
+    // Les clés d'API agissent au nom de l'organisation : leur gestion relève
+    // de l'administration de celle-ci.
+    Route::get('api-keys', [ApiKeyController::class, 'index'])
+        ->middleware('scope:organization.manage')->name('api-keys.index');
+    Route::post('api-keys', [ApiKeyController::class, 'store'])
+        ->middleware('scope:organization.manage')->name('api-keys.store');
+    Route::delete('api-keys/{apiKey}', [ApiKeyController::class, 'destroy'])
+        ->middleware('scope:organization.manage')->name('api-keys.destroy');
 });
 
 /*

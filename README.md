@@ -47,6 +47,12 @@ Les envois de messages sont **asynchrones** : sans worker, ils restent en file e
 php artisan queue:work --queue=notifications,default
 ```
 
+La purge des notifications expirées est une commande, à planifier en production :
+
+```bash
+php artisan notify:purge
+```
+
 Vérification rapide :
 
 ```bash
@@ -130,7 +136,7 @@ SEKUU_DOMAIN_VERIFY=verify.sekuu.com
 | Module | État |
 | --- | --- |
 | **Identity** | **Complet** — authentification, OAuth, organisations, workspaces, invitations, sessions, mots de passe, vérification d'adresse, journal d'audit |
-| **Notify** | **Email + SMS** — pipeline d'envoi multi-canal, templates traduits, préférences, liste de suppression alimentée par les webhooks fournisseur, branché sur les événements d'Identity. Email via **Resend**, SMS via passerelle locale |
+| **Notify** | **Email, SMS, interne** — API d'envoi protégée par clé d'API, diffusion multi-canal, boîte de réception, désabonnement par lien, liste de suppression alimentée par les webhooks, purge planifiable. Email via **Resend**, SMS via passerelle locale |
 | Verify · Billing · Storage · AI · Search · Analytics | Non démarrés |
 
 ### OAuth

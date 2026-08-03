@@ -3,6 +3,11 @@
 declare(strict_types=1);
 
 return [
+    'api_key_required' => 'A service API key is required for this endpoint.',
+    'api_key_invalid' => 'The API key is invalid or has been revoked.',
+    'api_key_scope_missing' => 'This API key does not carry the required scope.',
+    'api_key_unknown_scope' => 'Unknown scopes: :scopes',
+    'api_key_not_found' => 'This API key does not exist.',
     'account_inactive' => 'This account is not active.',
     'action_token_invalid' => 'This link is invalid or has expired.',
     'credentials_invalid' => 'The provided credentials are incorrect.',

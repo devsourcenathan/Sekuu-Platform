@@ -8,6 +8,8 @@ use App\Platform\Exceptions\DomainException;
 use App\Platform\Http\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Modules\Identity\Domain\AuthenticatedContext;
+use Modules\Notify\Application\Preferences\Unsubscribe;
+use Modules\Notify\Application\Preferences\UnsubscribeToken;
 use Modules\Notify\Domain\Category;
 use Modules\Notify\Domain\Channel;
 use Modules\Notify\Domain\Models\NotificationPreference;
@@ -70,5 +72,49 @@ final class PreferenceController
         }
 
         return $this->index($context);
+    }
+
+    /**
+     * Contexte d'un lien de désabonnement. **Public** : exiger une connexion
+     * pour se désabonner est une pratique hostile, et pousse vers le bouton
+     * « spam » — bien plus coûteux, puisqu'il alimente la liste de suppression.
+     */
+    public function showUnsubscribe(string $token): JsonResponse
+    {
+        $payload = UnsubscribeToken::open($token);
+
+        return ApiResponse::success([
+            'destination' => self::mask($payload['destination']),
+            'channel' => $payload['channel'],
+            'category' => $payload['category'],
+            'editable' => Category::isOptional($payload['category']),
+        ]);
+    }
+
+    public function unsubscribe(string $token, Unsubscribe $unsubscribe): JsonResponse
+    {
+        $payload = UnsubscribeToken::open($token);
+
+        $effect = $unsubscribe->handle($payload);
+
+        return ApiResponse::success([
+            'category' => $payload['category'],
+            'channel' => $payload['channel'],
+            // `preference` : réversible depuis le profil.
+            // `suppression` : le destinataire n'a pas de compte, la destination
+            // est bloquée entièrement.
+            'effect' => $effect,
+        ]);
+    }
+
+    private static function mask(string $destination): string
+    {
+        if (! str_contains($destination, '@')) {
+            return str_repeat('*', max(0, mb_strlen($destination) - 4)).mb_substr($destination, -4);
+        }
+
+        [$local, $domain] = explode('@', $destination, 2);
+
+        return mb_substr($local, 0, 1).str_repeat('*', max(1, mb_strlen($local) - 1)).'@'.$domain;
     }
 }
