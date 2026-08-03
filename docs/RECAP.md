@@ -167,7 +167,7 @@ Suite automatisée (PostgreSQL requis, base `sekuu_testing`) :
 php artisan test
 ```
 
-Exploration manuelle : importer [`postman/Sekuu-Identity.postman_collection.json`](../postman/Sekuu-Identity.postman_collection.json) et l'environnement associé. Les jetons sont capturés automatiquement d'une requête à l'autre.
+Exploration manuelle : importer [`postman/Sekuu-Platform.postman_collection.json`](../postman/Sekuu-Platform.postman_collection.json) et l'environnement associé. 61 requêtes couvrant les 42 routes des deux modules ; les jetons sont capturés automatiquement d'une requête à l'autre.
 
 ## 7.3 Parcours minimal
 

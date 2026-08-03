@@ -11,7 +11,7 @@ Le contrat faisant foi est [`Modules/Identity/openapi.yaml`](../../../Modules/Id
 
 `OpenApiContractTest` vérifie à chaque exécution de la suite que le contrat couvre exactement les routes réelles — ni route non documentée, ni opération fantôme — et que les codes d'erreur cités appartiennent au [catalogue](../../02-standards/error-codes.md).
 
-Pour explorer l'API à la main : [collection Postman](../../../postman/Sekuu-Identity.postman_collection.json).
+Pour explorer l'API à la main : [collection Postman](../../../postman/Sekuu-Platform.postman_collection.json).
 
 ---
 

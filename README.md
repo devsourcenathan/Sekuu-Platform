@@ -6,7 +6,7 @@ Développé comme un **monolithe modulaire Laravel** — une application, une ba
 
 📖 **La documentation est dans [`docs/`](docs/README.md)** — commencez par le [récapitulatif](docs/RECAP.md) pour l'état réel, ou la [vision](docs/01-overview/vision.md) puis l'[architecture](docs/01-overview/architecture.md) pour la cible.
 
-🔌 **API Identity** — contrat [`Modules/Identity/openapi.yaml`](Modules/Identity/openapi.yaml) · [collection Postman](postman/)
+🔌 **API** — contrats [`Identity`](Modules/Identity/openapi.yaml) et [`Notify`](Modules/Notify/openapi.yaml) · [collection Postman](postman/Sekuu-Platform.postman_collection.json)
 
 ---
 
