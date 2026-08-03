@@ -7,17 +7,21 @@ namespace Modules\Notify\Application\Sending;
 use App\Platform\Exceptions\DomainException;
 use App\Platform\Http\RequestId;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Modules\Notify\Application\Delivery\DeliverNotification;
+use Modules\Notify\Application\Templates\RenderedMessage;
 use Modules\Notify\Application\Templates\TemplateRenderer;
 use Modules\Notify\Application\Templates\TemplateResolver;
 use Modules\Notify\Domain\Channel;
 use Modules\Notify\Domain\Models\Notification;
+use Modules\Notify\Domain\Models\NotificationTemplate;
 
 /**
  * Le pipeline d'envoi.
  *
- *   1. Déduplication      même clé d'idempotence déjà vue ? on s'arrête
- *   2. Résolution         template + langue + canal
+ *   1. Résolution         un template par canal, pour la clé demandée
+ *   2. Déduplication      même clé d'idempotence déjà vue ? on s'arrête
  *   3. Rendu              variables appliquées, contenu figé
  *   4. Filtrage           préférences, liste de suppression
  *   5. Mise en file       le message devient une tâche
@@ -33,69 +37,95 @@ final class SendNotification
         private readonly RecipientFilter $filter,
     ) {}
 
-    public function handle(SendRequest $request): Notification
+    public function handle(SendRequest $request): SendOutcome
     {
-        // 1. Un rejeu ne doit jamais produire un second message.
-        $existing = $this->findExisting($request);
+        $templates = $this->resolver->resolveAll($request->templateKey, $request->organizationId);
+
+        $queued = new Collection;
+        $blocked = new Collection;
+        $skipped = [];
+
+        foreach ($templates as $channel => $template) {
+            $destination = $request->destinationFor($channel);
+
+            // Aucune coordonnée pour ce canal : ce n'est pas une erreur, c'est
+            // un canal simplement inapplicable à ce destinataire.
+            if ($destination === null) {
+                $skipped[$channel] = 'CHANNEL_NOT_AVAILABLE';
+
+                continue;
+            }
+
+            $notification = $this->sendOne($request, $template, $channel, $destination);
+
+            $notification->status === Notification::SUPPRESSED
+                ? $blocked->push($notification)
+                : $queued->push($notification);
+        }
+
+        $outcome = new SendOutcome($queued, $blocked, $skipped);
+
+        // Rien n'a pu partir : l'appelant doit le savoir. Si au moins un canal
+        // a fonctionné, le message est passé — le détail reste dans le résultat.
+        if (! $outcome->sentAnything()) {
+            throw $this->failureFor($outcome);
+        }
+
+        return $outcome;
+    }
+
+    private function sendOne(
+        SendRequest $request,
+        NotificationTemplate $template,
+        string $channel,
+        string $destination,
+    ): Notification {
+        $idempotencyKey = $request->idempotencyKeyFor($channel);
+
+        $existing = $idempotencyKey === null
+            ? null
+            : Notification::query()->where('idempotency_key', $idempotencyKey)->first();
 
         if ($existing !== null) {
             return $existing;
         }
 
-        // 2.
-        $template = $this->resolver->resolve($request->templateKey, $request->organizationId);
+        $this->assertDestinationIsValid($channel, $destination);
 
-        $this->assertRecipientIsValid($template->channel, $request->recipient);
-
-        // 3. Le rendu précède la mise en file : le contenu est figé à
-        //    l'acceptation, pas à l'envoi.
+        // Le rendu précède la mise en file : le contenu est figé à
+        // l'acceptation, pas à l'envoi.
         $rendered = $this->renderer->render(
             $template,
             $this->resolver->localeChain($request->locale),
             $request->variables,
         );
 
-        // 4.
         $verdict = $this->filter->check(
-            channel: $template->channel,
+            channel: $channel,
             category: $template->category,
-            destination: $request->recipient,
+            destination: $destination,
             userId: $request->userId,
             organizationId: $request->organizationId,
         );
 
-        $notification = $this->record($request, $template, $rendered, $verdict);
+        $notification = $this->record($request, $template, $rendered, $verdict, $destination, $idempotencyKey);
 
-        // Le message filtré est enregistré puis signalé : l'appelant doit
-        // savoir qu'il ne partira pas, et le journal doit rester complet.
-        if (! $verdict->allowed) {
-            throw DomainException::forbidden($verdict->errorCode, $verdict->reason);
+        if ($verdict->allowed && $notification->status === Notification::QUEUED) {
+            DeliverNotification::dispatch($notification->id)
+                ->onQueue(config('notify.queue'))
+                ->delay($notification->scheduled_for);
         }
-
-        // 5.
-        DeliverNotification::dispatch($notification->id)
-            ->onQueue('notifications')
-            ->delay($notification->scheduled_for);
 
         return $notification;
     }
 
-    private function findExisting(SendRequest $request): ?Notification
-    {
-        if ($request->idempotencyKey === null) {
-            return null;
-        }
-
-        return Notification::query()
-            ->where('idempotency_key', $request->idempotencyKey)
-            ->first();
-    }
-
     private function record(
         SendRequest $request,
-        $template,
-        $rendered,
+        NotificationTemplate $template,
+        RenderedMessage $rendered,
         FilterVerdict $verdict,
+        string $destination,
+        ?string $idempotencyKey,
     ): Notification {
         $attributes = [
             'organization_id' => $request->organizationId,
@@ -105,12 +135,12 @@ final class SendNotification
             'channel' => $template->channel,
             'category' => $template->category,
             'locale' => $rendered->locale,
-            'recipient' => $request->recipient,
+            'recipient' => $destination,
             'rendered_subject' => $rendered->subject,
             'rendered_body' => $rendered->body,
             'payload' => self::scrub($request->variables),
             'status' => $verdict->allowed ? Notification::QUEUED : Notification::SUPPRESSED,
-            'idempotency_key' => $request->idempotencyKey,
+            'idempotency_key' => $idempotencyKey,
             'source_event_id' => $request->sourceEventId,
             'request_id' => RequestId::current(),
             'scheduled_for' => $request->scheduledFor,
@@ -118,26 +148,49 @@ final class SendNotification
         ];
 
         try {
-            return Notification::create($attributes);
+            // SAVEPOINT : sur PostgreSQL, une violation d'unicité annule la
+            // transaction courante. Sans lui, le rattrapage ci-dessous
+            // laisserait la transaction inutilisable.
+            return DB::transaction(fn () => Notification::create($attributes));
         } catch (QueryException $e) {
             // Deux consommateurs concurrents du même événement : l'index unique
             // tranche, et le perdant récupère la notification déjà créée.
-            if ($request->idempotencyKey !== null && self::isUniqueViolation($e)) {
-                return Notification::query()
-                    ->where('idempotency_key', $request->idempotencyKey)
-                    ->firstOrFail();
+            if ($idempotencyKey !== null && self::isUniqueViolation($e)) {
+                return Notification::query()->where('idempotency_key', $idempotencyKey)->firstOrFail();
             }
 
             throw $e;
         }
     }
 
-    private function assertRecipientIsValid(string $channel, string $recipient): void
+    private function failureFor(SendOutcome $outcome): DomainException
+    {
+        $code = $outcome->blockingReason() ?? 'CHANNEL_NOT_AVAILABLE';
+
+        return match ($code) {
+            'RECIPIENT_SUPPRESSED' => DomainException::forbidden(
+                $code,
+                __('This destination is on the suppression list.'),
+            ),
+            'RECIPIENT_OPTED_OUT' => DomainException::forbidden(
+                $code,
+                __('The recipient has disabled this category.'),
+            ),
+            default => DomainException::unprocessable(
+                'CHANNEL_NOT_AVAILABLE',
+                __('The recipient has no usable address for this message.'),
+            ),
+        };
+    }
+
+    private function assertDestinationIsValid(string $channel, string $destination): void
     {
         $valid = match ($channel) {
-            Channel::EMAIL => filter_var($recipient, FILTER_VALIDATE_EMAIL) !== false,
-            Channel::SMS, Channel::WHATSAPP => preg_match('/^\+[1-9]\d{7,14}$/', $recipient) === 1,
-            default => $recipient !== '',
+            Channel::EMAIL => filter_var($destination, FILTER_VALIDATE_EMAIL) !== false,
+            // Format E.164 : les passerelles locales le refusent autrement, et
+            // un numéro national serait ambigu entre opérateurs.
+            Channel::SMS, Channel::WHATSAPP => preg_match('/^\+[1-9]\d{7,14}$/', $destination) === 1,
+            default => $destination !== '',
         };
 
         if (! $valid) {
@@ -157,7 +210,7 @@ final class SendNotification
      */
     public static function scrub(array $variables): array
     {
-        $forbidden = ['token', 'password', 'secret', 'api_key', 'authorization', 'url'];
+        $forbidden = ['token', 'password', 'secret', 'api_key', 'authorization', 'url', 'code'];
         $clean = [];
 
         foreach ($variables as $key => $value) {

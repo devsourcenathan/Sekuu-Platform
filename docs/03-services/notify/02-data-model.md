@@ -58,6 +58,10 @@ version           integer      DEFAULT 1
 **Contraintes**
 
 * `UNIQUE (key, channel, organization_id)` — un template par clé, canal et organisation.
+
+**Une clé peut exister sur plusieurs canaux.** `password.changed` est défini en email **et** en SMS : le message part alors par les deux, si l'on dispose des deux coordonnées. C'est une diffusion multi-canal, pas un choix.
+
+L'appelant fournit les coordonnées dont il dispose ; un canal sans coordonnée est simplement ignoré, ce n'est pas une erreur. Un canal bloqué — préférence ou suppression — n'empêche pas les autres de partir. L'appel n'échoue que si **rien** n'a pu partir.
 * `category ∈ { transactional, operational, marketing }`.
 * `channel ∈ { email, sms, whatsapp, push, in_app }`.
 

@@ -63,6 +63,10 @@ Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
 
 L'appelant ne choisit **ni le canal, ni le fournisseur** : le canal appartient au template. C'est ce qui permet de basculer un message de l'email vers WhatsApp sans toucher au code appelant.
 
+Il fournit en revanche **toutes les coordonnées dont il dispose**. Si la clé existe sur plusieurs canaux, le message part par chacun de ceux pour lesquels une coordonnée est connue.
+
+Les numéros sont attendus au format **E.164** (`+237690000000`) : un numéro national est ambigu entre opérateurs, et les passerelles locales le refusent.
+
 **Réponse `202 Accepted`** — l'envoi est accepté, pas effectué :
 
 ```json

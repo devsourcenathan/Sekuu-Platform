@@ -71,6 +71,68 @@ paths:
                               type: string
                               enum: [configured, unconfigured]
 
+  /webhooks/{provider}:
+    post:
+      tags: [Service]
+      summary: Retours de livraison d'un fournisseur
+      description: |
+        Publique au sens réseau, **authentifiée par signature** : chaque
+        fournisseur signe selon son propre schéma, vérifié sur le corps brut
+        avant tout parsing — un corps re-sérialisé ne produit pas la même
+        signature.
+
+        Traitement :
+
+        1. Vérification de la signature.
+        2. Déduplication sur `(provider, provider_event_id)` — les fournisseurs
+           rejouent leurs webhooks.
+        3. Rapprochement via `provider_message_id`.
+        4. Enregistrement de l'événement, mise à jour du statut.
+        5. Alimentation de la liste de suppression sur rebond **dur** et
+           plainte. Un rebond temporaire ne supprime pas : il a déjà déclenché
+           un réessai.
+
+        La réponse est **toujours `200`**, y compris pour un événement inconnu
+        ou déjà traité : répondre en erreur déclencherait des réessais inutiles
+        chez le fournisseur, et finirait par faire désactiver le endpoint.
+
+        Sans secret configuré, le endpoint est **fermé**, jamais ouvert.
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string, enum: [postmark, local-gateway] }
+      requestBody:
+        required: true
+        description: Format propre au fournisseur.
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Retour traité, ignoré ou déjà connu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          processed:
+                            type: integer
+                            description: Événements nouvellement enregistrés.
+        '401':
+          description: '`WEBHOOK_SIGNATURE_INVALID`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '404':
+          description: '`ENDPOINT_NOT_FOUND` — aucun gestionnaire pour ce fournisseur'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
   /notifications:
     get:
       tags: [Notifications]

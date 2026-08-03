@@ -5,21 +5,28 @@ declare(strict_types=1);
 namespace Modules\Notify\Application\Templates;
 
 use App\Platform\Exceptions\DomainException;
+use Illuminate\Support\Collection;
 use Modules\Notify\Domain\Models\NotificationTemplate;
 
 /**
- * Résout la clé d'un message en template concret.
+ * Résout la clé d'un message en templates concrets.
+ *
+ * Une clé peut exister sur plusieurs canaux — une alerte de sécurité part par
+ * email **et** par SMS. La résolution renvoie donc toujours une collection :
+ * choisir arbitrairement l'un des canaux serait un bug silencieux.
  *
  * @see docs/03-services/notify/02-data-model.md
  */
 final class TemplateResolver
 {
-    public function resolve(string $key, ?string $organizationId = null): NotificationTemplate
+    /**
+     * Templates actifs pour une clé, un par canal.
+     *
+     * @return Collection<string, NotificationTemplate> indexée par canal
+     */
+    public function resolveAll(string $key, ?string $organizationId = null): Collection
     {
-        // Le template de l'organisation prime sur celui de la plateforme :
-        // c'est ce qui permet à une entreprise d'habiller ses messages sans
-        // dupliquer le catalogue.
-        $template = NotificationTemplate::query()
+        $templates = NotificationTemplate::query()
             ->where('key', $key)
             ->where('status', 'active')
             ->when(
@@ -29,18 +36,22 @@ final class TemplateResolver
                 ),
                 fn ($q) => $q->whereNull('organization_id'),
             )
+            // La variante de l'organisation prime sur celle de la plateforme :
+            // en la plaçant en tête, le regroupement par canal la retient.
             ->orderByRaw('organization_id IS NULL')
             ->with('contents')
-            ->first();
+            ->get();
 
-        if ($template === null) {
+        if ($templates->isEmpty()) {
             throw DomainException::notFound(
                 'TEMPLATE_NOT_FOUND',
                 __('No template is registered for :key.', ['key' => $key]),
             );
         }
 
-        return $template;
+        return $templates->groupBy('channel')->map(
+            fn (Collection $perChannel) => $perChannel->first()
+        );
     }
 
     /**

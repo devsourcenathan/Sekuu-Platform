@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 use Modules\Notify\Domain\Channel;
 use Modules\Notify\Infrastructure\Providers\LaravelMailProvider;
+use Modules\Notify\Infrastructure\Providers\LocalGatewaySmsProvider;
+use Modules\Notify\Infrastructure\Providers\TwilioSmsProvider;
+use Modules\Notify\Infrastructure\Webhooks\LocalGatewayWebhookHandler;
+use Modules\Notify\Infrastructure\Webhooks\PostmarkWebhookHandler;
 
 /*
 | Configuration du module Notify.
@@ -19,8 +23,8 @@ return [
     |--------------------------------------------------------------------------
     |
     | L'ordre vaut priorité : le premier est essayé, les suivants servent de
-    | bascule en cas d'échec **infrastructurel**. Un rejet métier — numéro
-    | invalide, contenu refusé — n'entraîne aucune bascule : il ne réussira pas
+    | bascule en cas d'échec **infrastructurel**. Un rejet métier — numéro hors
+    | réseau, contenu refusé — n'entraîne aucune bascule : il ne réussira pas
     | davantage ailleurs, et chaque tentative coûte.
     |
     */
@@ -30,12 +34,54 @@ return [
             LaravelMailProvider::class,
         ],
 
-        // SMS, WhatsApp et push seront ajoutés ici. Sur les marchés visés, un
-        // opérateur local est un fournisseur de premier rang, pas un cas
-        // particulier : mieux acheminé et moins cher qu'un envoi international.
-        Channel::SMS => [],
+        // Sur les marchés visés, un acheminement local est moins cher et mieux
+        // délivré qu'un envoi international : c'est le premier rang, pas un
+        // repli.
+        Channel::SMS => [
+            LocalGatewaySmsProvider::class,
+            TwilioSmsProvider::class,
+        ],
+
         Channel::WHATSAPP => [],
         Channel::PUSH => [],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Retours de livraison
+    |--------------------------------------------------------------------------
+    |
+    | Sans ces webhooks, la liste de suppression ne s'alimente jamais et le
+    | statut `sent` ne devient jamais `delivered`.
+    |
+    */
+
+    'webhooks' => [
+        'postmark' => PostmarkWebhookHandler::class,
+        'local-gateway' => LocalGatewayWebhookHandler::class,
+    ],
+
+    'sms' => [
+        'local_gateway' => [
+            'endpoint' => env('SMS_GATEWAY_ENDPOINT'),
+            'token' => env('SMS_GATEWAY_TOKEN'),
+            'sender_id' => env('SMS_GATEWAY_SENDER_ID', 'SEKUU'),
+            'timeout' => 10,
+            'webhook_secret' => env('SMS_GATEWAY_WEBHOOK_SECRET'),
+        ],
+
+        'twilio' => [
+            'account_sid' => env('TWILIO_ACCOUNT_SID'),
+            'token' => env('TWILIO_TOKEN'),
+            'from' => env('TWILIO_FROM'),
+            'timeout' => 10,
+        ],
+    ],
+
+    'email' => [
+        'postmark' => [
+            'webhook_token' => env('POSTMARK_WEBHOOK_TOKEN'),
+        ],
     ],
 
     /*

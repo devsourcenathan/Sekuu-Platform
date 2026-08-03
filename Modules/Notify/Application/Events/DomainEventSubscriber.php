@@ -10,6 +10,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Log;
 use Modules\Notify\Application\Sending\SendNotification;
 use Modules\Notify\Application\Sending\SendRequest;
+use Modules\Notify\Domain\Channel;
 
 /**
  * Traduit les événements de la plateforme en envois.
@@ -50,9 +51,14 @@ final class DomainEventSubscriber implements ShouldQueue
             return;
         }
 
-        $recipient = (string) $event->get('recipient', '');
+        // L'émetteur fournit les coordonnées dont il dispose ; ce sont les
+        // templates qui déterminent lesquelles seront utilisées.
+        $recipients = array_filter([
+            Channel::EMAIL => (string) $event->get('recipient', ''),
+            Channel::SMS => (string) $event->get('phone', ''),
+        ]);
 
-        if ($recipient === '') {
+        if ($recipients === []) {
             Log::warning('Événement sans destinataire, ignoré.', [
                 'type' => $event->type,
                 'event_id' => $event->eventId,
@@ -64,7 +70,7 @@ final class DomainEventSubscriber implements ShouldQueue
         try {
             $this->send->handle(new SendRequest(
                 templateKey: $templateKey,
-                recipient: $recipient,
+                recipients: $recipients,
                 variables: (array) $event->get('variables', []),
                 userId: $event->get('user_id'),
                 organizationId: $event->organizationId,

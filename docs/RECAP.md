@@ -58,11 +58,13 @@ Conséquence : un module ne formate jamais une erreur lui-même, et n'a rien à 
 
 ## 2.3 Module Notify
 
-**Implémenté** — pipeline d'envoi complet (déduplication, résolution, rendu, filtrage, mise en file, livraison), canal email, 8 templates de plateforme traduits fr/en, préférences par catégorie, liste de suppression, consultation de l'historique.
+**Implémenté** — pipeline d'envoi complet (déduplication, résolution, rendu, filtrage, mise en file, livraison), **canaux email et SMS**, diffusion multi-canal, 10 templates de plateforme traduits fr/en, préférences par catégorie, liste de suppression, **webhooks de retour de livraison**, consultation de l'historique.
 
 **Branché sur Identity** — six événements produisent aujourd'hui de vrais messages : inscription, vérification d'adresse, réinitialisation, changement de mot de passe, invitation, création d'organisation.
 
-**Non implémenté** — canaux SMS, WhatsApp, push et interne ; API d'envoi (`POST /notifications`) ; gestion des templates par API ; webhooks entrants ; liens de désabonnement ; envois groupés.
+**Fournisseurs** — email : mailer Laravel. SMS : passerelle locale en premier rang, Twilio en bascule. Webhooks : Postmark (email) et passerelle locale (DLR SMS).
+
+**Non implémenté** — canaux WhatsApp, push et interne ; API d'envoi (`POST /notifications`) ; gestion des templates par API ; liens de désabonnement ; envois groupés ; fournisseur d'envoi Postmark (seul son webhook existe).
 
 Le déclenchement se fait donc **uniquement par événement de domaine** pour l'instant. C'est suffisant pour tous les besoins actuels, puisque aucun produit externe n'existe encore.
 
@@ -181,7 +183,7 @@ GET  /audit-logs                 →  trace des quatre étapes
 
 ## 8.1 Bloquant pour la production
 
-* **Un fournisseur email transactionnel** — le canal fonctionne aujourd'hui sur le mailer Laravel. Sans fournisseur dédié, aucun webhook de rebond n'arrive, donc la liste de suppression ne s'alimente jamais toute seule.
+* **Un fournisseur email transactionnel** — le traitement des webhooks Postmark existe, mais l'envoi passe encore par le mailer Laravel. Tant que les messages ne partent pas par Postmark, aucun rebond ne remonte et la liste de suppression ne s'alimente pas.
 * **Redis** — pour les queues, le cache et la liste de révocation. Les envois passent aujourd'hui par la file `database`.
 * **Clés de signature** en gestionnaire de secrets, et procédure de rotation à 90 jours.
 * **CI** — la suite existe, rien ne l'exécute automatiquement.

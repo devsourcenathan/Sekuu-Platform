@@ -171,6 +171,7 @@ final class AuthController
             firstName: $user->first_name,
             locale: $user->language ?? 'fr',
             ipAddress: $request->ip(),
+            phone: $user->phone,
         );
 
         return ApiResponse::success([

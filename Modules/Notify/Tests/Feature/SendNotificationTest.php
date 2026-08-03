@@ -7,10 +7,12 @@ namespace Modules\Notify\Tests\Feature;
 use App\Platform\Exceptions\DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Modules\Notify\Application\Sending\SendNotification;
 use Modules\Notify\Application\Sending\SendRequest;
+use Modules\Notify\Domain\Channel;
 use Modules\Notify\Domain\Models\Notification;
 use Modules\Notify\Domain\Models\NotificationPreference;
 use Modules\Notify\Domain\Models\Suppression;
@@ -35,9 +37,6 @@ final class SendNotificationTest extends TestCase
         $this->send = $this->app->make(SendNotification::class);
     }
 
-    /**
-     * Messages effectivement remis au transport.
-     */
     private function sentMessages(): Collection
     {
         return collect(Mail::mailer()->getSymfonyTransport()->messages());
@@ -45,7 +44,7 @@ final class SendNotificationTest extends TestCase
 
     public function test_a_message_is_rendered_and_queued(): void
     {
-        $notification = $this->sendResetTo('nathan@sekuu.com');
+        $notification = $this->sendReset('nathan@sekuu.com');
 
         $this->assertSame(Notification::SENT, $notification->fresh()->status);
         $this->assertSame('email', $notification->channel);
@@ -60,7 +59,7 @@ final class SendNotificationTest extends TestCase
      */
     public function test_the_rendered_content_is_frozen_at_acceptance(): void
     {
-        $notification = $this->sendResetTo('nathan@sekuu.com');
+        $notification = $this->sendReset('nathan@sekuu.com');
 
         $this->assertStringContainsString('Nathan', $notification->rendered_body);
         $this->assertStringContainsString('https://app.sekuu.com/reset', $notification->rendered_body);
@@ -69,11 +68,10 @@ final class SendNotificationTest extends TestCase
 
     public function test_the_locale_falls_back_when_the_requested_one_is_missing(): void
     {
-        $french = $this->sendResetTo('nathan@sekuu.com', locale: 'fr');
-        $unknown = $this->sendResetTo('autre@sekuu.com', locale: 'de');
+        $french = $this->sendReset('nathan@sekuu.com', locale: 'fr');
+        $unknown = $this->sendReset('autre@sekuu.com', locale: 'de');
 
         $this->assertSame('fr', $french->locale);
-        // `de` n'existe pas : on retombe sur la langue de repli.
         $this->assertSame(config('app.fallback_locale'), $unknown->locale);
     }
 
@@ -82,34 +80,24 @@ final class SendNotificationTest extends TestCase
         $this->expectException(DomainException::class);
         $this->expectExceptionMessage('Missing required variables');
 
-        $this->send->handle(new SendRequest(
+        $this->send->handle(SendRequest::toEmail(
             templateKey: 'password.reset',
-            recipient: 'nathan@sekuu.com',
+            email: 'nathan@sekuu.com',
             variables: ['first_name' => 'Nathan'], // reset_url absent
         ));
-
-        $this->assertCount(0, $this->sentMessages());
     }
 
     public function test_an_unknown_template_is_refused(): void
     {
         $this->expectException(DomainException::class);
 
-        $this->send->handle(new SendRequest(
-            templateKey: 'inexistant.template',
-            recipient: 'nathan@sekuu.com',
-        ));
+        $this->send->handle(SendRequest::toEmail('inexistant.template', 'nathan@sekuu.com'));
     }
 
     public function test_an_invalid_email_is_refused(): void
     {
         try {
-            $this->send->handle(new SendRequest(
-                templateKey: 'password.reset',
-                recipient: 'pas-une-adresse',
-                variables: $this->resetVariables(),
-            ));
-
+            $this->sendReset('pas-une-adresse');
             $this->fail('Un destinataire invalide devait être refusé.');
         } catch (DomainException $e) {
             $this->assertSame('RECIPIENT_INVALID', $e->errorCode);
@@ -124,8 +112,8 @@ final class SendNotificationTest extends TestCase
     {
         $key = (string) Str::uuid();
 
-        $first = $this->sendResetTo('nathan@sekuu.com', idempotencyKey: $key);
-        $second = $this->sendResetTo('nathan@sekuu.com', idempotencyKey: $key);
+        $first = $this->sendReset('nathan@sekuu.com', idempotencyKey: $key);
+        $second = $this->sendReset('nathan@sekuu.com', idempotencyKey: $key);
 
         $this->assertSame($first->id, $second->id);
         $this->assertSame(1, Notification::query()->count());
@@ -134,14 +122,10 @@ final class SendNotificationTest extends TestCase
 
     public function test_a_suppressed_destination_blocks_even_transactional_messages(): void
     {
-        Suppression::create([
-            'channel' => 'email',
-            'destination' => 'nathan@sekuu.com',
-            'reason' => Suppression::HARD_BOUNCE,
-        ]);
+        $this->suppress('email', 'nathan@sekuu.com', Suppression::HARD_BOUNCE);
 
         try {
-            $this->sendResetTo('nathan@sekuu.com');
+            $this->sendReset('nathan@sekuu.com');
             $this->fail('Une destination supprimée devait bloquer l\'envoi.');
         } catch (DomainException $e) {
             $this->assertSame('RECIPIENT_SUPPRESSED', $e->errorCode);
@@ -157,16 +141,12 @@ final class SendNotificationTest extends TestCase
 
     public function test_suppression_matching_ignores_case(): void
     {
-        Suppression::create([
-            'channel' => 'email',
-            'destination' => 'nathan@sekuu.com',
-            'reason' => Suppression::COMPLAINT,
-        ]);
+        $this->suppress('email', 'nathan@sekuu.com', Suppression::COMPLAINT);
 
         $this->expectException(DomainException::class);
 
         // Sans normalisation, cette adresse échapperait à la suppression.
-        $this->sendResetTo('Nathan@Sekuu.COM');
+        $this->sendReset('Nathan@Sekuu.COM');
     }
 
     /**
@@ -174,17 +154,9 @@ final class SendNotificationTest extends TestCase
      */
     public function test_a_preference_cannot_block_a_transactional_message(): void
     {
-        $userId = (string) Str::uuid();
+        $userId = $this->disablePreference('transactional', Channel::EMAIL);
 
-        NotificationPreference::create([
-            'user_id' => $userId,
-            'organization_id' => null,
-            'category' => 'transactional',
-            'channel' => 'email',
-            'enabled' => false,
-        ]);
-
-        $notification = $this->sendResetTo('nathan@sekuu.com', userId: $userId);
+        $notification = $this->sendReset('nathan@sekuu.com', userId: $userId);
 
         $this->assertSame(Notification::SENT, $notification->fresh()->status);
         $this->assertCount(1, $this->sentMessages());
@@ -192,20 +164,12 @@ final class SendNotificationTest extends TestCase
 
     public function test_a_preference_blocks_an_operational_message(): void
     {
-        $userId = (string) Str::uuid();
-
-        NotificationPreference::create([
-            'user_id' => $userId,
-            'organization_id' => null,
-            'category' => 'operational',
-            'channel' => 'email',
-            'enabled' => false,
-        ]);
+        $userId = $this->disablePreference('operational', Channel::EMAIL);
 
         try {
-            $this->send->handle(new SendRequest(
+            $this->send->handle(SendRequest::toEmail(
                 templateKey: 'invitation.sent',
-                recipient: 'john@gmail.com',
+                email: 'john@gmail.com',
                 variables: [
                     'organization_name' => 'SOS Clinique',
                     'role' => 'member',
@@ -229,7 +193,7 @@ final class SendNotificationTest extends TestCase
      */
     public function test_the_stored_payload_never_contains_a_link_or_a_token(): void
     {
-        $notification = $this->sendResetTo('nathan@sekuu.com');
+        $notification = $this->sendReset('nathan@sekuu.com');
 
         $encoded = (string) json_encode($notification->payload);
 
@@ -237,13 +201,12 @@ final class SendNotificationTest extends TestCase
         $this->assertArrayNotHasKey('reset_url', $notification->payload);
         $this->assertSame('Nathan', $notification->payload['first_name']);
 
-        // Le contenu, lui, doit bien porter le lien : c'est le message.
         $this->assertStringContainsString('https://app.sekuu.com/reset', $notification->rendered_body);
     }
 
     public function test_a_delivery_attempt_is_recorded(): void
     {
-        $notification = $this->sendResetTo('nathan@sekuu.com');
+        $notification = $this->sendReset('nathan@sekuu.com');
 
         $delivery = $notification->deliveries()->firstOrFail();
 
@@ -252,31 +215,146 @@ final class SendNotificationTest extends TestCase
         $this->assertNotNull($delivery->sent_at);
     }
 
+    // --------------------------------------------------------- multi-canal --
+
     /**
-     * @return array<string, string>
+     * Une clé peut exister sur plusieurs canaux : l'alerte de sécurité part par
+     * email **et** par SMS. Choisir arbitrairement l'un des deux serait un bug
+     * silencieux.
      */
-    private function resetVariables(): array
+    public function test_a_key_present_on_two_channels_fans_out(): void
     {
-        return [
-            'first_name' => 'Nathan',
-            'reset_url' => 'https://app.sekuu.com/reset?token=abc',
-            'expires_in_hours' => '1',
-        ];
+        Http::fake(['*' => Http::response(['message_id' => 'sms-1'], 200)]);
+        config(['notify.sms.local_gateway.endpoint' => 'https://gateway.test/send']);
+        config(['notify.sms.local_gateway.token' => 'secret']);
+
+        $outcome = $this->send->handle(new SendRequest(
+            templateKey: 'password.changed',
+            recipients: [
+                Channel::EMAIL => 'nathan@sekuu.com',
+                Channel::SMS => '+237690000000',
+            ],
+            variables: ['first_name' => 'Nathan', 'changed_at' => '2026-08-03'],
+        ));
+
+        $this->assertCount(2, $outcome->queued);
+        $this->assertNotNull($outcome->forChannel(Channel::EMAIL));
+        $this->assertNotNull($outcome->forChannel(Channel::SMS));
     }
 
-    private function sendResetTo(
+    public function test_a_channel_without_a_destination_is_skipped_not_failed(): void
+    {
+        // Aucun numéro fourni : le canal SMS est simplement inapplicable.
+        $outcome = $this->send->handle(SendRequest::toEmail(
+            templateKey: 'password.changed',
+            email: 'nathan@sekuu.com',
+            variables: ['first_name' => 'Nathan', 'changed_at' => '2026-08-03'],
+        ));
+
+        $this->assertCount(1, $outcome->queued);
+        $this->assertSame('CHANNEL_NOT_AVAILABLE', $outcome->skipped[Channel::SMS] ?? null);
+    }
+
+    /**
+     * Bloquer un canal ne doit pas empêcher les autres de partir.
+     */
+    public function test_a_suppressed_phone_does_not_block_the_email(): void
+    {
+        $this->suppress('sms', '+237690000000', Suppression::HARD_BOUNCE);
+
+        $outcome = $this->send->handle(new SendRequest(
+            templateKey: 'password.changed',
+            recipients: [
+                Channel::EMAIL => 'nathan@sekuu.com',
+                Channel::SMS => '+237690000000',
+            ],
+            variables: ['first_name' => 'Nathan', 'changed_at' => '2026-08-03'],
+        ));
+
+        $this->assertCount(1, $outcome->queued);
+        $this->assertSame(Channel::EMAIL, $outcome->queued->first()->channel);
+        $this->assertCount(1, $outcome->blocked);
+        $this->assertSame('RECIPIENT_SUPPRESSED', $outcome->blocked->first()->failed_reason);
+    }
+
+    public function test_an_invalid_phone_number_is_refused(): void
+    {
+        try {
+            $this->send->handle(new SendRequest(
+                templateKey: 'password.changed',
+                // Format national : ambigu entre opérateurs, refusé par les
+                // passerelles. E.164 est exigé.
+                recipients: [Channel::SMS => '690000000'],
+                variables: ['first_name' => 'Nathan', 'changed_at' => '2026-08-03'],
+            ));
+
+            $this->fail('Un numéro non E.164 devait être refusé.');
+        } catch (DomainException $e) {
+            $this->assertSame('RECIPIENT_INVALID', $e->errorCode);
+        }
+    }
+
+    public function test_an_sms_carries_no_subject(): void
+    {
+        Http::fake(['*' => Http::response(['message_id' => 'sms-1'], 200)]);
+        config(['notify.sms.local_gateway.endpoint' => 'https://gateway.test/send']);
+        config(['notify.sms.local_gateway.token' => 'secret']);
+
+        $outcome = $this->send->handle(new SendRequest(
+            templateKey: 'password.changed',
+            recipients: [Channel::SMS => '+237690000000'],
+            variables: ['first_name' => 'Nathan', 'changed_at' => '2026-08-03'],
+        ));
+
+        $sms = $outcome->forChannel(Channel::SMS);
+
+        $this->assertNull($sms->rendered_subject);
+        $this->assertStringNotContainsString('<p>', $sms->rendered_body);
+    }
+
+    // ------------------------------------------------------------ fixtures --
+
+    private function suppress(string $channel, string $destination, string $reason): void
+    {
+        Suppression::create([
+            'channel' => $channel,
+            'destination' => Suppression::normalise($destination),
+            'reason' => $reason,
+        ]);
+    }
+
+    private function disablePreference(string $category, string $channel): string
+    {
+        $userId = (string) Str::uuid();
+
+        NotificationPreference::create([
+            'user_id' => $userId,
+            'organization_id' => null,
+            'category' => $category,
+            'channel' => $channel,
+            'enabled' => false,
+        ]);
+
+        return $userId;
+    }
+
+    private function sendReset(
         string $email,
         ?string $locale = null,
         ?string $userId = null,
         ?string $idempotencyKey = null,
     ): Notification {
-        return $this->send->handle(new SendRequest(
+        return $this->send->handle(SendRequest::toEmail(
             templateKey: 'password.reset',
-            recipient: $email,
-            variables: $this->resetVariables(),
+            email: $email,
+            variables: [
+                'first_name' => 'Nathan',
+                'reset_url' => 'https://app.sekuu.com/reset?token=abc',
+                'expires_in_hours' => '1',
+            ],
             userId: $userId,
             locale: $locale,
             idempotencyKey: $idempotencyKey,
-        ));
+        ))->first();
     }
 }

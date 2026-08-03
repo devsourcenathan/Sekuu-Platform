@@ -9,6 +9,7 @@ use App\Platform\Support\ModuleServiceProvider;
 use Illuminate\Support\Facades\Event;
 use Modules\Notify\Application\Events\DomainEventSubscriber;
 use Modules\Notify\Infrastructure\Providers\ProviderRegistry;
+use Modules\Notify\Infrastructure\Webhooks\WebhookRegistry;
 
 final class NotifyServiceProvider extends ModuleServiceProvider
 {
@@ -34,6 +35,16 @@ final class NotifyServiceProvider extends ModuleServiceProvider
                 foreach ((array) $providers as $provider) {
                     $registry->register($channel, $provider);
                 }
+            }
+
+            return $registry;
+        });
+
+        $this->app->singleton(WebhookRegistry::class, function ($app): WebhookRegistry {
+            $registry = new WebhookRegistry($app);
+
+            foreach ((array) config('notify.webhooks', []) as $provider => $handler) {
+                $registry->register($provider, $handler);
             }
 
             return $registry;

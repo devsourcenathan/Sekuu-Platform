@@ -60,10 +60,21 @@ final class IdentityEvents
         ]);
     }
 
-    public function passwordChanged(string $userId, string $email, string $firstName, string $locale, ?string $ipAddress = null): void
-    {
+    /**
+     * Alerte de sécurité. Le numéro est transmis lorsqu'il est connu : le SMS
+     * ne passe pas par la boîte mail que l'attaquant contrôle peut-être déjà.
+     */
+    public function passwordChanged(
+        string $userId,
+        string $email,
+        string $firstName,
+        string $locale,
+        ?string $ipAddress = null,
+        ?string $phone = null,
+    ): void {
         $this->publish('identity.password.changed', [
             'recipient' => $email,
+            'phone' => $phone,
             'user_id' => $userId,
             'locale' => $locale,
             'variables' => [

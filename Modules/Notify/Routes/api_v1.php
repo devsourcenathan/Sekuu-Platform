@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Notify\Presentation\Http\Controllers\HealthController;
 use Modules\Notify\Presentation\Http\Controllers\NotificationController;
 use Modules\Notify\Presentation\Http\Controllers\PreferenceController;
+use Modules\Notify\Presentation\Http\Controllers\WebhookController;
 
 /*
 |--------------------------------------------------------------------------
@@ -19,6 +20,12 @@ use Modules\Notify\Presentation\Http\Controllers\PreferenceController;
 */
 
 Route::get('notify/health', HealthController::class)->name('health');
+
+/*
+| Retours de livraison. Publique au sens réseau, authentifiée par signature :
+| chaque fournisseur signe selon son propre schéma, vérifié sur le corps brut.
+*/
+Route::post('webhooks/{provider}', WebhookController::class)->name('webhooks');
 
 Route::middleware('auth:api')->group(function (): void {
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
