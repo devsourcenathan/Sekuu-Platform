@@ -1,0 +1,346 @@
+openapi: 3.1.0
+
+info:
+  title: Sekuu Notify
+  version: 1.0.0
+  description: |
+    Point de sortie unique des messages de l'écosystème Sekuu.
+
+    Ce contrat est la **source de vérité** de l'API Notify.
+
+    ## Périmètre implémenté
+
+    Le déclenchement d'un envoi se fait aujourd'hui par **événement de domaine**,
+    pas par API : les modules publient, Notify consomme. Les routes d'envoi
+    (`POST /notifications`), de gestion des templates et des suppressions sont
+    spécifiées dans `docs/03-services/notify/03-api.md` mais pas encore exposées.
+
+    Ce document ne décrit donc que ce qui existe.
+
+    ## Ce que l'API n'expose jamais
+
+    * Le corps rendu des messages — il contient des liens à usage unique.
+    * L'adresse complète des destinataires — elle est masquée.
+    * Les identifiants de fournisseurs.
+
+  contact:
+    name: Sekuu Platform
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://notify.sekuu.com/api/v1
+    description: Production
+  - url: http://localhost:8000/api/v1
+    description: Développement local
+
+tags:
+  - name: Service
+  - name: Notifications
+  - name: Préférences
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  /notify/health:
+    get:
+      tags: [Service]
+      summary: État du service et canaux configurés
+      security: []
+      responses:
+        '200':
+          description: Service opérationnel
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          service: { type: string, example: notify }
+                          version: { type: string, example: v1 }
+                          status: { type: string, example: ok }
+                          channels:
+                            type: object
+                            description: Canaux disposant d'au moins un fournisseur actif.
+                            additionalProperties:
+                              type: string
+                              enum: [configured, unconfigured]
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: Historique d'envoi de l'organisation
+      description: |
+        Pagination **par curseur** : la collection est volumineuse et fortement
+        écrite, l'offset y produirait doublons et oublis.
+
+        Un filtre inconnu renvoie `400` / `INVALID_FILTER` plutôt que d'être
+        ignoré : un filtre silencieusement ignoré donnerait l'illusion d'une
+        recherche exhaustive.
+      parameters:
+        - name: cursor
+          in: query
+          description: Curseur opaque. Ne jamais le décoder ni le construire.
+          schema: { type: string }
+        - name: per_page
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: filter[status]
+          in: query
+          schema:
+            type: string
+            enum: [queued, sending, sent, delivered, failed, suppressed, cancelled]
+        - name: filter[channel]
+          in: query
+          schema: { type: string, enum: [email, sms, whatsapp, push, in_app] }
+        - name: filter[category]
+          in: query
+          schema: { type: string, enum: [transactional, operational, marketing] }
+        - name: filter[template_key]
+          in: query
+          schema: { type: string, example: password.reset }
+        - name: filter[user_id]
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/NotificationSummary' }
+                  meta: { $ref: '#/components/schemas/CursorMeta' }
+        '400':
+          description: '`INVALID_FILTER`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/OrganizationRequired' }
+
+  /notifications/{notificationId}:
+    get:
+      tags: [Notifications]
+      summary: Détail, tentatives et retours fournisseur
+      description: |
+        Sert au support et à la réconciliation, pas à relire les messages : le
+        corps rendu n'est pas exposé.
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Notification
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/NotificationSummary'
+                          - type: object
+                            properties:
+                              deliveries:
+                                type: array
+                                items: { $ref: '#/components/schemas/Delivery' }
+                              events:
+                                type: array
+                                items: { $ref: '#/components/schemas/DeliveryEvent' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404':
+          description: '`NOTIFICATION_NOT_FOUND` — inexistante, **ou** hors de l''organisation active'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /preferences:
+    get:
+      tags: [Préférences]
+      summary: Préférences de l'utilisateur connecté
+      description: |
+        Renvoie la matrice complète catégorie × canal, valeurs par défaut
+        comprises. Le champ `editable` permet à l'interface de griser ce qui
+        n'est pas modifiable, plutôt que de laisser l'utilisateur découvrir le
+        refus après coup.
+      responses:
+        '200':
+          description: Préférences
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Preference' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    patch:
+      tags: [Préférences]
+      summary: Modifier ses préférences
+      description: |
+        Une catégorie `transactional` ne peut pas être désactivée : couper un
+        lien de réinitialisation enfermerait l'utilisateur dehors. L'API refuse
+        explicitement plutôt que d'accepter sans appliquer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [preferences]
+              properties:
+                preferences:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [category, channel, enabled]
+                    properties:
+                      category: { type: string, enum: [operational, marketing] }
+                      channel: { type: string, enum: [email, sms, whatsapp, push, in_app] }
+                      enabled: { type: boolean }
+      responses:
+        '200':
+          description: Préférences mises à jour
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Preference' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422':
+          description: '`TRANSACTIONAL_CANNOT_BE_DISABLED`, `VALIDATION_ERROR`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Access token émis par Identity, vérifié par signature. Notify ne délivre
+        aucun jeton.
+
+  responses:
+    Unauthenticated:
+      description: '`UNAUTHENTICATED`, `INVALID_TOKEN`, `TOKEN_EXPIRED`, `TOKEN_REVOKED`'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    OrganizationRequired:
+      description: '`ORGANIZATION_REQUIRED` — le token ne porte aucune organisation active'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  schemas:
+
+    Meta:
+      type: object
+      required: [request_id]
+      properties:
+        request_id: { type: string, example: req_8b94d7d0a1b2 }
+
+    CursorMeta:
+      allOf:
+        - $ref: '#/components/schemas/Meta'
+        - type: object
+          properties:
+            per_page: { type: integer }
+            next_cursor: { type: [string, 'null'] }
+            has_more: { type: boolean }
+
+    SuccessEnvelope:
+      type: object
+      required: [success, meta]
+      properties:
+        success: { type: boolean, const: true }
+        data: {}
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    ErrorEnvelope:
+      type: object
+      required: [success, error, meta]
+      properties:
+        success: { type: boolean, const: false }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Référence stable. Catalogue dans docs/02-standards/error-codes.md
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    NotificationSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [queued, sending, sent, delivered, failed, suppressed, cancelled]
+          description: |
+            `sent` signifie « accepté par le fournisseur ». `delivered` signifie
+            « remis au destinataire ». Confondre les deux revient à croire son
+            taux de délivrabilité meilleur qu'il n'est.
+        template_key: { type: string, example: password.reset }
+        channel: { type: string, enum: [email, sms, whatsapp, push, in_app] }
+        category: { type: string, enum: [transactional, operational, marketing] }
+        locale: { type: string, example: fr }
+        recipient:
+          type: string
+          description: Masqué.
+          example: n*****@sekuu.com
+        payload:
+          type: object
+          additionalProperties: true
+          description: Variables du message, expurgées de tout lien et de tout jeton.
+        failed_reason: { type: [string, 'null'], example: RECIPIENT_SUPPRESSED }
+        request_id: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+
+    Delivery:
+      type: object
+      properties:
+        provider: { type: string, example: laravel-mail }
+        attempt: { type: integer }
+        status: { type: string, enum: [pending, accepted, rejected, failed] }
+        provider_message_id: { type: [string, 'null'] }
+        error_code: { type: [string, 'null'] }
+        cost_amount: { type: [number, 'null'] }
+        cost_currency: { type: [string, 'null'] }
+        sent_at: { type: [string, 'null'], format: date-time }
+
+    DeliveryEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [delivered, bounced, complained, rejected, opened, clicked, unsubscribed]
+        provider: { type: string }
+        occurred_at: { type: string, format: date-time }
+
+    Preference:
+      type: object
+      properties:
+        category: { type: string, enum: [transactional, operational, marketing] }
+        channel: { type: string, enum: [email, sms, whatsapp, push, in_app] }
+        enabled: { type: boolean }
+        editable:
+          type: boolean
+          description: Faux pour la catégorie transactionnelle.

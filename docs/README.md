@@ -54,7 +54,7 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | Service | État | Documentation |
 | --- | --- | --- |
 | **Identity** | **Implémenté** | [vision](03-services/identity/01-overview.md) · [modèle de données](03-services/identity/02-data-model.md) · [API](03-services/identity/03-api.md) · [contrat OpenAPI](../Modules/Identity/openapi.yaml) |
-| **Notify** | **Spécifié** | [vision](03-services/notify/01-overview.md) · [modèle de données](03-services/notify/02-data-model.md) · [API](03-services/notify/03-api.md) · [événements](03-services/notify/04-events.md) |
+| **Notify** | **Partiellement implémenté** — canal email, consommation d'événements | [vision](03-services/notify/01-overview.md) · [modèle de données](03-services/notify/02-data-model.md) · [API](03-services/notify/03-api.md) · [événements](03-services/notify/04-events.md) · [contrat OpenAPI](../Modules/Notify/openapi.yaml) |
 | Verify | À spécifier | — |
 | Billing | À spécifier | — |
 | Storage | À spécifier | — |

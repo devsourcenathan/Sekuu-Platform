@@ -9,6 +9,7 @@ use App\Platform\Http\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Modules\Identity\Application\Audit\AuditAction;
 use Modules\Identity\Application\Audit\AuditLogger;
+use Modules\Identity\Application\Events\IdentityEvents;
 use Modules\Identity\Application\Invitations\AcceptInvitation;
 use Modules\Identity\Application\Invitations\SendInvitation;
 use Modules\Identity\Domain\AuthenticatedContext;
@@ -49,6 +50,7 @@ final class InvitationController
         AuthenticatedContext $context,
         SendInvitation $send,
         AuditLogger $audit,
+        IdentityEvents $events,
         string $organizationId,
     ): JsonResponse {
         $issued = $send->handle(
@@ -64,6 +66,20 @@ final class InvitationController
             organizationId: $organizationId,
             target: $issued->invitation,
             payload: ['email' => $issued->invitation->email],
+        );
+
+        $invitation = $issued->invitation->load(['role', 'organization']);
+
+        $events->invitationSent(
+            organizationId: $organizationId,
+            email: $invitation->email,
+            organizationName: (string) $invitation->organization?->name,
+            inviterName: $context->user->fullName(),
+            role: (string) $invitation->role?->name,
+            acceptUrl: rtrim((string) config('identity.frontend_url'), '/')
+                .'/invitations/'.$issued->plainToken,
+            expiresAt: $invitation->expires_at->toIso8601ZuluString(),
+            locale: (string) ($invitation->organization?->locale ?? 'fr'),
         );
 
         $payload = $this->present($issued->invitation->load('role'));

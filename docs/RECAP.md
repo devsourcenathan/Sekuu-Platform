@@ -10,13 +10,12 @@
 | | |
 | --- | --- |
 | Application | Monolithe modulaire Laravel 13, PHP 8.3, PostgreSQL 18 |
-| Modules livrés | **Identity** (complet) |
-| Modules spécifiés, non développés | **Notify** |
+| Modules livrés | **Identity** (complet) · **Notify** (canal email) |
 | Modules non démarrés | Verify, Billing, Storage, AI, Search, Analytics |
-| Endpoints | 35 sous `/api/v1` + `/.well-known/jwks.json` |
-| Migrations | 13 |
-| Tests | 150, sur PostgreSQL |
-| Contrat | `Modules/Identity/openapi.yaml`, vérifié par test |
+| Endpoints | 40 sous `/api/v1` + `/.well-known/jwks.json` |
+| Migrations | 17 |
+| Tests | 178, sur PostgreSQL |
+| Contrats | `Modules/*/openapi.yaml`, vérifiés par test |
 | Collection de test | `postman/` |
 
 ---
@@ -56,6 +55,16 @@ Conséquence : un module ne formate jamais une erreur lui-même, et n'a rien à 
 **Sessions** — liste des appareils connectés, révocation ciblée.
 
 **Journal d'audit** — 24 actions, append-only, pagination par curseur.
+
+## 2.3 Module Notify
+
+**Implémenté** — pipeline d'envoi complet (déduplication, résolution, rendu, filtrage, mise en file, livraison), canal email, 8 templates de plateforme traduits fr/en, préférences par catégorie, liste de suppression, consultation de l'historique.
+
+**Branché sur Identity** — six événements produisent aujourd'hui de vrais messages : inscription, vérification d'adresse, réinitialisation, changement de mot de passe, invitation, création d'organisation.
+
+**Non implémenté** — canaux SMS, WhatsApp, push et interne ; API d'envoi (`POST /notifications`) ; gestion des templates par API ; webhooks entrants ; liens de désabonnement ; envois groupés.
+
+Le déclenchement se fait donc **uniquement par événement de domaine** pour l'instant. C'est suffisant pour tous les besoins actuels, puisque aucun produit externe n'existe encore.
 
 ---
 
@@ -98,7 +107,7 @@ Ces points divergent des documents de spécification. Ils y sont signalés, et s
 | Révocation via la base, pas Redis | Redis pas déployé. Sémantique identique, révocation même immédiate, mais une lecture par requête | Oui — bascule prévue |
 | Refresh token en cookie **et** dans le corps | Aucun signal fiable ne distingue un client web d'un client natif | Oui — nécessite d'identifier les clients |
 | Réinitialisation marque l'adresse vérifiée | Recevoir le lien prouve la maîtrise de la boîte, comme pour une invitation | Oui |
-| Jetons exposés en réponse API | Tant que Notify n'existe pas. **Limité aux environnements `local` et `testing`** | Oui — disparaît avec Notify |
+| Jetons exposés en réponse API | Les messages partent désormais réellement ; l'exposition ne subsiste que par **confort de développement**, limitée à `local` et `testing` | Oui — supprimable dès qu'une boîte de test est en place |
 
 ---
 
@@ -172,16 +181,16 @@ GET  /audit-logs                 →  trace des quatre étapes
 
 ## 8.1 Bloquant pour la production
 
-* **Notify** — quatre flux produisent des jetons que personne n'envoie.
-* **Redis** — pour les queues, le cache et la liste de révocation.
+* **Un fournisseur email transactionnel** — le canal fonctionne aujourd'hui sur le mailer Laravel. Sans fournisseur dédié, aucun webhook de rebond n'arrive, donc la liste de suppression ne s'alimente jamais toute seule.
+* **Redis** — pour les queues, le cache et la liste de révocation. Les envois passent aujourd'hui par la file `database`.
 * **Clés de signature** en gestionnaire de secrets, et procédure de rotation à 90 jours.
 * **CI** — la suite existe, rien ne l'exécute automatiquement.
 
-## 8.2 Prochains modules
+## 8.2 Prochaines étapes
 
-**Notify** est spécifié ([vision](03-services/notify/01-overview.md), [modèle de données](03-services/notify/02-data-model.md), [API](03-services/notify/03-api.md), [événements](03-services/notify/04-events.md)) mais pas développé. C'est le prochain module à écrire : il débloque les huit flux d'Identity qui produisent aujourd'hui des jetons que personne n'envoie.
+**Compléter Notify** : webhooks fournisseur (c'est ce qui alimente la liste de suppression), API d'envoi pour les produits externes, canal SMS.
 
-Ensuite **Billing** — son contrat d'événements avec Identity est déjà défini — puis Verify.
+Puis **Billing** — son contrat d'événements avec Identity est déjà défini — et Verify.
 
 ## 8.3 Dette identifiée
 

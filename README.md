@@ -41,6 +41,12 @@ php artisan serve
 
 L'API répond sur `http://localhost:8000/api/v1/…`.
 
+Les envois de messages sont **asynchrones** : sans worker, ils restent en file et aucun email ne part.
+
+```bash
+php artisan queue:work --queue=notifications,default
+```
+
 Vérification rapide :
 
 ```bash
@@ -124,7 +130,8 @@ SEKUU_DOMAIN_VERIFY=verify.sekuu.com
 | Module | État |
 | --- | --- |
 | **Identity** | **Complet** — authentification, OAuth, organisations, workspaces, invitations, sessions, mots de passe, vérification d'adresse, journal d'audit |
-| Verify · Notify · Billing · Storage · AI · Search · Analytics | Non démarrés |
+| **Notify** | **Canal email** — pipeline d'envoi, templates traduits, préférences, liste de suppression, branché sur les événements d'Identity |
+| Verify · Billing · Storage · AI · Search · Analytics | Non démarrés |
 
 ### OAuth
 
@@ -136,7 +143,7 @@ GOOGLE_CLIENT_ID= GOOGLE_CLIENT_SECRET=
 
 `IDENTITY_OAUTH_TRUSTED_PROVIDERS` liste les fournisseurs dont l'adresse email suffit à rattacher un compte existant. En dehors de cette liste, l'utilisateur doit lier le fournisseur depuis son profil — sinon un fournisseur laxiste sur la vérification des emails permettrait une prise de contrôle de compte.
 
-Tant que **Notify** n'existe pas, aucun message n'est envoyé : les jetons d'invitation, de réinitialisation et de vérification sont renvoyés dans la réponse API en environnement local et de test uniquement.
+Les messages partent réellement depuis que Notify existe. En développement, le mailer est sur le driver `log` : les emails sont écrits dans `storage/logs/laravel.log`. Les jetons restent également renvoyés dans la réponse API en `local` et `testing`, par confort.
 
 Les modules disposent de deux middlewares d'autorisation exposés par Identity :
 

@@ -18,6 +18,7 @@ use Modules\Identity\Application\Auth\ResetPassword;
 use Modules\Identity\Application\Auth\SessionTokenService;
 use Modules\Identity\Application\Auth\SwitchOrganization;
 use Modules\Identity\Application\Auth\VerifyEmail;
+use Modules\Identity\Application\Events\IdentityEvents;
 use Modules\Identity\Domain\AuthenticatedContext;
 use Modules\Identity\Presentation\Http\Requests\ForgotPasswordRequest;
 use Modules\Identity\Presentation\Http\Requests\LoginRequest;
@@ -35,6 +36,7 @@ final class AuthController
     public function __construct(
         private readonly SessionTokenService $tokens,
         private readonly AuditLogger $audit,
+        private readonly IdentityEvents $events,
     ) {}
 
     public function register(
@@ -50,6 +52,14 @@ final class AuthController
 
         $verificationToken = $verify->issueFor($user);
         $this->audit->record(AuditAction::EMAIL_VERIFICATION_SENT, user: $user);
+
+        $this->events->userRegistered(
+            userId: $user->id,
+            email: $user->email,
+            firstName: $user->first_name,
+            locale: $user->language ?? 'fr',
+            verificationUrl: self::verificationUrl($verificationToken),
+        );
 
         $payload = AuthPayload::forTokenPair($pair, $user);
 
@@ -122,7 +132,15 @@ final class AuthController
 
         if ($issued !== null) {
             $this->audit->record(AuditAction::PASSWORD_RESET_REQUESTED, user: $issued['user']);
-            // Notify enverra le lien dès que le module existera.
+
+            $this->events->passwordResetRequested(
+                userId: $issued['user']->id,
+                email: $issued['user']->email,
+                firstName: $issued['user']->first_name,
+                locale: $issued['user']->language ?? 'fr',
+                resetUrl: self::frontendUrl('/reset-password', $issued['token']),
+                expiresInHours: (int) ceil(config('identity.tokens.password_reset_ttl') / 3600),
+            );
         }
 
         $payload = ['message' => __('If an account matches this address, a reset link has been sent.')];
@@ -144,6 +162,16 @@ final class AuthController
         );
 
         $this->audit->record(AuditAction::PASSWORD_RESET, user: $user, target: $user);
+
+        // Alerte de sécurité : si l'utilisateur n'est pas à l'origine de la
+        // réinitialisation, c'est ce message qui le lui apprend.
+        $this->events->passwordChanged(
+            userId: $user->id,
+            email: $user->email,
+            firstName: $user->first_name,
+            locale: $user->language ?? 'fr',
+            ipAddress: $request->ip(),
+        );
 
         return ApiResponse::success([
             'message' => __('Your password has been reset. Please sign in again.'),
@@ -168,6 +196,15 @@ final class AuthController
 
         $this->audit->record(AuditAction::EMAIL_VERIFICATION_SENT, user: $context->user);
 
+        $this->events->emailVerificationRequested(
+            userId: $context->user->id,
+            email: $context->user->email,
+            firstName: $context->user->first_name,
+            locale: $context->user->language ?? 'fr',
+            verificationUrl: self::verificationUrl($token),
+            expiresInHours: (int) ceil(config('identity.tokens.email_verification_ttl') / 3600),
+        );
+
         $payload = ['message' => __('A verification link has been sent.')];
 
         if (app()->environment('local', 'testing')) {
@@ -175,6 +212,22 @@ final class AuthController
         }
 
         return ApiResponse::success($payload, status: 202);
+    }
+
+    private static function verificationUrl(string $token): string
+    {
+        return self::frontendUrl('/verify-email', $token);
+    }
+
+    /**
+     * Les liens pointent vers l'application, pas vers l'API : c'est un humain
+     * qui clique, pas un client HTTP.
+     */
+    private static function frontendUrl(string $path, string $token): string
+    {
+        $base = rtrim((string) config('identity.frontend_url', config('app.url')), '/');
+
+        return $base.$path.'?token='.$token;
     }
 
     public function me(AuthenticatedContext $context): JsonResponse

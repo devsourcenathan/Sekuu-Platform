@@ -47,6 +47,10 @@ return [
         'ttl' => (int) env('IDENTITY_SESSION_TTL', 2592000),
     ],
 
+    // Base des liens envoyés par email : c'est un humain qui clique, pas un
+    // client HTTP. Les liens pointent donc vers l'application, pas vers l'API.
+    'frontend_url' => env('IDENTITY_FRONTEND_URL', env('APP_URL')),
+
     'oauth' => [
         // Fournisseurs activés. Chacun doit avoir sa configuration dans
         // config/services.php.
