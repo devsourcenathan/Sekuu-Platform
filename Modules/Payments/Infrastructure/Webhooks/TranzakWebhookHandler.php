@@ -21,7 +21,7 @@ use Illuminate\Http\Request;
  *  2. La déduplication `(provider, provider_event_id)` est une protection de
  *     sécurité, pas de propreté.
  *
- * @see docs/03-services/billing/05-providers.md
+ * @see docs/03-services/payments/05-providers.md
  */
 class TranzakWebhookHandler implements PaymentWebhookHandler
 {

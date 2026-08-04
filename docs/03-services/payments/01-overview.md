@@ -7,6 +7,7 @@
 
 Ce document décrit **le rôle et les frontières** de Sekuu Payments.
 
+* **Pour brancher un produit : [06-integration.md](06-integration.md).**
 * Les agrégateurs et ce qu'ils ont démenti font autorité dans [05-providers.md](05-providers.md).
 * La règle de bascule est décidée dans [ADR-0008](../../04-decisions/adr-0008-payment-aggregators-failover.md).
 * L'extraction elle-même est décidée dans [ADR-0009](../../04-decisions/adr-0009-payments-module-extraction.md).

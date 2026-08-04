@@ -109,7 +109,7 @@ Le consommateur ne touche jamais les lignes `source = 'manual'` : une activation
 
 **Le modèle est prépayé** ([ADR-0007](04-decisions/adr-0007-mobile-money-prepaid-subscriptions.md)) : il n'existe aucun moyen technique de prélever un client en Mobile Money. Le renouvellement est un acte volontaire, précédé de rappels à J-7, J-3 et J-1, suivi d'une grâce de 7 jours puis d'une suspension — jamais d'une suppression.
 
-**Les deux adaptateurs ont été exécutés contre leur bac à sable**, et chacun a démenti deux hypothèses — jamais les mêmes. Le détail est dans [05-providers.md](03-services/billing/05-providers.md) ; le résumé est qu'aucune de ces erreurs n'était visible en test unitaire, puisque les fixtures reproduisaient les suppositions.
+**Les deux adaptateurs ont été exécutés contre leur bac à sable**, et chacun a démenti deux hypothèses — jamais les mêmes. Le détail est dans [05-providers.md](03-services/payments/05-providers.md) ; le résumé est qu'aucune de ces erreurs n'était visible en test unitaire, puisque les fixtures reproduisaient les suppositions.
 
 **Ce qui a changé ailleurs** — la table `products` d'Identity n'était seedée nulle part ; elle l'est désormais (6 produits). Sans elle, aucun plan n'avait rien à ouvrir.
 
@@ -155,7 +155,11 @@ Le paiement Tranzak a produit la ligne `fee −3 XAF` attendue : la séparation 
 * aucun verrou sur l'intention pendant l'encaissement — deux exécutions concurrentes pouvaient écrire deux lignes `charge` ;
 * une tentative morte avant l'appel de débit n'était ni sondée ni expirée, et bloquait indéfiniment l'unicité « une seule tentative vivante ».
 
-**Non implémenté** — encaisser pour le compte d'un tiers. `payee_organization_id` existe et laisse la porte ouverte, mais rien derrière n'est construit : pas de compte de destination, pas de type `payout`, pas d'état de reversement. Le remboursement reste déclaré et jamais écrit.
+**Non implémenté — et c'est le manque le plus proche** : un service externe ne peut pas encaisser. Tout le contrat suppose un module du monolithe qui implémente une interface PHP. Il manque un scope de clé d'API restreint par `subject_type`, un endpoint de création, et des webhooks sortants. Spécifié dans [07-external-api.md](03-services/payments/07-external-api.md) et [ADR-0010](04-decisions/adr-0010-external-payment-api.md) ; **Sekuu Learn en dépend**.
+
+Un service externe ne pourra de toute façon **pas** obtenir la garantie que « encaissé » et « service ouvert » soient atomiques : il ne participe pas à la transaction. La fenêtre est irréductible, elle peut seulement être rendue courte et rattrapable.
+
+**Non implémenté également** — encaisser pour le compte d'un tiers. `payee_organization_id` existe et laisse la porte ouverte, mais rien derrière n'est construit : pas de compte de destination, pas de type `payout`, pas d'état de reversement. Le remboursement reste déclaré et jamais écrit.
 
 ---
 

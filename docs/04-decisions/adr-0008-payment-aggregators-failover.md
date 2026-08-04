@@ -54,7 +54,7 @@ C'est ce que porte la colonne `payment_attempts.customer_prompted`.
 
 Tout statut qu'un adaptateur ne sait pas traduire est traité comme `prompted`. Le défaut penche du côté qui ne débite pas deux fois.
 
-Ce défaut n'est pas une précaution théorique. La documentation publique de Notch Pay et de Tranzak a été vérifiée : **aucun des deux n'expose de champ indiquant que l'invite est partie** ([05-providers.md](../03-services/billing/05-providers.md)). L'information doit être déduite de l'issue de l'appel de débit, et seules les erreurs d'authentification ou de validation la prouvent négative. Une temporisation ne prouve rien.
+Ce défaut n'est pas une précaution théorique. La documentation publique de Notch Pay et de Tranzak a été vérifiée : **aucun des deux n'expose de champ indiquant que l'invite est partie** ([05-providers.md](../03-services/payments/05-providers.md)). L'information doit être déduite de l'issue de l'appel de débit, et seules les erreurs d'authentification ou de validation la prouvent négative. Une temporisation ne prouve rien.
 
 La règle de bascule est donc encore plus étroite que prévu à sa rédaction : en pratique, elle ne couvre que l'agrégateur qui refuse explicitement la demande.
 

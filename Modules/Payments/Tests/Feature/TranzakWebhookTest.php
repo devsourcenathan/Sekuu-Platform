@@ -16,7 +16,7 @@ use Tests\TestCase;
  *
  * Toute la déduplication de cet agrégateur en découle.
  *
- * @see docs/03-services/billing/05-providers.md
+ * @see docs/03-services/payments/05-providers.md
  */
 final class TranzakWebhookTest extends TestCase
 {

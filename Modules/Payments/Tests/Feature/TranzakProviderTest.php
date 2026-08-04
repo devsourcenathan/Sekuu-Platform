@@ -22,7 +22,7 @@ use Tests\TestCase;
  *
  * C'est pourquoi ces tests viennent avant le chemin nominal.
  *
- * @see docs/03-services/billing/05-providers.md
+ * @see docs/03-services/payments/05-providers.md
  */
 final class TranzakProviderTest extends TestCase
 {

@@ -20,7 +20,7 @@ use Modules\Payments\Domain\Models\PaymentAttempt;
  *  3. Comment retrouver une transaction à partir de notre `merchantReference` ?
  *     Sans cette capacité, un appel expiré reste à jamais irrésolu.
  *
- * @see docs/03-services/billing/05-providers.md
+ * @see docs/03-services/payments/05-providers.md
  */
 interface PaymentProvider
 {

@@ -26,7 +26,7 @@ use Modules\Payments\Infrastructure\Webhooks\WebhookRegistry;
  * passe par un `authKey` transporté dans le corps : cela prouve que l'émetteur
  * connaît le secret, jamais que le corps est intact.
  *
- * @see docs/03-services/billing/05-providers.md
+ * @see docs/03-services/payments/05-providers.md
  */
 final class WebhookController
 {

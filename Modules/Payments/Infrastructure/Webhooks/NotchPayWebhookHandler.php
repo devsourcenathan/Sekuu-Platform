@@ -21,7 +21,7 @@ use Illuminate\Http\Request;
  * statut est relu chez Notch Pay. Une signature valide prouve l'origine, pas que
  * le paiement a réussi.
  *
- * @see docs/03-services/billing/05-providers.md
+ * @see docs/03-services/payments/05-providers.md
  */
 class NotchPayWebhookHandler implements PaymentWebhookHandler
 {

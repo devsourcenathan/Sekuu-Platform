@@ -20,7 +20,7 @@ use Throwable;
  * environnement de test reproduirait le canal SMS de Notify — écrit
  * intégralement, jamais exécuté contre une vraie passerelle.
  *
- * @see docs/03-services/billing/05-providers.md
+ * @see docs/03-services/payments/05-providers.md
  */
 final class TranzakProvider implements PaymentProvider
 {

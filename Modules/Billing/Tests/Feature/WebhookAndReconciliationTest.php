@@ -22,7 +22,7 @@ use Tests\TestCase;
 /**
  * Le callback accélère une confirmation ; il n'en est jamais la seule source.
  *
- * @see docs/03-services/billing/05-providers.md
+ * @see docs/03-services/payments/05-providers.md
  */
 final class WebhookAndReconciliationTest extends TestCase
 {

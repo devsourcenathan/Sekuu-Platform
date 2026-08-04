@@ -14,7 +14,7 @@ use Modules\Payments\Domain\AttemptStatus;
  * ci-dessous existent pour que cette déduction soit faite à un seul endroit
  * par adaptateur, et relisible.
  *
- * @see docs/03-services/billing/05-providers.md
+ * @see docs/03-services/payments/05-providers.md
  */
 final readonly class ChargeOutcome
 {

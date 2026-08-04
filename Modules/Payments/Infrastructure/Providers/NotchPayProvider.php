@@ -26,7 +26,7 @@ use Throwable;
  *     le client, donc même une temporisation y reste basculable. Chez Tranzak,
  *     l'appel unique rend toute temporisation incertaine.
  *
- * @see docs/03-services/billing/05-providers.md
+ * @see docs/03-services/payments/05-providers.md
  */
 final class NotchPayProvider implements PaymentProvider
 {

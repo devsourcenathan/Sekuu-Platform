@@ -16,7 +16,7 @@ use Tests\TestCase;
  * modifié en transit est détectable. Le rejeu à l'identique reste possible, et
  * c'est la contrainte d'unicité en base qui le neutralise.
  *
- * @see docs/03-services/billing/05-providers.md
+ * @see docs/03-services/payments/05-providers.md
  */
 final class NotchPayWebhookTest extends TestCase
 {
