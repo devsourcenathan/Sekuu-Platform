@@ -25,13 +25,16 @@ Le contrat faisant foi sera `Modules/Billing/openapi.yaml`, versionné avec le c
 | **Public** | Aucune | Consulter le catalogue de plans |
 | **Membre** | Access token | Consulter l'abonnement et les factures |
 | **Owner / Admin** | Access token + rôle | Souscrire, changer de plan, payer, résilier |
-| **Opérateur** | Signature du callback | Notifier un résultat de paiement |
 
 **Engager une dépense n'est pas une action de membre ordinaire.** Souscrire, monter en gamme ou déclencher un paiement exige `Owner` ou `Admin` : ce sont des actes qui engagent l'organisation financièrement.
 
 À l'inverse, **consulter** l'abonnement est ouvert à tout membre. Un utilisateur doit pouvoir comprendre pourquoi une fonctionnalité lui est refusée sans avoir à demander à son patron.
 
 ## 1.2 Ce que cette API ne fait pas
+
+Elle n'expose **aucun** callback d'agrégateur, et ne permet pas de consulter un
+paiement. Ces routes appartiennent à [Payments](../payments/03-api.md) : elles
+ne dépendent d'aucune connaissance de ce qui est payé.
 
 Elle ne répond **jamais** à la question « ai-je accès à ce produit ? ». Cette question se pose à Identity, sur `organization_products`. Y répondre ici créerait une seconde vérité, et placerait Billing sur le chemin critique de chaque requête produit.
 
@@ -252,16 +255,20 @@ Le crédit apparaît comme **une ligne**, pas comme une soustraction silencieuse
 
 ---
 
-# 5. Paiement
+# 5. Déclencher un paiement
 
 | Méthode | Route | Accès | Description |
 | --- | --- | --- | --- |
-| `POST` | `/payments` | owner | Initier un paiement |
-| `GET` | `/payments/{id}` | org | Statut d'une intention |
-| `GET` | `/payments` | org | Historique |
-| `POST` | `/webhooks/{provider}` | signature | Callback opérateur |
+| `POST` | `/payments` | owner | Régler une facture |
 
-## 5.1 Initier
+**C'est la seule route de paiement qui vit ici.** Consulter un paiement, suivre
+son statut et recevoir les callbacks des agrégateurs appartiennent au module
+Payments — voir [son API](../payments/03-api.md).
+
+Le partage n'est pas arbitraire. **Déclencher** un paiement suppose de savoir ce
+qu'on paie, combien cela vaut et qui a le droit de le régler : trois questions
+auxquelles seul le propriétaire de l'objet peut répondre. **Consulter** un
+paiement ne suppose rien de tout cela.
 
 ```http
 POST /api/v1/payments
@@ -276,13 +283,24 @@ Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
 }
 ```
 
-**Le montant n'est pas dans le corps.** Il vient de la facture. Accepter un montant fourni par l'appelant permettrait de régler 49 663 XAF avec 100 XAF — c'est une faille, pas une commodité.
+## 5.1 Le montant n'est pas dans le corps
 
-**L'agrégateur non plus n'est pas dans le corps.** NotchPay, Tranzak et Tara sont un détail d'exploitation ; les exposer au choix du client figerait l'ordre de priorité dans son interface, et empêcherait toute bascule.
+Il vient de la facture. Accepter un montant fourni par l'appelant permettrait de
+régler 49 663 XAF avec 100 XAF — c'est une faille, pas une commodité.
+
+Cette propriété n'est pas une convention de ce contrôleur : `InitiatePayment`
+n'a **aucun paramètre** pour passer un montant. Billing le produit en réponse à
+une question que Payments lui pose, via `InvoicePayable::quote()`.
+
+**L'agrégateur non plus n'est pas dans le corps.** NotchPay, Tranzak et Tara
+sont un détail d'exploitation ; les exposer au choix du client figerait l'ordre
+de priorité dans son interface, et empêcherait toute bascule.
 
 L'opérateur, lui, est déduit du préfixe du numéro. C'est un fait, pas un choix.
 
-Réponse `202` — le paiement n'est pas fait, il est **demandé** :
+## 5.2 La réponse est `202`
+
+Le paiement n'est pas fait, il est **demandé**.
 
 ```json
 {
@@ -297,83 +315,53 @@ Réponse `202` — le paiement n'est pas fait, il est **demandé** :
 }
 ```
 
-`202` et non `201`, pour la même raison qu'un envoi Notify : ce qui est créé est une **intention**. Le client doit ensuite interroger `GET /payments/{id}`.
+Le client sonde ensuite `GET /payments/{id}`, qui appartient à Payments et
+fonctionne pour tous les produits.
 
 | Erreur | Code | Cause |
 | --- | --- | --- |
 | `422` | `INVALID_MSISDN` | Numéro invalide, ou opérateur non reconnu |
 | `409` | `INVOICE_ALREADY_PAID` | Facture déjà réglée |
 | `409` | `PAYMENT_ALREADY_PENDING` | Une intention est déjà en cours sur cette facture |
-| `503` | `PROVIDER_UNAVAILABLE` | Aucun agrégateur configuré ne couvre cet opérateur |
+| `503` | `PROVIDER_UNAVAILABLE` | Aucun agrégateur ne couvre cet opérateur, ou tous ont refusé |
 
-`PAYMENT_ALREADY_PENDING` est un garde-fou concret : sans lui, un client impatient qui clique trois fois reçoit trois invites, et peut payer trois fois. La contrainte est portée par un index partiel en base, pas par une vérification applicative qui perdrait la course.
+`PAYMENT_ALREADY_PENDING` est un garde-fou concret : sans lui, un client
+impatient qui clique trois fois reçoit trois invites, et peut payer trois fois.
+La contrainte est portée par un index partiel en base, pas par une vérification
+applicative qui perdrait la course.
 
-`PROVIDER_UNAVAILABLE` couvre aussi le cas où les trois agrégateurs ont été essayés sans qu'aucun n'accepte la demande. L'intention reste consultable, avec le détail de chaque tentative.
+## 5.3 Ce que le paiement déclenche ensuite
 
-## 5.2 Suivre
+Le règlement de la facture n'est pas un événement : Payments appelle
+`InvoicePayable::settled()` **dans la transaction d'encaissement**. Il n'existe
+aucun instant où l'argent est encaissé et la facture impayée.
 
-`GET /payments/{id}` est fait pour être **sondé** par le client, toutes les 3 à 5 secondes. La réponse porte `Retry-After` tant que le statut n'est pas définitif.
-
-```json
-{
-  "id": "…",
-  "status": "processing",
-  "operator": "mtn",
-  "polled_at": "2026-08-03T09:16:31Z",
-  "attempts": [
-    { "provider": "notchpay", "status": "rejected", "customer_prompted": false, "started_at": "…" },
-    { "provider": "tranzak",  "status": "processing", "customer_prompted": true,  "started_at": "…" }
-  ]
-}
-```
-
-Les tentatives sont exposées pour une raison précise : quand un support client demande « ce paiement est-il passé ? », la réponse doit être lisible sans requête SQL. Elles ne le sont **pas** aux membres ordinaires, seulement aux `Owner` et `Admin` — l'ordre de priorité des agrégateurs est une information d'exploitation.
-
-`customer_prompted` explique pourquoi la bascule s'est arrêtée là : une fois l'invite partie, on n'essaie plus ailleurs.
-
-| Statut | Signification |
-| --- | --- |
-| `pending` | Demande envoyée, le client n'a pas encore répondu à l'invite |
-| `processing` | L'opérateur traite |
-| `succeeded` | Encaissé, facture réglée, accès ouvert |
-| `failed` | Refusé — solde insuffisant, code erroné, annulation |
-| `expired` | **On ne sait pas.** L'opérateur n'a pas tranché à temps |
-| `cancelled` | Abandonné avant l'invite |
-
-`expired` n'est pas `failed`, et la distinction est importante : un paiement dont on ignore l'issue peut avoir été encaissé. Le traiter comme un échec risquerait de facturer deux fois. Ces intentions sont réinterrogées par la tâche de réconciliation, et signalées pour rapprochement manuel si l'opérateur reste muet.
-
-## 5.3 Callbacks
-
-`POST /webhooks/{provider}` où `provider ∈ { notchpay, tranzak, tara }` — publique au sens réseau, authentifiée par **signature vérifiée sur le corps brut**, comme les webhooks de Notify.
-
-Chaque agrégateur signe selon son propre schéma. Un adaptateur par agrégateur traduit son vocabulaire vers celui du module, et cette traduction est la partie la plus sensible du code : **confondre un rejet avant invite avec un échec après invite autorise une bascule qui double-débite le client.** Chaque adaptateur doit donc énumérer explicitement les statuts qu'il considère comme « invite jamais partie », et traiter tout statut inconnu comme « invite partie ».
-
-
-Une signature invalide renvoie `401` / `WEBHOOK_SIGNATURE_INVALID`, et le callback est tout de même **enregistré** avec `signature_valid = false`. Le jeter en silence priverait de toute trace en cas de tentative de fraude.
-
-Un callback déjà vu renvoie `200` sans rien refaire — la déduplication s'appuie sur l'unicité en base de `(provider, provider_event_id)`, pas sur une vérification applicative qui perdrait la course sous concurrence.
-
-**Un callback n'est jamais la seule source d'information.** La tâche `billing:reconcile` interroge l'opérateur toutes les cinq minutes pour toute intention en attente. Un callback perdu retarde une confirmation ; il ne la fait pas disparaître.
+C'est de là que partent `billing.invoice.paid` puis, si la période est ouverte,
+`billing.subscription.activated`.
 
 ---
 
 # 6. Crédit
 
-| Méthode | Route | Accès | Description |
-| --- | --- | --- | --- |
-| `GET` | `/credit` | org | Solde et mouvements |
+Il n'existe **pas** de route `/credit`. Le solde est exposé sur
+`GET /subscription`, dans le champ `credit_balance` — la seule question que
+quelqu'un se pose réellement : « combien me reste-t-il en avoir ? ».
 
 ```json
-{
-  "balance": 4000,
-  "currency": "XAF",
-  "entries": [
-    { "type": "credit", "amount": 4000, "description": "Proration Clinic Pro", "occurred_at": "…" }
-  ]
-}
+"credit_balance": 4000
 ```
 
-Lecture seule. Le crédit ne s'achète pas et ne se retire pas : il naît d'une proration ou d'un avoir, et s'impute sur une facture.
+C'est la **somme** du registre `credit_entries`, jamais une colonne stockée : un
+solde stocké et un registre finissent par diverger, et c'est alors le registre
+qui a raison.
+
+Le crédit ne s'achète pas et ne se retire pas. Il naît d'une proration ou d'un
+avoir, et s'impute sur une facture — visiblement, comme une ligne négative, et
+non par une soustraction silencieuse.
+
+Un détail du mouvement — qui exigerait une route dédiée — n'a pas été construit :
+personne ne l'a demandé, et l'imputation est déjà lisible sur la facture qu'elle
+réduit.
 
 ---
 
@@ -393,14 +381,15 @@ Au [catalogue commun](../../02-standards/error-codes.md#44-billing) s'ajoutent :
 
 | Code | HTTP | Description |
 | --- | --- | --- |
-| `PAYMENT_ALREADY_PENDING` | 409 | Une intention est déjà en cours sur cette facture |
-| `PAYMENT_PENDING` | 202 | Paiement en cours, issue inconnue |
-| `INVALID_MSISDN` | 422 | Numéro invalide ou opérateur non reconnu |
-| `PROVIDER_UNAVAILABLE` | 503 | Aucun fournisseur configuré pour cet opérateur |
 | `INVOICE_NOT_FOUND` | 404 | Facture inexistante |
 | `INVOICE_ALREADY_PAID` | 409 | Facture déjà réglée |
 | `INVOICE_VOIDED` | 409 | Facture annulée, non payable |
 | `PLAN_ARCHIVED` | 409 | Plan retiré du catalogue |
-| `WEBHOOK_SIGNATURE_INVALID` | 401 | Signature du callback invalide |
+| `SUBSCRIPTION_ALREADY_ACTIVE` | 409 | Un abonnement vivant existe déjà |
+| `DOWNGRADE_NOT_ALLOWED` | 409 | L'usage courant dépasse les limites du plan visé |
 
-`PAYMENT_METHOD_REQUIRED`, présent au catalogue commun, ne sera **pas** utilisé : il suppose un moyen de paiement enregistré, ce que le Mobile Money ne permet pas.
+Les codes propres à l'encaissement — `PAYMENT_ALREADY_PENDING`,
+`INVALID_MSISDN`, `PROVIDER_UNAVAILABLE`, `WEBHOOK_SIGNATURE_INVALID` — sont
+produits par Payments et catalogués
+[chez lui](../payments/03-api.md#6-codes-derreur). Ils remontent tels quels à
+travers `POST /payments`, qui est le point d'entrée mais pas l'auteur.

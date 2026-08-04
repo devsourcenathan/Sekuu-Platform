@@ -84,14 +84,28 @@ C'est la même règle que dans Notify, où les événements transportent les don
 | --- | --- | --- |
 | `billing.invoice.issued` | Facture émise | Notify |
 | `billing.invoice.paid` | Facture réglée | Notify |
-| `billing.invoice.overdue` | Échéance dépassée | Notify |
-| `billing.payment.succeeded` | Paiement encaissé | Notify, Analytics |
 | `billing.payment.failed` | Paiement refusé | Notify |
-| `billing.payment.unresolved` | Issue inconnue après expiration | **Exploitation** |
 
-`billing.payment.unresolved` n'a pas de destinataire produit : il alerte l'équipe. Il signale une intention pour laquelle l'agrégateur n'a jamais tranché — le client a peut-être été débité sans que la plateforme le sache. C'est le seul cas qui exige une intervention humaine, et le taire serait laisser un client payé sans service.
+### `billing.payment.failed` est publié par Billing, et c'est délibéré
 
-Il n'existe **pas** d'événement de bascule d'agrégateur. Passer de NotchPay à Tranzak est un détail d'exécution interne, pas un fait métier ; le publier exposerait l'ordre de priorité à des consommateurs qui n'en ont aucun usage. Ces bascules se lisent dans `payment_attempts` et dans les journaux.
+L'échec vient de Payments, qui le remet à Billing par `InvoicePayable::failed()`.
+C'est **Billing** qui publie l'événement.
+
+Un `payments.payment.failed` générique ne tomberait dans aucune correspondance de
+templates — Notify les associe par un tableau littéral — et le message
+disparaîtrait en silence, au moment précis où le client est le plus susceptible
+de recommencer.
+
+### Ce qui est publié par Payments, et non ici
+
+| Événement | Pourquoi là-bas |
+| --- | --- |
+| `payments.payment.succeeded` | Informatif ; le règlement de la facture, lui, est **synchrone** |
+| `payments.payment.unresolved` | Alerte d'exploitation, sans destinataire produit |
+
+Le détail est dans le [contrat d'événements de Payments](../payments/04-events.md).
+
+Il n'existe **pas** d'événement de bascule d'agrégateur, ni de `billing.invoice.overdue` : le dépassement d'échéance est déjà porté par `billing.subscription.grace_started`, qui dit la même chose et déclenche un message actionnable.
 
 ---
 
@@ -162,7 +176,7 @@ Une organisation sans contact joignable est **journalisée en avertissement**. S
 
 # 5. Ordre et concurrence
 
-Aucun ordre n'est garanti. `billing.payment.succeeded` peut être traité avant `billing.invoice.issued`.
+Aucun ordre n'est garanti. `billing.invoice.paid` peut être traité avant `billing.invoice.issued`.
 
 Deux conséquences :
 

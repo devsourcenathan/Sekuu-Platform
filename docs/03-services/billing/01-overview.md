@@ -11,8 +11,12 @@ Ce document décrit **le rôle et les frontières** de Sekuu Billing.
 * Le modèle de données fait autorité dans [02-data-model.md](02-data-model.md).
 * L'API fait autorité dans [03-api.md](03-api.md).
 * Les événements font autorité dans [04-events.md](04-events.md).
-* Les agrégateurs de paiement sont détaillés dans [05-providers.md](05-providers.md).
 * Le choix du modèle d'abonnement est motivé dans [ADR-0007](../../04-decisions/adr-0007-mobile-money-prepaid-subscriptions.md).
+
+> **L'encaissement n'est plus dans ce module.** Agrégateurs, intentions,
+> tentatives, callbacks et registre de caisse appartiennent à
+> [Payments](../payments/01-overview.md). Billing décide **combien** et
+> **pourquoi** ; Payments encaisse, sans savoir ce qu'il encaisse.
 
 ---
 
@@ -75,16 +79,14 @@ Le détail du raisonnement et les alternatives écartées sont dans [ADR-0007](.
 
 * Un catalogue de plans, versionnés, avec plusieurs tarifs par plan (mensuel, annuel).
 * Des abonnements d'organisation, avec période d'essai, grâce et suspension.
-* Des paiements Mobile Money, plus le virement bancaire pour les gros comptes.
 * Des factures numérotées, avec TVA figée à l'émission.
 * Un registre de mouvements **append-only** : rien de ce qui touche à l'argent n'est modifié après coup.
 * Des quotas par plan, consommables par les autres modules.
 
 ## 4.2 Objectifs techniques
 
-* **Idempotent** : un callback rejoué ne crédite jamais deux fois.
-* **Réconcilié par sondage, pas par confiance** : les callbacks Mobile Money se perdent. Le statut réel se lit chez l'opérateur.
-* **Neutre vis-à-vis des fournisseurs** : ajouter un agrégateur ne modifie aucun produit.
+* **Idempotent** : un règlement rejoué ne crédite jamais deux fois.
+* **Ignorant du moyen de paiement** : ajouter un agrégateur ne modifie aucune ligne de Billing.
 * **Auditable** : de tout solde, on doit pouvoir remonter à la ligne de registre qui l'a produit.
 
 ## 4.3 Ce que Billing ne fait pas
@@ -97,6 +99,7 @@ Le détail du raisonnement et les alternatives écartées sont dans [ADR-0007](.
 | Stocker les PDF de facture | **Storage** |
 | Comptabilité, liasse fiscale, déclaration de TVA | Hors plateforme — Billing fournit l'export |
 | Vérifier l'identité du payeur | **Verify** |
+| Encaisser, choisir un agrégateur, recevoir les callbacks | **Payments** |
 
 Billing ne bloque jamais une requête produit. Il publie un fait ; le blocage est appliqué par Identity, en un seul endroit, sur une table déjà lue à chaque appel. Dupliquer ce contrôle créerait deux vérités.
 
@@ -114,17 +117,20 @@ Billing ne bloque jamais une requête produit. Il publie un fait ; le blocage es
                     └────▲─────┘
                          │  événements d'abonnement
                     ┌────┴─────┐
-                    │  Billing │
+                    │  Billing │   plans, abonnements, factures
                     └────┬─────┘
-                         │
-        ┌────────────────┼────────────┬───────────┐
-        │                │            │           │
-    NotchPay   ──►   Tranzak   ──►   Tara      Virement
-        │                │            │       (rapprochement
-        └────────────────┴────────────┘          manuel)
+                         │  « ce que vaut cette facture »
+                    ┌────▼─────┐
+                    │ Payments │   agrégateurs, invites, encaissement
+                    └────┬─────┘
                          │
                 MTN MoMo · Orange Money
 ```
+
+Billing ne parle à **aucun** agrégateur. Il implémente une interface —
+`PayableSource` — par laquelle Payments lui demande un prix, puis lui remet
+l'issue. Une facture d'abonnement et une inscription à une formation empruntent
+ainsi exactement le même chemin.
 
 Le sens des flèches est le point important : Billing **pousse** vers Identity. Identity n'interroge jamais Billing pour autoriser une requête — ce serait un appel synchrone sur le chemin critique de chaque appel API, vers un module qui peut être indisponible.
 
@@ -173,77 +179,58 @@ Un abonnement suspendu ferme l'accès ; il ne détruit rien. Les données appart
 
 ---
 
-# 7. Paiement
+# 7. Ce que Billing attend du paiement
 
-## 7.1 Le flux Mobile Money
+Le mécanisme d'encaissement — agrégateurs, invites, bascule, commission — est
+décrit dans [Payments](../payments/01-overview.md) et décidé dans
+[ADR-0008](../../04-decisions/adr-0008-payment-aggregators-failover.md).
 
-```text
- 1. Intention      l'organisation demande à payer une facture
- 2. Demande        Billing appelle l'opérateur (request-to-pay)
- 3. Invite         le client reçoit une invite sur son téléphone
- 4. Saisie         le client saisit son code secret
- 5. Callback       l'opérateur notifie Billing              ← peut se perdre
- 6. Sondage        Billing interroge l'opérateur            ← filet de sécurité
- 7. Constat        succès ou échec, écrit une seule fois
-```
+Trois choses seulement en découlent ici, et elles structurent tout le module.
 
-Les étapes 5 et 6 sont **redondantes à dessein**. Un callback Mobile Money peut se perdre, arriver deux fois, ou arriver dans le désordre. S'appuyer sur lui seul produit des paiements encaissés par l'opérateur mais jamais constatés par la plateforme — le client a payé, et n'a pas son accès.
+## 7.1 Le client ne peut pas payer un montant arbitraire
 
-Le sondage est donc obligatoire, pas optionnel : toute intention de paiement laissée en attente est réinterrogée jusqu'à ce que l'opérateur tranche, ou jusqu'à expiration.
+Le montant vient toujours de la facture, jamais du corps de la requête. Accepter
+un montant fourni par l'appelant permettrait de régler une facture de 50 000 XAF
+avec 100 XAF.
 
-## 7.2 Le client ne peut pas payer un montant arbitraire
+Ce n'est pas une règle de bonne conduite : `InitiatePayment` n'a **aucun
+paramètre** pour passer un montant. Billing le produit en réponse à une question
+que Payments lui pose — `InvoicePayable::quote()` — et cette méthode porte aussi
+l'autorisation : ce payeur a-t-il le droit de régler cette facture ?
 
-Le montant vient toujours de la facture, jamais du corps de la requête. Accepter un montant fourni par l'appelant permettrait de régler une facture de 50 000 XAF avec 100 XAF.
+## 7.2 Le règlement est synchrone, pas événementiel
 
-## 7.3 Agrégateurs
+Payments appelle `InvoicePayable::settled()` **dans la transaction
+d'encaissement**. Il n'existe aucun instant où l'argent est encaissé et la
+facture impayée.
 
-Les paiements passent par des **agrégateurs**, pas par des comptes marchands opérateur en direct : **NotchPay**, **Tranzak**, **Tara**, dans cet ordre de priorité.
+Confier ce moment à une file créerait une fenêtre où le client a payé et n'a pas
+son accès, qu'un consommateur en échec définitif rendrait permanente. C'est une
+exception assumée à
+[l'architecture § 11.1](../../01-overview/architecture.md), et la seule du
+module.
 
-Chacun couvre MTN MoMo et Orange Money derrière une seule intégration. Le choix de l'agrégateur est une décision de la plateforme ; le réseau du payeur, lui, est un fait déduit du préfixe du numéro.
+## 7.3 La commission n'est pas invisible
 
-```text
-   msisdn  ──►  opérateur (fait)  ──►  agrégateurs qui le couvrent (choix)
-+237 65…         MTN                    NotchPay  ─►  Tranzak  ─►  Tara
-+237 69…         Orange                 NotchPay  ─►  Tranzak  ─►  Tara
-```
+Un agrégateur prélève sa part. Le client paie 49 663 XAF, la plateforme en
+reçoit 48 670.
 
-Comme dans Notify, l'ordre vaut priorité, et **un agrégateur non configuré n'est jamais essayé**. C'est ce qui permet de développer sans compte marchand : aucun paiement ne part, et le module le dit franchement plutôt que d'échouer à l'exécution.
+**La facture est réglée sur le montant brut** — le client a payé son dû. La
+commission est enregistrée séparément, au registre de caisse de Payments, comme
+une charge de la plateforme.
 
-## 7.4 La bascule n'obéit pas aux mêmes règles que dans Notify
+Confondre les deux laisserait la facture éternellement impayée à hauteur de la
+commission, et l'abonnement jamais activé.
 
-C'est le point le plus important du module, et l'intuition venue de Notify y est dangereuse.
+## 7.4 Un paiement échoué ne se relance pas tout seul
 
-Dans Notify, rejouer un email chez un autre fournisseur ne coûte rien de grave : au pire le destinataire reçoit deux fois le même message. Ici, rejouer une demande de paiement peut produire **deux débits sur le compte du client**.
+La règle de bascule entre agrégateurs est **volontairement étroite** : on
+n'essaie ailleurs que si l'invite n'est jamais partie sur le téléphone du
+client, et l'incertitude compte comme « partie ».
 
-La règle est donc unique et étroite :
-
-> **On ne bascule que si l'invite n'est jamais partie sur le téléphone du client.**
-
-| Situation | Bascule |
-| --- | --- |
-| L'agrégateur est injoignable, en panne, ou refuse la demande | **Oui** |
-| L'agrégateur ne couvre pas cet opérateur | **Oui** |
-| L'invite est partie, le client n'a pas encore répondu | Non |
-| Le client a refusé, ou son solde est insuffisant | Non |
-| **On ignore si l'invite est partie** | **Non** |
-
-Les deux dernières lignes méritent d'être lues ensemble.
-
-Un solde insuffisant chez MTN le reste quel que soit l'agrégateur qui pose la question — c'est un rejet **métier**, et la règle de Notify s'applique à l'identique : il ne réussira pas davantage ailleurs, et chaque tentative coûte.
-
-L'incertitude, elle, est traitée comme un « oui, l'invite est partie ». Ne pas encaisser est un incident réparable ; encaisser deux fois est une faute que le client découvre sur son relevé, et qu'un remboursement Mobile Money rend pénible à corriger.
-
-C'est pourquoi le modèle sépare une **intention** de paiement de ses **tentatives** : une facture n'est payée qu'une fois, même si trois agrégateurs ont été sollicités.
-
-Le raisonnement complet est dans [ADR-0008](../../04-decisions/adr-0008-payment-aggregators-failover.md).
-
-## 7.5 La commission n'est pas invisible
-
-Un agrégateur prélève sa part. Le client paie 49 663 XAF, la plateforme en reçoit 48 670.
-
-La facture est réglée sur le montant **brut** — le client a payé son dû. La commission est enregistrée séparément au registre, comme une charge de la plateforme.
-
-Confondre les deux laisserait la facture éternellement impayée à hauteur de la commission, et l'abonnement jamais activé.
+Billing ne doit donc jamais réessayer un paiement de sa propre initiative. Un
+nouveau paiement est une **action du client** — ce qui est cohérent avec le
+modèle prépayé du § 3 : à l'échéance, on relance en prévenant, pas en débitant.
 
 ---
 
@@ -271,9 +258,14 @@ Au Cameroun, le taux applicable est de 19,25 % (TVA 18 % + centimes additionnels
 
 ## 8.4 Le registre ne se modifie pas
 
-`transactions` est **append-only**. Un remboursement est une nouvelle ligne de signe opposé, pas une modification de la ligne d'origine. Un avoir est une nouvelle ligne.
+`credit_entries` est **append-only**, et scellé au niveau du modèle. Un avoir est
+une nouvelle ligne ; une imputation est une nouvelle ligne de signe opposé.
 
-Corriger une écriture en la réécrivant efface la trace de l'erreur — et avec elle, toute possibilité d'expliquer un solde.
+Corriger une écriture en la réécrivant efface la trace de l'erreur — et avec
+elle, toute possibilité d'expliquer un solde.
+
+C'est une propriété du **registre**, pas de ce module : elle vaut à l'identique
+pour le registre de caisse de Payments, et y est répliquée.
 
 ---
 
@@ -370,13 +362,20 @@ Le modèle de données réserve la place des trois premiers sans les implémente
 
 # 12. Prérequis de mise en service
 
-* **Un compte marchand chez Tranzak et Notch Pay au minimum.** L'obtention est administrative et **longue** ; les deux doivent être engagées en parallèle, sinon la bascule n'existe que sur le papier. Deux agrégateurs suffisent à supprimer le point de défaillance unique — le troisième améliore, il ne conditionne pas.
-* **La documentation technique de Tara**, à demander directement : elle n'est pas publique. Son adaptateur ne peut pas être spécifié en son absence.
-* Un environnement bac à sable, sans quoi aucun test n'est réel. Seul Tranzak en documente un aujourd'hui.
-* Un compte bancaire pour le reversement et le rapprochement des virements.
+Ce qui relève de l'encaissement — comptes marchands, bacs à sable, documentation
+de Tara — est listé dans [Payments](../payments/05-providers.md). Aucun de ces
+prérequis n'est satisfait aujourd'hui en production.
 
-Ce que la documentation publique confirme, et ce qui reste à vérifier agrégateur par agrégateur, est consigné dans [05-providers.md](05-providers.md).
+Propre à Billing :
 
-Un point mérite d'être connu avant de commencer : **aucun agrégateur n'expose de champ disant « le client a reçu l'invite »**. C'est pourtant la donnée dont dépend la règle de bascule. Elle doit être déduite de l'issue de l'appel de débit, et c'est l'endroit du module où une approximation coûte de l'argent réel à un tiers.
-
-Tant que rien de tout cela n'existe, Billing peut être développé et testé de bout en bout avec un agrégateur factice — mais **aucun paiement n'aura été prouvé**. C'est exactement la situation du canal SMS de Notify, dont la passerelle n'a jamais été configurée.
+* **Un planificateur.** `billing:advance` n'est enregistré nulle part. Sur un
+  modèle prépayé, cela signifie qu'aucun rappel d'échéance ne part, et qu'aucun
+  abonnement échu ne passe en grâce ni en suspension. C'est le manque le plus
+  conséquent du module.
+* **Storage**, pour les PDF de facture. En son absence,
+  `GET /invoices/{id}/download` renvoie `503` — franchement, plutôt qu'un PDF
+  généré à la volée dont personne ne garantit qu'il sera identique demain.
+* **Un compte bancaire** pour le reversement et le rapprochement des virements.
+* **Le taux de TVA validé** par un comptable camerounais. 19,25 % est appliqué
+  et figé sur chaque facture émise ; se tromper obligerait à annuler et rééditer
+  des documents légaux.

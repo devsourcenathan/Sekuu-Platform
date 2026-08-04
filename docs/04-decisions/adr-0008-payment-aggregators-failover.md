@@ -103,7 +103,7 @@ Il n'apparaît ni dans la requête, ni dans le catalogue. L'exposer figerait l'o
 
 * Chaque adaptateur doit **énumérer explicitement** les statuts signifiant « invite jamais partie ». Tout le reste est `prompted` par défaut.
 * Cette énumération est le premier sujet de tests de chaque adaptateur, avant même le chemin nominal.
-* `billing.payment.unresolved` alerte l'exploitation sur toute issue inconnue.
+* `payments.payment.unresolved` alerte l'exploitation sur toute issue inconnue. *(Préfixé `billing.` jusqu'à l'[ADR-0009](adr-0009-payments-module-extraction.md).)*
 * `provider_events` conserve le corps brut de chaque callback : en cas de litige, c'est la seule pièce qui dit ce que l'agrégateur a réellement envoyé, et non ce que le code en a compris.
 * Les comptes marchands doivent être demandés **en parallèle**. Un seul obtenu, la bascule n'existe que sur le papier.
 * **Deux agrégateurs suffisent** à supprimer le point de défaillance unique. Tara n'ayant pas de documentation technique publique, son adaptateur est repoussé sans que cela bloque le module.

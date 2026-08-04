@@ -280,12 +280,12 @@ GET  /audit-logs                 →  trace des quatre étapes
 * **Redis** — pour les queues, le cache et la liste de révocation. Les envois passent aujourd'hui par la file `database`.
 * **Clés de signature** en gestionnaire de secrets, et procédure de rotation à 90 jours.
 * **CI** — la suite existe, rien ne l'exécute automatiquement.
+* **Un planificateur.** `billing:advance` et `payments:reconcile` ne sont enregistrés dans aucun calendrier — `withSchedule()` n'est pas appelé. Concrètement : aucun rappel d'échéance ne part, aucun abonnement échu ne passe en grâce ni en suspension, et **aucun callback perdu n'est rattrapé**. Sur un modèle prépayé, c'est le manque le plus conséquent des trois.
 
 ## 8.2 Prochaines étapes
 
 Par ordre décroissant de valeur :
 
-* **Les callbacks, réellement reçus.** Dernière branche du chemin de paiement jamais éprouvée contre du réel ; suppose une URL publique.
 * **Les comptes marchands de production**, Notch Pay et Tranzak. Administratif et long, à engager en parallèle.
 * **La documentation Tara**, à réclamer directement — elle n'est pas publique.
 
@@ -298,5 +298,5 @@ Le canal WhatsApp reste le plus attendu au Cameroun ; il suppose un compte Busin
 * Aucun endpoint de listing des rôles globaux — la collection Postman doit lire l'identifiant en base.
 * `GET /users` et `PATCH /users/{id}` sont spécifiés mais pas implémentés.
 * Pas de MFA ni de passkeys — prévus au modèle, non développés.
-* Le plafond de dépense est global : le même pour toutes les organisations. Des quotas par plan viendront avec Billing.
+* Les tests du chemin de paiement vivent encore sous `Modules/Billing/Tests/` — `FailoverInvariantTest`, `PaymentFailoverTest`, `RealFailoverTest`, `WebhookAndReconciliationTest`. Ils éprouvent Payments ; leur place est de ce côté-là.
 * Internationalisation limitée à `en` et `fr`. Ajouter une langue suppose de traduire les 93 clés et les 10 templates de Notify ; un test échoue tant qu'une clé manque.

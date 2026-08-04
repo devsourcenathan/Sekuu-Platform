@@ -85,7 +85,7 @@ Corollaire : une intention dont l'opérateur n'a jamais tranché est `expired`, 
 
 * Le tarif annuel réduit mécaniquement le nombre d'échéances, donc le nombre d'occasions d'abandonner. C'est le principal levier de rétention disponible dans ce modèle, et il justifie de le proposer dès le départ.
 * `grace_ends_at` est une **date absolue**, jamais un compteur décrémenté : la tâche quotidienne reste idempotente si elle tourne deux fois.
-* `billing.payment.unresolved` alerte l'exploitation plutôt que de laisser un client payé sans service.
+* `payments.payment.unresolved` alerte l'exploitation plutôt que de laisser un client payé sans service. *(Publié sous le préfixe `billing.` jusqu'à l'[ADR-0009](adr-0009-payments-module-extraction.md).)*
 * La commande `billing:sync-access` reconstruit les droits en cas d'événement perdu.
 
 ## Ce qui a tranché

@@ -16,7 +16,7 @@ use Modules\Payments\Application\Payments\ReconcilePayments;
  */
 final class ReconcilePaymentsCommand extends Command
 {
-    protected $signature = 'billing:reconcile';
+    protected $signature = 'payments:reconcile';
 
     protected $description = 'Interroge les agrégateurs pour tout paiement en attente.';
 
