@@ -34,7 +34,14 @@ services:
     name: sekuu-api
     runtime: docker
     plan: starter
-    healthCheckPath: /api/v1/health
+    # `/up`, et non `/api/v1/health` : la route native de Laravel n'appartient à
+    # aucun module, donc elle répond quel que soit `SEKUU_DOMAIN_*`.
+    #
+    # `/api/v1/health` est une route d'Identity. La lier à `identity.sekuu.com`
+    # ferait échouer la vérification de santé, que Render effectue sur l'adresse
+    # `*.onrender.com` du service — et le déploiement repartirait en boucle sur
+    # la version précédente.
+    healthCheckPath: /up
 
     # Avant de basculer le trafic. Un échec ici annule le déploiement, et
     # l'ancienne version continue de servir.

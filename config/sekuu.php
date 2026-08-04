@@ -23,6 +23,7 @@ return [
         'verify' => env('SEKUU_DOMAIN_VERIFY'),
         'notify' => env('SEKUU_DOMAIN_NOTIFY'),
         'billing' => env('SEKUU_DOMAIN_BILLING'),
+        'payments' => env('SEKUU_DOMAIN_PAYMENTS'),
         'storage' => env('SEKUU_DOMAIN_STORAGE'),
         'ai' => env('SEKUU_DOMAIN_AI'),
         'search' => env('SEKUU_DOMAIN_SEARCH'),

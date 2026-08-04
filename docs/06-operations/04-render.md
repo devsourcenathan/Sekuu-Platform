@@ -141,7 +141,104 @@ partout, et une transaction en cours porte l'ancienne, figée dans son payload.
 
 ---
 
-# 4. Le déploiement lui-même
+# 4. Les domaines
+
+## 4.1 Ce que Render fournit
+
+`sekuu-api.onrender.com`, avec certificat, sans rien faire.
+
+Un domaine personnalisé s'ajoute au service et demande un `CNAME` chez votre
+registrar. Render émet le certificat. Plusieurs domaines peuvent pointer sur le
+**même** service — c'est ce qui rend les sous-domaines possibles sans déployer
+huit fois.
+
+## 4.2 Un sous-domaine par module, dès maintenant
+
+C'est ce que prescrit [l'architecture § 13](../01-overview/architecture.md) :
+exposer chaque module via son domaine **même quand une seule application est
+déployée**. Tous pointent vers le même service Render ; seul le routage interne
+diffère.
+
+La raison est plus forte aujourd'hui qu'à la rédaction de ce chapitre. Sekuu
+Learn consommera `payments.sekuu.com` depuis l'extérieur, et ses URL de callback
+vivront dans les tableaux de bord des agrégateurs. Le jour où Payments part dans
+son propre service, **rien ne change pour personne** — alors qu'avec un
+`api.sekuu.com` unique, il faudrait faire migrer tous les consommateurs et
+toutes les URL enregistrées.
+
+Le coût est faible : un enregistrement DNS par sous-domaine, et Render émet les
+certificats.
+
+### Seulement pour les modules qui existent
+
+```dotenv
+SEKUU_DOMAIN_IDENTITY=identity.sekuu.com
+SEKUU_DOMAIN_NOTIFY=notify.sekuu.com
+SEKUU_DOMAIN_BILLING=billing.sekuu.com
+SEKUU_DOMAIN_PAYMENTS=payments.sekuu.com
+
+# Ces modules n'ont pas encore de code : laisser vide, et ne pas créer le DNS.
+SEKUU_DOMAIN_VERIFY=
+SEKUU_DOMAIN_STORAGE=
+SEKUU_DOMAIN_AI=
+SEKUU_DOMAIN_SEARCH=
+SEKUU_DOMAIN_ANALYTICS=
+```
+
+Créer `verify.sekuu.com` maintenant serait pire qu'inutile : aucune contrainte
+d'hôte n'existant pour un module absent, ce sous-domaine servirait **tous les
+autres** modules — il répondrait tout, sauf ce que son nom promet.
+
+### La vérification de santé doit rester libre
+
+`healthCheckPath: /up`, la route native de Laravel déclarée dans
+`bootstrap/app.php`. Elle n'appartient à aucun module.
+
+`/api/v1/health` est une route d'**Identity** : la lier à `identity.sekuu.com`
+ferait échouer la vérification, que Render effectue sur l'adresse
+`*.onrender.com` du service. Le déploiement repartirait en boucle sur la version
+précédente.
+
+## 4.3 Décidez **avant** d'enregistrer les callbacks
+
+C'est le seul point irréversible.
+
+Les URL de callback vivent dans les tableaux de bord des agrégateurs, et une
+transaction en cours porte la sienne **figée dans son payload**. Passer de
+`api.sekuu.com/api/v1/payments/webhooks/tranzak` à
+`payments.sekuu.com/…` plus tard oblige à garder les deux adresses servies le
+temps que les transactions en vol se terminent.
+
+C'est exactement pourquoi `/api/v1/billing/webhooks/{provider}` existe encore
+aujourd'hui.
+
+## 4.4 Comment basculer, le jour venu
+
+Renseigner un `SEKUU_DOMAIN_*` **restreint** les routes de ce module à cet
+hôte : elles cessent de répondre ailleurs. Il faut donc, dans cet ordre :
+
+1. ajouter le sous-domaine comme domaine personnalisé du service Render ;
+2. vérifier qu'il répond — les routes y répondent déjà, l'hôte n'étant pas
+   contraint ;
+3. enregistrer la nouvelle URL de callback chez les agrégateurs ;
+4. **seulement ensuite**, poser la variable.
+
+L'inverse coupe le service entre l'étape 4 et le DNS.
+
+## 4.5 Un module oublié ne dit rien
+
+`ModuleServiceProvider::domain()` lit `config('sekuu.domains.{slug}')`. Une
+entrée absente vaut `null` : la contrainte d'hôte est simplement **désactivée**,
+sans erreur, et le module répond partout.
+
+C'est arrivé à Payments après son extraction de Billing —
+`SEKUU_DOMAIN_PAYMENTS` n'avait aucun effet, et `payments.sekuu.com` ne se
+serait jamais lié. Un test d'architecture vérifie désormais que chaque module a
+son entrée.
+
+---
+
+# 5. Le déploiement lui-même
 
 `preDeployCommand` s'exécute **avant** que le trafic ne bascule :
 
@@ -159,7 +256,7 @@ configuration d'un autre environnement.
 
 ---
 
-# 5. Ce qu'il faut savoir des offres
+# 6. Ce qu'il faut savoir des offres
 
 **Le plan gratuit met le service en veille** après quinze minutes d'inactivité.
 Un callback d'agrégateur arrivant sur un service endormi attend le réveil, et
@@ -177,7 +274,7 @@ doit rester **unique**.
 
 ---
 
-# 6. Ce qui reste vrai
+# 7. Ce qui reste vrai
 
 Après le déploiement, il reste ce qu'aucune infrastructure ne remplace : **le
 premier paiement réel**, avec votre propre numéro et un petit montant.

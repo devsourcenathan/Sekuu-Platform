@@ -97,6 +97,42 @@ final class ArchitectureTest extends TestCase
     }
 
     /**
+     * Chaque module doit avoir une entrée de sous-domaine.
+     *
+     * `ModuleServiceProvider::domain()` lit `config('sekuu.domains.{slug}')`. Une
+     * entrée manquante ne produit **aucune erreur** : la valeur est `null`, la
+     * contrainte d'hôte est simplement désactivée, et le module répond partout.
+     *
+     * C'est exactement ce qui est arrivé à Payments après son extraction de
+     * Billing : `SEKUU_DOMAIN_PAYMENTS` n'avait aucun effet, et
+     * `payments.sekuu.com` — documenté dans l'OpenAPI et la mise en service —
+     * ne se serait jamais lié.
+     */
+    public function test_every_module_has_a_subdomain_entry(): void
+    {
+        $slugs = [];
+
+        foreach (glob(base_path('Modules/*/[A-Z]*ServiceProvider.php')) as $fichier) {
+            if (preg_match("/moduleSlug\(\): string\s*\{\s*return '([a-z]+)'/", (string) file_get_contents($fichier), $trouve) === 1) {
+                $slugs[] = $trouve[1];
+            }
+        }
+
+        sort($slugs);
+
+        $this->assertNotEmpty($slugs, 'Aucun module trouvé : le motif de détection a changé.');
+
+        $manquants = array_values(array_diff($slugs, array_keys((array) config('sekuu.domains'))));
+
+        $this->assertSame(
+            [],
+            $manquants,
+            "Ces modules n'ont pas d'entrée dans config/sekuu.php : leur sous-domaine "
+            ."serait ignoré sans qu'aucune erreur ne le signale.",
+        );
+    }
+
+    /**
      * Le verrou qui empêche la re-fusion.
      *
      * Vide tant que `Modules/Payments` n'existe pas — c'est voulu : la règle
