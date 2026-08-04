@@ -6,6 +6,10 @@
 Ce document ne remplace pas [03-deployment.md](03-deployment.md) : il dit ce que
 Render change, et ce qu'il faut prendre en compte **avant** de commencer.
 
+> Il décrit la configuration **payante**, avec trois services séparés — environ
+> 41 $ par mois. Pour tenir à zéro, et savoir ce que cela coûte réellement :
+> [05-free-tier.md](05-free-tier.md).
+
 ---
 
 # 1. Les cinq choses qui changent tout

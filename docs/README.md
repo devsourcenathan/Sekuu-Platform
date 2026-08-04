@@ -92,6 +92,7 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | [02-ci.md](06-operations/02-ci.md) | Intégration continue : ce qu'elle vérifie, et dans quel ordre |
 | [03-deployment.md](06-operations/03-deployment.md) | Premier déploiement, redéploiements, retour arrière |
 | [04-render.md](06-operations/04-render.md) | Déployer sur Render : image Docker, disque éphémère, files |
+| [05-free-tier.md](06-operations/05-free-tier.md) | Tenir sur l'offre gratuite, et ce que cela coûte |
 
 ---
 

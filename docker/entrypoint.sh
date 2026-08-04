@@ -5,6 +5,7 @@
 #   entrypoint web         nginx + php-fpm
 #   entrypoint worker      files : envois Notify, webhooks sortants Payments
 #   entrypoint scheduler   tâches planifiées, en processus long
+#   entrypoint all         les trois dans un conteneur — offre gratuite
 #
 # @see docs/06-operations/04-render.md
 
@@ -34,6 +35,19 @@ case "${1:-web}" in
         sed "s|\${PORT}|${PORT:-8080}|g" /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
         exec supervisord -c /etc/supervisord.conf
+        ;;
+
+    all)
+        # nginx, php-fpm, le worker et l'ordonnanceur ensemble.
+        #
+        # Pour l'offre gratuite de Render, qui n'a pas de background worker.
+        # Ce que ce choix coute est decrit dans
+        # docs/06-operations/05-free-tier.md — l'essentiel etant qu'un service
+        # gratuit s'endort, et que rien ne tourne pendant son sommeil.
+        export PORT="${PORT:-8080}"
+        sed "s|\${PORT}|${PORT}|g" /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+
+        exec supervisord -c /etc/supervisord-all.conf
         ;;
 
     worker)

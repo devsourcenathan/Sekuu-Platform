@@ -66,6 +66,7 @@ COPY . .
 
 COPY docker/nginx.conf /etc/nginx/nginx.conf.template
 COPY docker/supervisord.conf /etc/supervisord.conf
+COPY docker/supervisord-all.conf /etc/supervisord-all.conf
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint
 RUN chmod +x /usr/local/bin/entrypoint
 
