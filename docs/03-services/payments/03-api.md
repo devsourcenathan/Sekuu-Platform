@@ -205,6 +205,9 @@ Le planificateur n'est pas encore enregistré — voir
 | `POST` | `/payments/charges` | clé d'API — `payments.charge` |
 | `GET` | `/payments/charges/{id}` | clé d'API — `payments.read` |
 | `GET` | `/payments/charges` | clé d'API — `payments.read` |
+| `POST` | `/payments/charges/{id}/refunds` | clé d'API — `payments.refund` |
+| `GET` | `/payments/charges/{id}/refunds` | clé d'API — `payments.read` |
+| `GET` | `/payments/charges/{id}/refunds/{refund}` | clé d'API — `payments.read` |
 
 Réservée aux produits qui **ne partagent pas cette base de code**. Le prix y est
 **déclaré** plutôt que demandé, borné par deux choses : la clé porte la liste des
@@ -217,10 +220,15 @@ Ces routes ne s'authentifient jamais par un access token : une clé agit au nom
 d'un **produit**, pas d'une personne, et il n'existe aucun utilisateur Sekuu
 derrière un apprenant Learn.
 
+`payments.refund` est **distinct** de `payments.charge` : faire entrer de
+l'argent et en faire sortir sont deux dangers opposés, et un seul droit pour les
+deux serait le plus large des deux.
+
 Un service externe n'obtient **pas** la garantie que « encaissé » et « service
 ouvert » soient atomiques : il ne participe pas à la transaction. Le détail
 complet, avec ce que le produit doit impérativement mettre en place, est dans
-[07-external-api.md](07-external-api.md).
+[07-external-api.md](07-external-api.md), et le remboursement dans
+[08-refunds.md](08-refunds.md).
 
 ---
 

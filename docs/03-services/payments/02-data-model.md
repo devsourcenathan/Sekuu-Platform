@@ -6,7 +6,7 @@
 
 Ce document fait autorité sur les tables du module Payments.
 
-Documents liés : [Vision](01-overview.md) · [API](03-api.md) · [Agrégateurs](05-providers.md) · [Intégrer un produit](06-integration.md) · [ADR-0008](../../04-decisions/adr-0008-payment-aggregators-failover.md) · [ADR-0009](../../04-decisions/adr-0009-payments-module-extraction.md)
+Documents liés : [Vision](01-overview.md) · [API](03-api.md) · [Agrégateurs](05-providers.md) · [Intégrer un produit](06-integration.md) · [Remboursements](08-refunds.md) · [ADR-0008](../../04-decisions/adr-0008-payment-aggregators-failover.md) · [ADR-0009](../../04-decisions/adr-0009-payments-module-extraction.md)
 
 Source de vérité : `Modules/Payments/Database/Migrations/2026_03_01_000300_create_payments_tables.php`.
 
@@ -316,7 +316,11 @@ created_at             timestamptz  NULL
 | --- | --- | --- |
 | `charge` | positif | Paiement encaissé, montant **brut** |
 | `fee` | négatif | Commission de l'agrégateur |
-| `refund` | négatif | Remboursement effectif — **déclaré, jamais écrit** |
+| `refund` | négatif | Décaissement **constaté** — jamais écrit à la décision |
+
+La ligne `refund` n'apparaît qu'une fois l'argent réellement sorti. La décision,
+elle, vit dans `refunds` (§ 5.4) avec son propre cycle de vie : un registre
+append-only ne peut pas porter un `pending` qu'on corrigerait ensuite.
 
 Un paiement encaissé produit **deux** lignes : le `charge` brut et le `fee`. Le
 client a payé 49 663 XAF, la plateforme en a reçu 48 670 — les deux faits sont
@@ -350,6 +354,66 @@ La frontière existait déjà dans le code : `Transaction::creditTypes()` exclua
 exactement `charge` et `fee`. La scission ne l'a pas créée, elle l'a rendue
 physique, et a supprimé au passage deux clés étrangères qui allaient devenir
 inter-modules.
+
+---
+
+## 5.4 Remboursements
+
+```text
+refunds
+
+id                  uuid         PK
+payment_intent_id   uuid         NOT NULL   -- référence logique
+subject_type        varchar(40)  NOT NULL   -- recopiés depuis l'intention
+subject_id          uuid         NOT NULL
+amount              bigint       NOT NULL
+currency            char(3)      NOT NULL
+reason              varchar(255) NOT NULL
+status              varchar(20)  DEFAULT 'pending'
+provider            varchar(30)  NULL       -- null = décaissement manuel
+provider_ref        varchar(120) NULL       -- référence du transfert
+failure_code        varchar(60)  NULL
+failure_reason      text         NULL
+requested_by        uuid         NULL
+requested_via       varchar(20)  DEFAULT 'api'
+idempotency_key     varchar(255) NULL
+settled_at          timestamptz  NULL
+```
+
+**Contraintes**
+
+* `status ∈ { pending, processing, succeeded, failed, cancelled }`.
+* `amount > 0`.
+* `UNIQUE (payment_intent_id, idempotency_key) WHERE idempotency_key IS NOT NULL`.
+
+**Index** : `(payment_intent_id, status)`, `(status, created_at)`, `(subject_type, subject_id)`.
+
+### Pourquoi une table et non une ligne négative
+
+C'était le point laissé ouvert, à trancher avant que des données monétaires
+n'existent. Il se tranche par la nature de l'opération : un remboursement peut
+être **en attente**, échouer, être repris — et le registre ne porte que des
+constats.
+
+### `pending` immobilise déjà la somme
+
+Le plafond remboursable est le brut encaissé moins les remboursements
+`pending`, `processing` et `succeeded`. Ne compter que ces derniers laisserait
+décider deux fois le même remboursement avant que le premier ne soit versé.
+
+`failed` et `cancelled` **libèrent** la somme : rien n'est sorti.
+
+### `reason` est NOT NULL
+
+Un remboursement est un geste dont quelqu'un devra rendre compte. Un motif
+facultatif serait vide neuf fois sur dix, et la dixième est celle qu'on
+cherchera un an plus tard.
+
+### `provider` nullable
+
+`null` signifie un décaissement **manuel**, hors plateforme, constaté après coup.
+C'est le cas nominal : aucun adaptateur de transfert n'existe — voir
+[08-refunds.md § 5.1](08-refunds.md#51-pourquoi-aucun-adaptateur-dagrégateur).
 
 ---
 
@@ -410,7 +474,7 @@ de toute trace en cas de tentative de fraude.
 
 | Besoin futur | Place déjà prévue |
 | --- | --- |
-| Rembourser | `type = 'refund'` déclaré au registre |
+| Décaisser via un agrégateur | `refunds.provider`, `refunds.provider_ref` |
 | Encaisser pour un tiers | `payee_organization_id` sur l'intention et le registre |
 | Virement bancaire | `method` |
 | Cartes bancaires | `method`, `operator` |

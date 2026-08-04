@@ -13,6 +13,11 @@ return [
     'payment_unresolved' => "L'agrégateur n'a pas confirmé l'issue de ce paiement.",
     'payment_instructions' => 'Validez la demande sur votre téléphone, ou composez le code de votre opérateur.',
 
+    'refund_not_found' => "Ce remboursement n'existe pas.",
+    'refund_not_supported' => 'Le propriétaire de :type ne rembourse pas : un trop-perçu y devient un crédit.',
+    'refund_exceeds_payment' => 'Ce montant dépasse ce qui reste remboursable sur ce paiement (:available).',
+    'refund_payment_not_settled' => 'On ne rembourse que ce qui a été encaissé.',
+
     'external_charge_not_found' => "Cette demande de paiement n'existe pas.",
     'subject_type_not_allowed' => "Cette clé d'API n'est pas habilitée à faire payer ce type d'objet.",
     'subject_type_not_external' => "Ce type d'objet n'est pas servi par l'API externe.",

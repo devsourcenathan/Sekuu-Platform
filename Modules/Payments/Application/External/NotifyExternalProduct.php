@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Payments\Application\External;
 
+use App\Platform\Contracts\RefundSettlement;
 use App\Platform\Http\RequestId;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -31,7 +32,51 @@ final class NotifyExternalProduct
 
     public const FAILED = 'payment.failed';
 
+    public const REFUNDED = 'refund.succeeded';
+
+    public const REFUND_FAILED = 'refund.failed';
+
+    /**
+     * L'issue d'un remboursement.
+     *
+     * Charge utile distincte de celle d'un encaissement : sur un remboursement
+     * **partiel**, le montant rendu n'est pas celui de la charge, et réutiliser
+     * la même structure ferait croire au produit qu'il a tout rendu.
+     */
+    public function refundOutcome(ExternalCharge $charge, RefundSettlement $settlement): void
+    {
+        $this->deliver(
+            $charge,
+            $settlement->succeeded ? self::REFUNDED : self::REFUND_FAILED,
+            [
+                'refund_id' => $settlement->refundId,
+                'charge_id' => $charge->id,
+                'payment_id' => $settlement->paymentIntentId,
+                'subject_type' => $charge->subject_type,
+                'subject_id' => $charge->subject_id,
+
+                // Ce qui a été rendu, pas ce qui avait été encaissé.
+                ...$settlement->amount->toArray(),
+
+                // Comment le produit sait qu'il lui reste quelque chose à
+                // rendre, sans avoir à tenir sa propre comptabilité.
+                'charge_amount' => $charge->amount,
+
+                'status' => $settlement->succeeded ? 'succeeded' : 'failed',
+                'failure_code' => $settlement->failureCode,
+            ],
+        );
+    }
+
     public function handle(ExternalCharge $charge, string $eventType): void
+    {
+        $this->deliver($charge, $eventType, $this->paymentData($charge, $eventType));
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function deliver(ExternalCharge $charge, string $eventType, array $data): void
     {
         $endpoint = PaymentEndpoint::query()
             ->where('organization_id', $charge->organization_id)
@@ -42,7 +87,7 @@ final class NotifyExternalProduct
             // lui reste le sondage et la réconciliation, tous deux obligatoires
             // par contrat. Le taire complètement, en revanche, laisserait une
             // intégration à moitié faite passer pour terminée.
-            Log::warning('Encaissement externe sans endpoint de livraison.', [
+            Log::warning('Issue de paiement sans endpoint de livraison.', [
                 'organization_id' => $charge->organization_id,
                 'external_charge_id' => $charge->id,
                 'event_type' => $eventType,
@@ -61,7 +106,7 @@ final class NotifyExternalProduct
             'event_id' => $eventId,
             'event_type' => $eventType,
             'payment_intent_id' => $charge->payment_intent_id,
-            'payload' => $this->payload($eventId, $charge, $eventType),
+            'payload' => $this->envelope($eventId, $eventType, $data),
             'status' => PaymentDelivery::PENDING,
         ]);
 
@@ -72,31 +117,43 @@ final class NotifyExternalProduct
     }
 
     /**
+     * L'enveloppe est identique quel que soit l'événement : un intégrateur
+     * n'apprend qu'une seule forme.
+     *
+     * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
-    private function payload(string $eventId, ExternalCharge $charge, string $eventType): array
+    private function envelope(string $eventId, string $eventType, array $data): array
     {
         return [
             'id' => $eventId,
             'type' => $eventType,
             'occurred_at' => now()->toIso8601ZuluString(),
             'request_id' => RequestId::current(),
-            'data' => [
-                'charge_id' => $charge->id,
-                'payment_id' => $charge->payment_intent_id,
-                'subject_type' => $charge->subject_type,
-                'subject_id' => $charge->subject_id,
-                'payer_type' => $charge->payer_type,
-                'payer_id' => $charge->payer_id,
+            'data' => $data,
+        ];
+    }
 
-                // Le montant de la charge déclarée, jamais celui rapporté par
-                // l'agrégateur : ce dernier est un constat, pas une autorité.
-                ...$charge->money()->toArray(),
+    /**
+     * @return array<string, mixed>
+     */
+    private function paymentData(ExternalCharge $charge, string $eventType): array
+    {
+        return [
+            'charge_id' => $charge->id,
+            'payment_id' => $charge->payment_intent_id,
+            'subject_type' => $charge->subject_type,
+            'subject_id' => $charge->subject_id,
+            'payer_type' => $charge->payer_type,
+            'payer_id' => $charge->payer_id,
 
-                'status' => $eventType === self::SUCCEEDED
-                    ? ExternalCharge::PAID
-                    : ExternalCharge::FAILED,
-            ],
+            // Le montant de la charge déclarée, jamais celui rapporté par
+            // l'agrégateur : ce dernier est un constat, pas une autorité.
+            ...$charge->money()->toArray(),
+
+            'status' => $eventType === self::SUCCEEDED
+                ? ExternalCharge::PAID
+                : ExternalCharge::FAILED,
         ];
     }
 }

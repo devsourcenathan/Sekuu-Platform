@@ -114,6 +114,10 @@
     {
       "key": "test_msisdn",
       "value": "+237650000000"
+    },
+    {
+      "key": "refund_id",
+      "value": ""
     }
   ],
   "item": [
@@ -1542,9 +1546,9 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Sekuu Learn\",\n  \"scopes\": [\n    \"payments.charge\",\n    \"payments.read\"\n  ],\n  \"subject_types\": [\n    \"learn.enrollment\"\n  ]\n}"
+              "raw": "{\n  \"name\": \"Sekuu Learn\",\n  \"scopes\": [\n    \"payments.charge\",\n    \"payments.read\",\n    \"payments.refund\"\n  ],\n  \"subject_types\": [\n    \"learn.enrollment\"\n  ]\n}"
             },
-            "description": "**Le perimetre est obligatoire.** `payments.charge` autorise a declarer un prix ; sans `subject_types`, il autoriserait a en declarer un sur n'importe quel objet de la plateforme.\n\n`billing.invoice` ne peut etre porte par **aucune** cle : le prix d'une facture est produit par Billing, en base. L'emission echoue en 422.\n\nCette cle est **strictement serveur a serveur**. Dans un navigateur ou une application mobile, n'importe qui declare n'importe quel montant, et toute la protection tombe d'un coup."
+            "description": "**Le perimetre est obligatoire.** `payments.charge` autorise a declarer un prix ; sans `subject_types`, il autoriserait a en declarer un sur n'importe quel objet de la plateforme.\n\n`billing.invoice` ne peut etre porte par **aucune** cle : le prix d'une facture est produit par Billing, en base. L'emission echoue en 422.\n\nCette cle est **strictement serveur a serveur**. Dans un navigateur ou une application mobile, n'importe qui declare n'importe quel montant, et toute la protection tombe d'un coup.\n\n`payments.refund` est **distinct** de `payments.charge` : faire entrer de l'argent et en faire sortir sont deux dangers opposes."
           },
           "event": [
             {
@@ -4350,7 +4354,7 @@
     },
     {
       "name": "14 - Payments (service externe)",
-      "description": "Encaisser depuis un produit qui **ne partage pas la base de code** — Sekuu Learn.\n\nLa regle n'a jamais ete « le montant ne vient jamais d'HTTP ». Elle est **seul le proprietaire de l'objet nomme son prix** : prouve par une interface PHP pour un module du monolithe, par une cle scopee ici.\n\nLe montant traverse HTTP **une fois**, a la declaration. Il est ecrit dans `external_charges` — l'analogue d'une facture — puis **relu en base** au moment de payer. `InitiatePayment` n'a toujours aucun parametre de montant.\n\n**Ce que ce chemin ne donne pas :** l'atomicite. Un service externe ne participe pas a la transaction d'encaissement ; il existe une fenetre ou un client a paye et n'a pas son service. Elle est irreductible, seulement rendue courte (webhook) et rattrapable (sondage, reconciliation). **Les trois sont obligatoires.**\n\nPrerequis : la cle du dossier 06, et un endpoint declare par `payments:endpoint` cote plateforme.",
+      "description": "Encaisser depuis un produit qui **ne partage pas la base de code** — Sekuu Learn.\n\nLa regle n'a jamais ete « le montant ne vient jamais d'HTTP ». Elle est **seul le proprietaire de l'objet nomme son prix** : prouve par une interface PHP pour un module du monolithe, par une cle scopee ici.\n\nLe montant traverse HTTP **une fois**, a la declaration. Il est ecrit dans `external_charges` — l'analogue d'une facture — puis **relu en base** au moment de payer. `InitiatePayment` n'a toujours aucun parametre de montant.\n\n**Ce que ce chemin ne donne pas :** l'atomicite. Un service externe ne participe pas a la transaction d'encaissement ; il existe une fenetre ou un client a paye et n'a pas son service. Elle est irreductible, seulement rendue courte (webhook) et rattrapable (sondage, reconciliation). **Les trois sont obligatoires.**\n\nPrerequis : la cle du dossier 06, et un endpoint declare par `payments:endpoint` cote plateforme.\n\n## Rendre l'argent\n\nScope `payments.refund`, **distinct** de `payments.charge`. Le decaissement lui-meme est execute a la main par un operateur : un remboursement Mobile Money est un transfert, et aucun agregateur ne documente un bac a sable de decaissement.",
       "item": [
         {
           "name": "Declarer un prix et encaisser",
@@ -4631,6 +4635,313 @@
               ]
             },
             "description": "La cle du dossier 06 ne porte que `notifications.send`. Encaisser et lire sont deux droits distincts, et aucun des deux n'est implicite."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Refuse', () => pm.response.to.have.status(403));",
+                  "pm.test('Code explicite', () => pm.expect(pm.response.json().error.code).to.eql('INSUFFICIENT_PERMISSIONS'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rendre l'argent (total)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/charges/{{charge_id}}/refunds",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "charges",
+                "{{charge_id}}",
+                "refunds"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{payments_api_key}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Formation annulee par le centre\"\n}"
+            },
+            "description": "**`202`, jamais `201`.** Ce qui est cree est une *obligation*, pas un fait : l'argent n'est pas sorti.\n\nUn remboursement Mobile Money est un **decaissement**, pas l'annulation d'un debit. Il exige un solde sur le compte marchand, une API de transfert distincte, et il echoue pour des raisons etrangeres au paiement d'origine. Aujourd'hui il est execute **a la main** par un operateur, puis constate avec `php artisan payments:refund`.\n\nTraiter cette reponse comme « l'argent est rendu » ferait annuler une inscription que rien n'a encore remboursee. Le produit apprend le decaissement reel par `refund.succeeded`, ou en sondant.\n\n**`amount` absent = tout ce qui reste remboursable.** Obliger le produit a calculer le reliquat lui ferait tenir une seconde comptabilite, qui finirait par diverger.\n\n**`reason` est obligatoire** : un remboursement est un geste dont quelqu'un devra rendre compte."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Obligation enregistree', () => pm.response.to.have.status(202));",
+                  "const d = pm.response.json().data;",
+                  "pm.collectionVariables.set('refund_id', d.refund_id);",
+                  "pm.test('Rien n est encore sorti', () => pm.expect(d.status).to.eql('pending'));",
+                  "console.log('A virer : ' + d.formatted + ' — ' + d.reason);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rendre une partie",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/charges/{{charge_id}}/refunds",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "charges",
+                "{{charge_id}}",
+                "refunds"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{payments_api_key}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 4000,\n  \"reason\": \"Deux modules sur cinq non dispenses\"\n}"
+            },
+            "description": "Le plafond porte sur le **cumul** : plusieurs remboursements partiels ne peuvent pas depasser ensemble ce que le paiement a rapporte.\n\nUn remboursement en attente **immobilise deja** la somme. Ne compter que les decaissements constates laisserait decider deux fois le meme remboursement avant que le premier ne soit verse — et les deux partiraient."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Partiel accepte', () => pm.response.to.have.status(202));",
+                  "pm.test('Le montant est celui demande', () => pm.expect(pm.response.json().data.amount).to.eql(4000));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refuse : plus que ce qui a ete encaisse",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/charges/{{charge_id}}/refunds",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "charges",
+                "{{charge_id}}",
+                "refunds"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{payments_api_key}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 99999999,\n  \"reason\": \"Tentative\"\n}"
+            },
+            "description": "**L'invariant de la couche de paiement.** Aucun produit n'a a en decider, et aucun ne peut s'en affranchir.\n\nLe plafond est le montant de la ligne `charge` du registre — le constat — moins ce qui est deja engage. La verification se fait **sous verrou** : sans lui, deux demandes concurrentes passeraient toutes deux."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Refuse', () => pm.response.to.have.status(422));",
+                  "pm.test('Code explicite', () => pm.expect(pm.response.json().error.code).to.eql('REFUND_EXCEEDS_PAYMENT'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sonder un remboursement",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/charges/{{charge_id}}/refunds/{{refund_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "charges",
+                "{{charge_id}}",
+                "refunds",
+                "{{refund_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{payments_api_key}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "`Retry-After` accompagne la reponse tant que le decaissement n'est pas tranche — 30 secondes plutot que 5, parce qu'un virement manuel ne se constate pas a la seconde.\n\n`pending` signifie **decide, pas encore verse**. Le produit ne doit pas fermer l'acces sur cette base.\n\n`failed` rend la somme a nouveau remboursable — rien n'est sorti. Reessayer demande une **nouvelle decision**, jamais un reessai automatique."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Remboursement lisible', () => pm.response.to.have.status(200));",
+                  "console.log('Statut : ' + pm.response.json().data.status);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remboursements d'une charge",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/charges/{{charge_id}}/refunds",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "charges",
+                "{{charge_id}}",
+                "refunds"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{payments_api_key}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Pour la reconciliation. **La charge reste `paid`** : elle dit ce qui a ete encaisse, pas ce qui reste du. La somme des remboursements `succeeded` et de ce qui reste est la seule verite comptable."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Liste lisible', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refuse : rembourser exige son propre scope",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/charges/{{charge_id}}/refunds",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "charges",
+                "{{charge_id}}",
+                "refunds"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{api_key}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Tentative\"\n}"
+            },
+            "description": "`payments.refund` ne s'obtient pas avec `payments.charge`. Faire entrer de l'argent et en faire sortir sont deux dangers **opposes** ; un seul droit pour les deux serait le plus large des deux, et une cle destinee a vendre pourrait vider le compte marchand."
           },
           "event": [
             {

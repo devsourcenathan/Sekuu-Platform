@@ -9,6 +9,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Modules\Payments\Application\Payments\PayableRegistry;
 use Modules\Payments\Infrastructure\Console\ManageEndpointCommand;
 use Modules\Payments\Infrastructure\Console\ReconcilePaymentsCommand;
+use Modules\Payments\Infrastructure\Console\SettleRefundCommand;
 use Modules\Payments\Infrastructure\Providers\ProviderRegistry;
 use Modules\Payments\Infrastructure\Webhooks\WebhookRegistry;
 
@@ -67,7 +68,11 @@ final class PaymentsServiceProvider extends ModuleServiceProvider
         parent::boot();
 
         if ($this->app->runningInConsole()) {
-            $this->commands([ReconcilePaymentsCommand::class, ManageEndpointCommand::class]);
+            $this->commands([
+                ReconcilePaymentsCommand::class,
+                ManageEndpointCommand::class,
+                SettleRefundCommand::class,
+            ]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {

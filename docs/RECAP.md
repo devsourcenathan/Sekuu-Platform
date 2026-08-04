@@ -167,7 +167,15 @@ Deux choix qui méritent d'être connus. Un endpoint durablement injoignable **n
 
 L'URL et le secret ne passent pas par l'API : ils se déclarent avec `payments:endpoint`, donc par un opérateur. Une clé fuitée ne doit pas suffire à détourner l'issue de tous les paiements d'un produit vers un serveur choisi.
 
-**Non implémenté** — le **remboursement**, déclaré au registre et écrit nulle part. C'est la prochaine lacune : un produit vendant des formations la rencontrera avant Billing.
+**Le remboursement existe** ([ADR-0011](04-decisions/adr-0011-refunds.md), [08-refunds.md](03-services/payments/08-refunds.md)), total ou partiel, avec deux invariants.
+
+**On ne rend jamais plus qu'on n'a encaissé** — plafond gardé par la couche de paiement, sur le cumul, sous verrou, et un remboursement en attente immobilise déjà la somme. **On ne rend pas deux fois** : c'est le miroir du double débit, avec une différence qui a commandé la conception — le client n'a aucune raison de signaler l'erreur.
+
+Le propriétaire de l'objet décide, par `RefundableSource`. **Ne pas porter cette interface est une réponse**, et c'est celle de Billing : un trop-perçu y devient un crédit. L'ajouter à `PayableSource` aurait forcé chaque produit à écrire une méthode pour dire non, et la première copie aurait dit oui par distraction.
+
+**Le décaissement reste manuel**, et c'est délibéré. Un remboursement Mobile Money est un transfert, pas l'annulation d'un débit : aucun agrégateur ne documente un bac à sable de décaissement, et écrire l'adaptateur sans pouvoir l'éprouver reproduirait l'erreur du canal SMS — sur de l'argent qui **sort**. Un opérateur vire, puis constate avec `payments:refund`. La couture est prête : `SettleRefund` est le point d'entrée unique.
+
+La ligne `refund` du registre n'est écrite qu'au décaissement constaté — un registre append-only ne peut pas porter un `pending` qu'on corrigerait ensuite.
 
 **Non implémenté également** — encaisser pour le compte d'un tiers. `payee_organization_id` existe et laisse la porte ouverte, mais rien derrière n'est construit : pas de compte de destination, pas de type `payout`, pas d'état de reversement. Un produit externe encaisse donc pour le compte de la plateforme, et le reversement se fait hors système.
 

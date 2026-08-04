@@ -387,11 +387,18 @@ actes élargit ce qu'un produit peut faire encaisser.
 
 ---
 
-# 8. Ce qui n'existe toujours pas
+# 8. Rendre l'argent
 
-**Le remboursement.** `refund` est déclaré au registre de caisse et écrit nulle
-part. Un produit vendant des formations le rencontrera avant Billing — c'est la
-prochaine lacune à combler.
+Un produit externe peut rembourser, totalement ou partiellement :
+[08-refunds.md](08-refunds.md).
+
+Scope `payments.refund`, **distinct** de `payments.charge`. Le décaissement
+lui-même reste exécuté à la main par un opérateur : un remboursement Mobile
+Money est un transfert, et aucun adaptateur n'existe.
+
+---
+
+# 9. Ce qui n'existe toujours pas
 
 **Le reversement à un tiers.** `payee_organization_id` existe sur l'intention,
 mais rien derrière n'est construit : pas de compte de destination transmis à

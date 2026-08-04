@@ -23,6 +23,7 @@ final class IssueApiKey
         'notifications.manage',
         'payments.charge',
         'payments.read',
+        'payments.refund',
     ];
 
     /**
@@ -37,6 +38,7 @@ final class IssueApiKey
     public const SCOPES_REQUIRING_SUBJECT_TYPES = [
         'payments.charge',
         'payments.read',
+        'payments.refund',
     ];
 
     /**

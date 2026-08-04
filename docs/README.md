@@ -18,6 +18,7 @@ Sekuu Platform est le socle technique commun de l'écosystème Sekuu : une plate
 | Travailler sur Identity | [Identity — vision](03-services/identity/01-overview.md) |
 | Faire encaisser un **module** du monolithe | [Payments — intégrer un module](03-services/payments/06-integration.md) |
 | Faire encaisser un **service externe** | [Payments — API externe](03-services/payments/07-external-api.md) |
+| **Rendre** l'argent | [Payments — remboursements](03-services/payments/08-refunds.md) |
 | Comprendre un choix d'architecture | [Décisions (ADR)](#04-decisions--décisions-darchitecture) |
 
 Parcours conseillé pour une première lecture : Vision → Architecture → API Guidelines → Identity.
@@ -58,7 +59,7 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | **Identity** | **Implémenté** | [vision](03-services/identity/01-overview.md) · [modèle de données](03-services/identity/02-data-model.md) · [API](03-services/identity/03-api.md) · [contrat OpenAPI](../Modules/Identity/openapi.yaml) |
 | **Notify** | **Implémenté** — canaux email, SMS et interne ; WhatsApp et push non développés | [vision](03-services/notify/01-overview.md) · [modèle de données](03-services/notify/02-data-model.md) · [API](03-services/notify/03-api.md) · [événements](03-services/notify/04-events.md) · [contrat OpenAPI](../Modules/Notify/openapi.yaml) |
 | Verify | À spécifier | — |
-| **Payments** | **Implémenté** — Notch Pay, Tranzak | [vision](03-services/payments/01-overview.md) · [modèle de données](03-services/payments/02-data-model.md) · [API](03-services/payments/03-api.md) · [événements](03-services/payments/04-events.md) · [agrégateurs](03-services/payments/05-providers.md) · [intégrer un module](03-services/payments/06-integration.md) · [**service externe**](03-services/payments/07-external-api.md) · [contrat OpenAPI](../Modules/Payments/openapi.yaml) |
+| **Payments** | **Implémenté** — Notch Pay, Tranzak | [vision](03-services/payments/01-overview.md) · [modèle de données](03-services/payments/02-data-model.md) · [API](03-services/payments/03-api.md) · [événements](03-services/payments/04-events.md) · [agrégateurs](03-services/payments/05-providers.md) · [intégrer un module](03-services/payments/06-integration.md) · [**service externe**](03-services/payments/07-external-api.md) · [remboursements](03-services/payments/08-refunds.md) · [contrat OpenAPI](../Modules/Payments/openapi.yaml) |
 | **Billing** | **Implémenté** — abonnements prépayés | [vision](03-services/billing/01-overview.md) · [modèle de données](03-services/billing/02-data-model.md) · [API](03-services/billing/03-api.md) · [événements](03-services/billing/04-events.md) |
 | Storage | À spécifier | — |
 | AI | Esquissé dans [architecture.md](01-overview/architecture.md) | — |
@@ -78,7 +79,8 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | [ADR-0007](04-decisions/adr-0007-mobile-money-prepaid-subscriptions.md) | Billing : abonnements prépayés plutôt que reconduction automatique |
 | [ADR-0008](04-decisions/adr-0008-payment-aggregators-failover.md) | Payments : agrégateurs de paiement et règle de bascule |
 | [ADR-0009](04-decisions/adr-0009-payments-module-extraction.md) | Extraction de la couche de paiement hors de Billing |
-| [ADR-0010](04-decisions/adr-0010-external-payment-api.md) | Encaisser depuis un service externe — **non implémentée** |
+| [ADR-0011](04-decisions/adr-0011-refunds.md) | Payments : rendre l'argent, sans décaissement automatique |
+| [ADR-0010](04-decisions/adr-0010-external-payment-api.md) | Encaisser depuis un service externe |
 
 ---
 

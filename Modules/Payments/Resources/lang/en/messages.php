@@ -13,6 +13,11 @@ return [
     'payment_unresolved' => 'The aggregator never confirmed the outcome of this payment.',
     'payment_instructions' => 'Approve the request on your phone, or dial your operator code.',
 
+    'refund_not_found' => 'This refund does not exist.',
+    'refund_not_supported' => 'The owner of :type does not refund: an overpayment becomes a credit there.',
+    'refund_exceeds_payment' => 'This amount exceeds what remains refundable on this payment (:available).',
+    'refund_payment_not_settled' => 'Only a settled payment can be refunded.',
+
     'external_charge_not_found' => 'This charge does not exist.',
     'subject_type_not_allowed' => 'This API key may not charge this subject type.',
     'subject_type_not_external' => 'This subject type is not served by the external API.',

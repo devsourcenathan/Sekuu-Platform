@@ -4,13 +4,13 @@
 > **Statut :** Spécification de référence
 > **Dernière mise à jour :** Août 2026
 
-Payments émet **deux** événements, et n'en consomme aucun.
+Payments émet **trois** événements, et n'en consomme aucun.
 
 C'est délibérément peu. L'essentiel de ce que ce module a à dire ne passe pas
 par un événement mais par un **appel synchrone** au propriétaire de l'objet payé
 — voir § 2.
 
-Documents liés : [Vision](01-overview.md) · [Modèle de données](02-data-model.md) · [Intégrer un produit](06-integration.md) · [Contrat d'événements de Notify](../notify/04-events.md#11-format)
+Documents liés : [Vision](01-overview.md) · [Modèle de données](02-data-model.md) · [Intégrer un produit](06-integration.md) · [Remboursements](08-refunds.md) · [Contrat d'événements de Notify](../notify/04-events.md#11-format)
 
 ---
 
@@ -52,6 +52,12 @@ fenêtre que le contrat synchrone supprime.
 | --- | --- | --- |
 | `payments.payment.succeeded` | Encaissement constaté | Analytics, supervision |
 | `payments.payment.unresolved` | Aucune issue tranchée à l'expiration | **Exploitation** |
+| `payments.refund.succeeded` | Décaissement constaté | Analytics, supervision |
+
+`payments.refund.succeeded` est publié au **décaissement**, jamais à la décision :
+il dit que l'argent est sorti. Comme son jumeau, il est informatif — le
+propriétaire de l'objet, lui, est prévenu de façon synchrone par
+`RefundableSource::refunded()`.
 
 ```json
 {
@@ -96,7 +102,13 @@ usage.
 
 Ces bascules se lisent dans `payment_attempts` et dans les journaux.
 
-## 3.3 Il n'existe pas d'événement d'échec
+## 3.3 Il n'existe pas d'événement d'échec de remboursement
+
+Un décaissement qui échoue ne concerne que l'exploitation et le propriétaire de
+l'objet, qui l'apprend par `refunded()`. Le publier n'apporterait rien à un
+consommateur, et un produit externe le reçoit déjà par `refund.failed`.
+
+## 3.4 Il n'existe pas d'événement d'échec de paiement
 
 C'est `PayableSource::failed()` qui prévient le propriétaire, et c'est **lui**
 qui publie son propre événement — `billing.payment.failed` pour une facture.

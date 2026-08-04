@@ -219,6 +219,24 @@ côté Billing en est le point d'entrée, pas l'auteur.
 | `NOTHING_DUE` | 409 | Cet objet est déjà réglé, ou gratuit |
 | `WEBHOOK_SIGNATURE_INVALID` | 401 | Signature du callback d'un agrégateur invalide |
 
+### Remboursement
+
+| Code | HTTP | Description |
+| --- | --- | --- |
+| `REFUND_NOT_SUPPORTED` | 409 | Le propriétaire de cet objet ne rembourse pas — un trop-perçu y devient un crédit |
+| `REFUND_EXCEEDS_PAYMENT` | 422 | Le montant dépasse ce qui reste remboursable sur ce paiement |
+| `PAYMENT_NOT_SETTLED` | 409 | On ne rembourse que ce qui a été encaissé |
+| `CURRENCY_MISMATCH` | 422 | La devise du remboursement diffère de celle du paiement |
+| `REFUND_TRANSFER_FAILED` | — | Motif d'échec porté par le remboursement, jamais renvoyé par l'API |
+
+`REFUND_NOT_SUPPORTED` est la réponse de **Billing**, et ce n'est pas une
+lacune : un remboursement Mobile Money est lent et coûteux, alors qu'un client
+d'abonnement repassera à la caisse le mois suivant. Voir
+[ADR-0007](../04-decisions/adr-0007-mobile-money-prepaid-subscriptions.md).
+
+Un propriétaire l'obtient en **ne portant pas** `RefundableSource`. Le défaut est
+donc le refus, et il échoue durement plutôt que silencieusement.
+
 ### API externe
 
 | Code | HTTP | Description |

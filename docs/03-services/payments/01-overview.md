@@ -13,6 +13,7 @@ Ce document décrit **le rôle et les frontières** de Sekuu Payments.
 * L'API fait autorité dans [03-api.md](03-api.md), et le contrat OpenAPI par-dessus.
 * Les événements font autorité dans [04-events.md](04-events.md).
 * Les agrégateurs et ce qu'ils ont démenti font autorité dans [05-providers.md](05-providers.md).
+* Le remboursement fait autorité dans [08-refunds.md](08-refunds.md).
 * La règle de bascule est décidée dans [ADR-0008](../../04-decisions/adr-0008-payment-aggregators-failover.md).
 * L'extraction elle-même est décidée dans [ADR-0009](../../04-decisions/adr-0009-payments-module-extraction.md).
 
@@ -141,6 +142,8 @@ aucun compte de destination, il n'existe pas de type `payout` au registre, ni
 d'état de reversement. La commission est traitée comme une charge de la
 plateforme, ce qui n'est vrai que tant que le marchand est Sekuu.
 
-**Rembourser.** `refund` est déclaré au registre et écrit nulle part. Le choix —
-ligne négative, ou table avec son propre cycle de vie — doit être pris avant que
-des données monétaires existent, même s'il n'est pas implémenté tout de suite.
+**Décaisser automatiquement.** Le remboursement existe et fonctionne
+([08-refunds.md](08-refunds.md)), mais le transfert lui-même est exécuté **à la
+main** par un opérateur : aucun agrégateur ne documente un bac à sable de
+décaissement, et écrire l'adaptateur sans pouvoir l'éprouver reproduirait
+l'erreur du canal SMS de Notify — sur de l'argent qui sort.

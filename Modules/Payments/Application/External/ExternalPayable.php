@@ -6,9 +6,12 @@ namespace Modules\Payments\Application\External;
 
 use App\Platform\Contracts\PayableQuote;
 use App\Platform\Contracts\PayableRef;
-use App\Platform\Contracts\PayableSource;
 use App\Platform\Contracts\PayerContext;
 use App\Platform\Contracts\PaymentSettlement;
+use App\Platform\Contracts\RefundableSource;
+use App\Platform\Contracts\RefundDecision;
+use App\Platform\Contracts\RefundSettlement;
+use App\Platform\Support\Money;
 use Modules\Payments\Domain\Models\ExternalCharge;
 
 /**
@@ -39,7 +42,7 @@ use Modules\Payments\Domain\Models\ExternalCharge;
  * @see docs/03-services/payments/07-external-api.md
  * @see docs/04-decisions/adr-0010-external-payment-api.md
  */
-final class ExternalPayable implements PayableSource
+final class ExternalPayable implements RefundableSource
 {
     public function __construct(private readonly NotifyExternalProduct $notify) {}
 
@@ -119,6 +122,56 @@ final class ExternalPayable implements PayableSource
         // plateforme ne le peut pas : la résolution du contact passe par
         // Identity, qui ne connaît pas ce payeur.
         $this->notify->handle($charge, NotifyExternalProduct::FAILED);
+    }
+
+    /**
+     * Le produit a déjà tranché en appelant l'API : sa requête **est** la
+     * décision.
+     *
+     * C'est la différence avec un module du monolithe, à qui la plateforme peut
+     * poser la question au dernier moment. Ici elle ne le peut pas — le produit
+     * vit ailleurs, et un aller-retour réseau à cet instant tiendrait des
+     * verrous de caisse.
+     *
+     * Ce qui reste vérifié ici est ce que le produit ne peut pas savoir de
+     * lui-même : cette charge a-t-elle été encaissée ? Le plafond, lui, est
+     * gardé par la couche de paiement et ne dépend d'aucun produit.
+     */
+    public function refundable(PayableRef $ref, Money $requested): RefundDecision
+    {
+        $charge = $this->paidCharge($ref);
+
+        if ($charge === null) {
+            return RefundDecision::refused(
+                'CHARGE_NOT_FOUND',
+                __('payments::messages.external_charge_not_found'),
+            );
+        }
+
+        return RefundDecision::allowed();
+    }
+
+    public function refunded(RefundSettlement $settlement): void
+    {
+        $charge = $this->paidCharge($settlement->subject);
+
+        if ($charge === null) {
+            return;
+        }
+
+        // Le produit est prévenu, mais la charge reste `paid` : elle dit ce qui
+        // a été encaissé, pas ce qui reste dû. Ce qui a été rendu se lit dans
+        // `refunds`, et la somme des deux est la seule vérité comptable.
+        $this->notify->refundOutcome($charge, $settlement);
+    }
+
+    private function paidCharge(PayableRef $ref): ?ExternalCharge
+    {
+        return ExternalCharge::query()
+            ->where('subject_type', $ref->type)
+            ->where('subject_id', $ref->id)
+            ->where('status', ExternalCharge::PAID)
+            ->first();
     }
 
     private function pendingCharge(PayableRef $ref): ?ExternalCharge

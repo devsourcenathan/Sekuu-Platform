@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Payments\Presentation\Http\Controllers\ChargeController;
 use Modules\Payments\Presentation\Http\Controllers\HealthController;
 use Modules\Payments\Presentation\Http\Controllers\PaymentController;
+use Modules\Payments\Presentation\Http\Controllers\RefundController;
 use Modules\Payments\Presentation\Http\Controllers\WebhookController;
 
 /*
@@ -67,6 +68,23 @@ Route::post('billing/webhooks/{provider}', WebhookController::class)->name('webh
 Route::post('payments/charges', [ChargeController::class, 'store'])->name('charges.store');
 Route::get('payments/charges', [ChargeController::class, 'index'])->name('charges.index');
 Route::get('payments/charges/{charge}', [ChargeController::class, 'show'])->name('charges.show');
+
+/*
+| Rendre l'argent.
+|
+| Scope distinct de l'encaissement : une cle qui peut faire payer ne doit pas
+| pouvoir faire sortir de l'argent du compte marchand. Ce sont deux dangers
+| opposes, et un seul droit pour les deux serait le plus large des deux.
+|
+| `202` : ce qui est cree est une **obligation**, pas un fait. Le decaissement
+| Mobile Money est un transfert, execute a la main aujourd'hui.
+*/
+Route::post('payments/charges/{charge}/refunds', [RefundController::class, 'store'])
+    ->name('refunds.store');
+Route::get('payments/charges/{charge}/refunds', [RefundController::class, 'index'])
+    ->name('refunds.index');
+Route::get('payments/charges/{charge}/refunds/{refund}', [RefundController::class, 'show'])
+    ->name('refunds.show');
 
 Route::middleware(['auth:api', 'organization'])->group(function (): void {
     Route::get('payments', [PaymentController::class, 'index'])->name('payments.index');

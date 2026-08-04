@@ -255,6 +255,167 @@ paths:
                       data: { $ref: '#/components/schemas/ExternalCharge' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /payments/charges/{chargeId}/refunds:
+    post:
+      tags: [Externe]
+      summary: Rendre l'argent
+      description: |
+        **`202`, jamais `201`.** Ce qui est créé est une *obligation*, pas un
+        fait : l'argent n'est pas sorti.
+
+        Un remboursement Mobile Money est un **décaissement**, pas l'annulation
+        d'un débit. Il exige un solde disponible sur le compte marchand, une API
+        de transfert distincte, et il échoue pour des raisons qui n'ont rien à
+        voir avec le paiement d'origine. Aujourd'hui il est exécuté **à la main**
+        par un opérateur, puis constaté.
+
+        Le produit apprend le décaissement réel par `refund.succeeded`, ou en
+        sondant. Traiter cette réponse comme « l'argent est rendu » ferait
+        annuler une inscription que rien n'a encore remboursée.
+
+        ## Deux invariants
+
+        **On ne rend jamais plus qu'on n'a encaissé.** Le plafond est le montant
+        de la ligne `charge` du registre — le constat —, moins ce qui est déjà
+        engagé. Un remboursement en attente compte ; un remboursement échoué
+        non, puisque rien n'est sorti.
+
+        **On ne rend pas deux fois.** C'est le miroir du double débit, avec une
+        différence : le client n'a aucune raison de signaler l'erreur. D'où
+        `Idempotency-Key`, scopée au paiement.
+
+        ## Le scope est distinct de l'encaissement
+
+        `payments.refund` ne s'obtient pas avec `payments.charge`. Faire entrer
+        de l'argent et en faire sortir sont deux dangers opposés ; un seul droit
+        pour les deux serait le plus large des deux.
+      security:
+        - apiKey: []
+      parameters:
+        - name: chargeId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                amount:
+                  type: integer
+                  minimum: 1
+                  description: |
+                    **Facultatif.** Absent = tout ce qui reste remboursable.
+
+                    Obliger le produit à calculer le reliquat lui ferait tenir
+                    une seconde comptabilité, qui finirait par diverger de celle
+                    de la plateforme.
+                reason:
+                  type: string
+                  maxLength: 255
+                  description: |
+                    **Obligatoire.** Un remboursement est un geste dont
+                    quelqu'un devra rendre compte ; un motif facultatif serait
+                    vide neuf fois sur dix, et la dixième est celle qu'on
+                    cherchera un an plus tard.
+      responses:
+        '202':
+          description: Obligation enregistrée. L'argent n'est pas encore sorti.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Refund' }
+        '403':
+          description: '`INSUFFICIENT_PERMISSIONS` — la clé ne porte pas `payments.refund`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            `REFUND_NOT_SUPPORTED` — le propriétaire de cet objet ne rembourse
+            pas. C'est le cas de Billing, dont les trop-perçus deviennent des
+            crédits.
+
+            `PAYMENT_NOT_SETTLED` — on ne rembourse que ce qui a été encaissé.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '422':
+          description: '`REFUND_EXCEEDS_PAYMENT`, `CURRENCY_MISMATCH`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+    get:
+      tags: [Externe]
+      summary: Remboursements d'une charge
+      description: |
+        Pour la réconciliation. La somme des remboursements `succeeded` et de ce
+        qui reste est la seule vérité comptable — la charge, elle, continue de
+        dire ce qui a été **encaissé**, pas ce qui reste dû.
+      security:
+        - apiKey: []
+      parameters:
+        - name: chargeId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Remboursements, du plus récent au plus ancien
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Refund' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /payments/charges/{chargeId}/refunds/{refundId}:
+    get:
+      tags: [Externe]
+      summary: Sonder un remboursement
+      description: |
+        Le même filet qu'à l'encaissement, et pour la même raison : un webhook
+        se perd.
+
+        `Retry-After` accompagne la réponse tant que le décaissement n'est pas
+        tranché — 30 secondes plutôt que 5, parce qu'un virement manuel ne se
+        constate pas à la seconde.
+      security:
+        - apiKey: []
+      parameters:
+        - name: chargeId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: refundId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: État du remboursement
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Refund' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /payments:
     get:
       tags: [Paiements]
@@ -461,6 +622,33 @@ components:
       type: object
       properties:
         request_id: { type: string }
+
+    Refund:
+      type: object
+      properties:
+        refund_id: { type: string, format: uuid }
+        payment_id: { type: string, format: uuid }
+        subject_type: { type: string, example: learn.enrollment }
+        subject_id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [pending, processing, succeeded, failed, cancelled]
+          description: |
+            `pending` signifie **decide, pas encore verse**. Le produit ne doit
+            pas fermer l'acces sur cette base : l'argent est toujours sur le
+            compte marchand.
+
+            `failed` rend la somme a nouveau remboursable — rien n'est sorti.
+            Reessayer demande une **nouvelle decision**, jamais un reessai
+            automatique : on ignore parfois si le transfert est parti.
+        amount: { type: integer }
+        currency: { type: string }
+        currency_exponent: { type: integer }
+        formatted: { type: string, example: '15 000 XAF' }
+        reason: { type: string }
+        failure_code: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        settled_at: { type: [string, 'null'], format: date-time }
 
     DeclaredCharge:
       type: object
