@@ -20,4 +20,9 @@ final readonly class ApiKeyContext
     {
         return $this->key->organization_id;
     }
+
+    public function allowsSubjectType(string $subjectType): bool
+    {
+        return $this->key->allowsSubjectType($subjectType);
+    }
 }

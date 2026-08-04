@@ -195,19 +195,47 @@ Un `INTERNAL_ERROR` ne doit jamais exposer de trace, de requête SQL ou de nom d
 | `SUBSCRIPTION_ALREADY_ACTIVE` | 409 | Un abonnement actif existe déjà pour cette organisation |
 | `SUBSCRIPTION_EXPIRED` | 403 | Abonnement expiré |
 | `PLAN_ARCHIVED` | 409 | Plan retiré du catalogue |
-| `PAYMENT_FAILED` | 402 | Paiement refusé — solde insuffisant, code erroné, annulation |
-| `PAYMENT_PENDING` | 202 | Paiement en cours, issue encore inconnue |
-| `PAYMENT_ALREADY_PENDING` | 409 | Une intention de paiement est déjà en cours sur cette facture |
-| `PAYMENT_METHOD_REQUIRED` | 422 | Aucun moyen de paiement enregistré — **inutilisé** : le Mobile Money n'en conserve aucun |
-| `INVALID_MSISDN` | 422 | Numéro de téléphone invalide, ou opérateur non reconnu |
-| `PROVIDER_UNAVAILABLE` | 503 | Aucun fournisseur de paiement configuré pour cet opérateur |
 | `INVOICE_NOT_FOUND` | 404 | Facture inexistante |
 | `INVOICE_ALREADY_PAID` | 409 | Facture déjà réglée |
 | `INVOICE_VOIDED` | 409 | Facture annulée, non payable |
 | `CURRENCY_NOT_SUPPORTED` | 422 | Devise non prise en charge |
 | `DOWNGRADE_NOT_ALLOWED` | 409 | L'usage courant dépasse les limites du plan visé |
 
-## 4.5 Storage
+## 4.5 Payments
+
+Produits par la couche d'encaissement, quel que soit ce qui est payé. Ils
+remontent tels quels à travers la route du module propriétaire — `POST /payments`
+côté Billing en est le point d'entrée, pas l'auteur.
+
+| Code | HTTP | Description |
+| --- | --- | --- |
+| `PAYMENT_FAILED` | 402 | Paiement refusé — solde insuffisant, code erroné, annulation |
+| `PAYMENT_PENDING` | 202 | Paiement en cours, issue encore inconnue |
+| `PAYMENT_ALREADY_PENDING` | 409 | Une intention de paiement est déjà en cours sur cette facture |
+| `PAYMENT_METHOD_REQUIRED` | 422 | Aucun moyen de paiement enregistré — **inutilisé** : le Mobile Money n'en conserve aucun |
+| `INVALID_MSISDN` | 422 | Numéro de téléphone invalide, ou opérateur non reconnu |
+| `PROVIDER_UNAVAILABLE` | 503 | Aucun fournisseur de paiement configuré pour cet opérateur |
+| `PAYABLE_TYPE_UNKNOWN` | 422 | `subject_type` absent de `config/payments.php` |
+| `NOTHING_DUE` | 409 | Cet objet est déjà réglé, ou gratuit |
+| `WEBHOOK_SIGNATURE_INVALID` | 401 | Signature du callback d'un agrégateur invalide |
+
+### API externe
+
+| Code | HTTP | Description |
+| --- | --- | --- |
+| `SUBJECT_TYPE_NOT_ALLOWED` | 403 | La clé d'API ne porte pas ce type d'objet, ou le type n'est pas servi par l'API externe |
+| `PAYER_TYPE_NOT_ALLOWED` | 422 | Un produit externe ne peut pas désigner un compte de la plateforme comme payeur |
+| `CHARGE_NOT_FOUND` | 409 | Aucune charge en attente sur cet objet, ou elle appartient à un autre payeur |
+
+`SUBJECT_TYPE_NOT_ALLOWED` couvre deux causes distinctes sous un seul code,
+délibérément : deux réponses différentes permettraient d'énumérer les types
+d'objet servis par la plateforme.
+
+`CHARGE_NOT_FOUND` répond de même à « inexistante » et à « pas à vous ». C'est la
+règle déjà posée pour les factures — distinguer transformerait l'endpoint en
+oracle.
+
+## 4.6 Storage
 
 | Code | HTTP | Description |
 | --- | --- | --- |
@@ -217,7 +245,7 @@ Un `INTERNAL_ERROR` ne doit jamais exposer de trace, de requête SQL ou de nom d
 | `UPLOAD_INCOMPLETE` | 422 | Upload interrompu ou incomplet |
 | `STORAGE_QUOTA_EXCEEDED` | 429 | Quota de stockage de l'organisation atteint |
 
-## 4.6 AI
+## 4.7 AI
 
 | Code | HTTP | Description |
 | --- | --- | --- |
@@ -228,7 +256,7 @@ Un `INTERNAL_ERROR` ne doit jamais exposer de trace, de requête SQL ou de nom d
 | `AI_PROVIDER_ERROR` | 503 | Le fournisseur d'IA est en échec |
 | `AI_PROVIDER_TIMEOUT` | 503 | Le fournisseur d'IA n'a pas répondu à temps |
 
-## 4.7 Search
+## 4.8 Search
 
 | Code | HTTP | Description |
 | --- | --- | --- |

@@ -15,24 +15,23 @@ Documents liés : [Vision](01-overview.md) · [Modèle de données](02-data-mode
 
 # 1. Ce que cette API ne contient pas
 
-**Aucune route de création.** `POST /payments` n'existe pas ici, et n'existera
-pas.
+**`POST /payments` n'existe pas ici, et n'existera pas.**
 
-Déclencher un paiement suppose de savoir ce qu'on paie, combien cela vaut, et
-qui a le droit de le régler — trois choses que ce module ignore délibérément.
-Une route de création exposée ici offrirait un moyen de faire **sonner le
-téléphone de quelqu'un** sans motif vérifiable.
+Déclencher le paiement d'un objet du monolithe suppose de savoir ce qu'on paie,
+combien cela vaut, et qui a le droit de le régler — trois choses que ce module
+ignore délibérément. Une route de ce genre offrirait un moyen de faire **sonner
+le téléphone de quelqu'un** sans motif vérifiable.
 
 C'est le module propriétaire de l'objet payé qui expose la sienne :
 
 | Ce qu'on règle | Route de déclenchement | Module |
 | --- | --- | --- |
 | Une facture d'abonnement | `POST /api/v1/payments` | [Billing](../billing/03-api.md#5-déclencher-un-paiement) |
-| Une inscription à une formation | à écrire par le produit | Learn |
+| Une inscription à une formation | `POST /api/v1/payments/charges` | § 6, API externe |
 
-Un service qui ne partage pas la base de code ne peut rien exposer de tel : son
-chemin d'intégration est spécifié dans [07-external-api.md](07-external-api.md),
-et **n'est pas implémenté**.
+La règle n'a jamais été « aucune création ici ». Elle est **seul le propriétaire
+de l'objet nomme son prix** — prouvé par une interface PHP pour un module du
+monolithe, par une clé d'API scopée pour un service externe.
 
 ---
 
@@ -199,7 +198,35 @@ Le planificateur n'est pas encore enregistré — voir
 
 ---
 
-# 6. Codes d'erreur
+# 6. API externe
+
+| Méthode | Route | Accès |
+| --- | --- | --- |
+| `POST` | `/payments/charges` | clé d'API — `payments.charge` |
+| `GET` | `/payments/charges/{id}` | clé d'API — `payments.read` |
+| `GET` | `/payments/charges` | clé d'API — `payments.read` |
+
+Réservée aux produits qui **ne partagent pas cette base de code**. Le prix y est
+**déclaré** plutôt que demandé, borné par deux choses : la clé porte la liste des
+`subject_type` qu'elle peut faire payer, et le type doit être servi par l'API
+externe côté plateforme.
+
+**`billing.invoice` ne peut être porté par aucune clé.**
+
+Ces routes ne s'authentifient jamais par un access token : une clé agit au nom
+d'un **produit**, pas d'une personne, et il n'existe aucun utilisateur Sekuu
+derrière un apprenant Learn.
+
+Un service externe n'obtient **pas** la garantie que « encaissé » et « service
+ouvert » soient atomiques : il ne participe pas à la transaction. Le détail
+complet, avec ce que le produit doit impérativement mettre en place, est dans
+[07-external-api.md](07-external-api.md).
+
+---
+
+# 7. Codes d'erreur
+
+Catalogués au [§ 4.5 du catalogue commun](../../02-standards/error-codes.md#45-payments).
 
 | Code | HTTP | Description |
 | --- | --- | --- |

@@ -47,6 +47,7 @@ final class ApiKeyController
             scopes: $request->array('scopes'),
             creator: $context->user,
             expiresAt: $request->input('expires_at'),
+            subjectTypes: $request->array('subject_types'),
         );
 
         $audit->record(
@@ -54,7 +55,11 @@ final class ApiKeyController
             user: $context->user,
             organizationId: $issued->key->organization_id,
             target: $issued->key,
-            payload: ['name' => $issued->key->name, 'scopes' => $issued->key->scopes],
+            payload: [
+                'name' => $issued->key->name,
+                'scopes' => $issued->key->scopes,
+                'subject_types' => $issued->key->subject_types,
+            ],
         );
 
         // La valeur en clair n'est affichée qu'ici. Elle n'est jamais relisible :
@@ -103,6 +108,7 @@ final class ApiKeyController
             'name' => $key->name,
             'prefix' => $key->prefix,
             'scopes' => $key->scopes,
+            'subject_types' => $key->subject_types,
             // Permet de repérer les clés dormantes, qu'il faudra révoquer.
             'last_used_at' => $key->last_used_at?->toIso8601ZuluString(),
             'expires_at' => $key->expires_at?->toIso8601ZuluString(),

@@ -424,13 +424,15 @@ précisément ce qui manque derrière.
 
 # 8. Tâches planifiées
 
-| Commande | Fréquence visée | Rôle |
+| Commande | Fréquence | Rôle |
 | --- | --- | --- |
 | `payments:reconcile` | Toutes les 5 min | Interroge les agrégateurs pour toute tentative non terminale, et expire les intentions dépassées |
 
-**Aucun planificateur n'est encore enregistré.** La commande existe et
-s'exécute à la main ; sa mise au calendrier fait partie de la mise en service,
-au même titre que les comptes marchands.
+Enregistrée par `PaymentsServiceProvider`, avec `withoutOverlapping()` et
+`onOneServer()` — deux exécutions simultanées interrogeraient les mêmes
+tentatives et se disputeraient le même verrou d'encaissement.
 
-C'est un manque à connaître : sans elle, un callback perdu n'est jamais rattrapé
-par personne.
+`php artisan schedule:list` en donne l'état réel.
+
+Elle n'est pas optionnelle. Un callback se perd ; s'il est la seule source
+d'information, un client peut avoir été débité sans que la plateforme le sache.

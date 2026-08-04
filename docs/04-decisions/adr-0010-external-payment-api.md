@@ -1,6 +1,6 @@
 # ADR-0010 — Encaisser depuis un service externe
 
-> **Statut :** Acceptée — **non implémentée**
+> **Statut :** Acceptée — **implémentée**
 > **Date :** Août 2026
 
 ---

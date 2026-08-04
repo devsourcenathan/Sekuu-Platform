@@ -21,6 +21,7 @@ final class ApiKey extends Model
         'prefix',
         'key_hash',
         'scopes',
+        'subject_types',
         'created_by',
         'expires_at',
     ];
@@ -32,6 +33,7 @@ final class ApiKey extends Model
     {
         return [
             'scopes' => 'array',
+            'subject_types' => 'array',
             'last_used_at' => 'datetime',
             'expires_at' => 'datetime',
             'revoked_at' => 'datetime',
@@ -61,5 +63,18 @@ final class ApiKey extends Model
     public function hasScope(string $scope): bool
     {
         return in_array($scope, (array) $this->scopes, true);
+    }
+
+    /**
+     * Cette clé peut-elle faire payer ce type d'objet ?
+     *
+     * `null` signifie **aucun**, jamais « tous ». Une clé émise avant que ce
+     * périmètre n'existe ne doit rien gagner du fait qu'il existe ; et une clé
+     * dont l'allowlist a été vidée doit cesser d'encaisser, pas se retrouver
+     * habilitée partout.
+     */
+    public function allowsSubjectType(string $subjectType): bool
+    {
+        return in_array($subjectType, (array) ($this->subject_types ?? []), true);
     }
 }

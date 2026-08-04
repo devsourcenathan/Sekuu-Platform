@@ -155,11 +155,21 @@ Le paiement Tranzak a produit la ligne `fee −3 XAF` attendue : la séparation 
 * aucun verrou sur l'intention pendant l'encaissement — deux exécutions concurrentes pouvaient écrire deux lignes `charge` ;
 * une tentative morte avant l'appel de débit n'était ni sondée ni expirée, et bloquait indéfiniment l'unicité « une seule tentative vivante ».
 
-**Non implémenté — et c'est le manque le plus proche** : un service externe ne peut pas encaisser. Tout le contrat suppose un module du monolithe qui implémente une interface PHP. Il manque un scope de clé d'API restreint par `subject_type`, un endpoint de création, et des webhooks sortants. Spécifié dans [07-external-api.md](03-services/payments/07-external-api.md) et [ADR-0010](04-decisions/adr-0010-external-payment-api.md) ; **Sekuu Learn en dépend**.
+**Un service externe peut encaisser** ([ADR-0010](04-decisions/adr-0010-external-payment-api.md), [07-external-api.md](03-services/payments/07-external-api.md)). Sekuu Learn en dépendait.
 
-Un service externe ne pourra de toute façon **pas** obtenir la garantie que « encaissé » et « service ouvert » soient atomiques : il ne participe pas à la transaction. La fenêtre est irréductible, elle peut seulement être rendue courte et rattrapable.
+La règle n'a jamais été « le montant ne vient jamais d'HTTP » — elle est **seul le propriétaire de l'objet nomme son prix**. Un module le prouve en implémentant une interface ; un service externe le prouve en présentant une clé d'API qui porte la liste des `subject_type` qu'il possède. Le montant est écrit dans `external_charges` — l'analogue d'une facture — puis **relu en base** par `quote()`. `InitiatePayment` n'a toujours aucun paramètre de montant.
 
-**Non implémenté également** — encaisser pour le compte d'un tiers. `payee_organization_id` existe et laisse la porte ouverte, mais rien derrière n'est construit : pas de compte de destination, pas de type `payout`, pas d'état de reversement. Le remboursement reste déclaré et jamais écrit.
+Deux bornes indépendantes, et il faut les deux : la clé porte le périmètre, et le type doit être servi par l'API externe côté plateforme. **`billing.invoice` ne peut être porté par aucune clé** — la garde est à l'émission. Un `payer_type` en `identity.*` est refusé : un produit externe ne peut pas se réclamer d'un compte de la plateforme.
+
+Ce que cela **ne** donne pas : l'atomicité. Un service externe ne participe pas à la transaction d'encaissement, donc il existe une fenêtre où un client a payé et n'a pas son service. Elle est irréductible ; elle est seulement rendue courte — webhook signé, réessayé cinq fois — et rattrapable — sondage et réconciliation, présentés comme **obligatoires** et non comme des options.
+
+Deux choix qui méritent d'être connus. Un endpoint durablement injoignable **n'est pas désactivé** : le désactiver transformerait une panne de quelques heures en silence permanent. Et la rotation du secret émet **deux signatures** pendant une fenêtre, plutôt qu'une coupure nette qui ferait échouer les livraisons d'un produit déployant une heure plus tard.
+
+L'URL et le secret ne passent pas par l'API : ils se déclarent avec `payments:endpoint`, donc par un opérateur. Une clé fuitée ne doit pas suffire à détourner l'issue de tous les paiements d'un produit vers un serveur choisi.
+
+**Non implémenté** — le **remboursement**, déclaré au registre et écrit nulle part. C'est la prochaine lacune : un produit vendant des formations la rencontrera avant Billing.
+
+**Non implémenté également** — encaisser pour le compte d'un tiers. `payee_organization_id` existe et laisse la porte ouverte, mais rien derrière n'est construit : pas de compte de destination, pas de type `payout`, pas d'état de reversement. Un produit externe encaisse donc pour le compte de la plateforme, et le reversement se fait hors système.
 
 ---
 
@@ -281,10 +291,10 @@ GET  /audit-logs                 →  trace des quatre étapes
 ## 8.1 Bloquant pour la production
 
 * **La mise en service du domaine expéditeur** — `sekuu.com` doit être vérifié chez Resend (DKIM, Return-Path, DMARC), puis `RESEND_API_KEY` et `RESEND_WEBHOOK_SECRET` renseignés. Sans cela les messages partent par le mailer Laravel, qui ne rapporte aucun rebond : le service paraît fonctionner tout en accumulant une dette de délivrabilité invisible. Procédure dans [Notify § 8.2](03-services/notify/01-overview.md).
-* **Redis** — pour les queues, le cache et la liste de révocation. Les envois passent aujourd'hui par la file `database`.
+* **Redis, et un worker qui tourne** — pour les queues, le cache et la liste de révocation. Les envois passent aujourd'hui par la file `database`. Depuis l'API de paiement externe, l'enjeu a changé de nature : sans worker, les webhooks sortants ne partent jamais, et un produit externe ignore ses encaissements jusqu'à ce qu'il sonde ou réconcilie.
 * **Clés de signature** en gestionnaire de secrets, et procédure de rotation à 90 jours.
 * **CI** — la suite existe, rien ne l'exécute automatiquement.
-* **Un planificateur.** `billing:advance` et `payments:reconcile` ne sont enregistrés dans aucun calendrier — `withSchedule()` n'est pas appelé. Concrètement : aucun rappel d'échéance ne part, aucun abonnement échu ne passe en grâce ni en suspension, et **aucun callback perdu n'est rattrapé**. Sur un modèle prépayé, c'est le manque le plus conséquent des trois.
+* **La crontab qui appelle `schedule:run`.** Les trois tâches — `billing:advance`, `payments:reconcile`, `notify:purge` — sont déclarées par leurs modules et visibles dans `schedule:list`. Il manque l'entrée système qui les déclenche. Sans elle, aucun rappel d'échéance ne part et aucun callback perdu n'est rattrapé.
 
 ## 8.2 Prochaines étapes
 

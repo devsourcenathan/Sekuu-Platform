@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Modules\Billing\Application\Invoicing\InvoicePayable;
+use Modules\Payments\Application\External\ExternalPayable;
 use Modules\Payments\Infrastructure\Providers\NotchPayProvider;
 use Modules\Payments\Infrastructure\Providers\TranzakProvider;
 use Modules\Payments\Infrastructure\Webhooks\NotchPayWebhookHandler;
@@ -76,6 +77,21 @@ return [
 
     'payables' => [
         InvoicePayable::TYPE => InvoicePayable::class,
+
+        /*
+        | Types servis par l'API externe.
+        |
+        | Deux bornes indépendantes protègent l'invariant du prix, et il faut
+        | les deux : ce tableau dit quels types un service **hors monolithe**
+        | peut posséder, la clé d'API dit lesquels **ce produit-là** peut faire
+        | payer. Une clé mal émise ne suffit donc pas à faire déclarer un prix
+        | sur une facture d'abonnement, et une ligne ajoutée ici n'habilite
+        | personne tant qu'aucune clé ne la porte.
+        |
+        | Brancher un produit externe = une ligne ici, une clé scopée, un
+        | endpoint déclaré par `payments:endpoint`.
+        */
+        'learn.enrollment' => ExternalPayable::class,
     ],
 
     'notchpay' => [
@@ -129,6 +145,25 @@ return [
 
     'payment' => [
         'intent_ttl_minutes' => 10,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Produits externes
+    |--------------------------------------------------------------------------
+    |
+    | Le webhook sortant n'est **jamais** la garantie : c'est l'accélérateur. Un
+    | produit qui ne met en place que lui aura tôt ou tard un client payé sans
+    | service. Le sondage et la réconciliation restent obligatoires par contrat.
+    |
+    | Court, le délai : la livraison se fait depuis une file, et un produit
+    | injoignable ne doit pas immobiliser un worker. Les réessais suivent la
+    | cadence de Notify — 1 min, 5 min, 30 min, 2 h, 6 h.
+    |
+    */
+
+    'external' => [
+        'delivery_timeout' => 10,
     ],
 
     /*

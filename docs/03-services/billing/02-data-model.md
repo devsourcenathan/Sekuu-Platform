@@ -394,22 +394,20 @@ tiers, carte bancaire — appartiennent au
 
 # 8. Tâches planifiées
 
-| Commande | Fréquence visée | Rôle |
+| Commande | Fréquence | Rôle |
 | --- | --- | --- |
-| `billing:advance` | Quotidienne | Grâce, suspension, expiration **et** rappels d'échéance à J-7, J-3, J-1 |
+| `billing:advance` | Quotidienne, 02:30 | Grâce, suspension, expiration **et** rappels d'échéance à J-7, J-3, J-1 |
 
 Une seule commande, et non quatre : `billing:remind` et `billing:expire` n'ont
 jamais existé séparément. Les découper reviendrait à faire trois passes sur la
 même table pour lire les mêmes dates.
 
-La réconciliation des paiements a quitté ce module avec eux :
+Tôt le matin, délibérément : une suspension doit être constatée avant que
+l'organisation n'ouvre ses portes, pas au milieu de sa journée.
+
+Elle doit être **idempotente** : la relancer deux fois le même jour ne doit pas
+raccourcir une grâce de deux jours. C'est la raison d'être de `grace_ends_at`,
+une date absolue plutôt qu'un compteur décrémenté.
+
+La réconciliation des paiements a quitté ce module :
 [`payments:reconcile`](../payments/02-data-model.md#8-tâches-planifiées).
-
-`billing:advance` doit être **idempotente** : la relancer deux fois le même jour
-ne doit pas raccourcir une grâce de deux jours. C'est la raison d'être de
-`grace_ends_at`, une date absolue plutôt qu'un compteur décrémenté.
-
-**Aucun planificateur n'est enregistré à ce jour.** La commande s'exécute à la
-main. Sur un modèle prépayé, cela signifie qu'aucun rappel d'échéance ne part
-tant que la mise au calendrier n'est pas faite — un manque à traiter avant la
-mise en service, pas après.

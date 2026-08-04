@@ -368,10 +368,11 @@ prérequis n'est satisfait aujourd'hui en production.
 
 Propre à Billing :
 
-* **Un planificateur.** `billing:advance` n'est enregistré nulle part. Sur un
-  modèle prépayé, cela signifie qu'aucun rappel d'échéance ne part, et qu'aucun
-  abonnement échu ne passe en grâce ni en suspension. C'est le manque le plus
-  conséquent du module.
+* **Un ordonnanceur qui exécute réellement `schedule:run`.** La tâche
+  `billing:advance` est déclarée et visible dans `schedule:list` ; encore
+  faut-il qu'une crontab appelle Laravel toutes les minutes en production. Sur
+  un modèle prépayé, sans cela, aucun rappel d'échéance ne part et aucun
+  abonnement échu ne passe en grâce.
 * **Storage**, pour les PDF de facture. En son absence,
   `GET /invoices/{id}/download` renvoie `503` — franchement, plutôt qu'un PDF
   généré à la volée dont personne ne garantit qu'il sera identique demain.

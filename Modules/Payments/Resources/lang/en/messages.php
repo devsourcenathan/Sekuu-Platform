@@ -13,6 +13,11 @@ return [
     'payment_unresolved' => 'The aggregator never confirmed the outcome of this payment.',
     'payment_instructions' => 'Approve the request on your phone, or dial your operator code.',
 
+    'external_charge_not_found' => 'This charge does not exist.',
+    'subject_type_not_allowed' => 'This API key may not charge this subject type.',
+    'subject_type_not_external' => 'This subject type is not served by the external API.',
+    'payer_type_not_allowed' => 'An external product cannot name a platform account as the payer.',
+
     'payable_type_unknown' => 'This payable type is not registered: :type.',
     'nothing_due' => 'There is nothing to pay on this item.',
 

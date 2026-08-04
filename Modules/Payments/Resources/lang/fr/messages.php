@@ -13,6 +13,11 @@ return [
     'payment_unresolved' => "L'agrégateur n'a pas confirmé l'issue de ce paiement.",
     'payment_instructions' => 'Validez la demande sur votre téléphone, ou composez le code de votre opérateur.',
 
+    'external_charge_not_found' => "Cette demande de paiement n'existe pas.",
+    'subject_type_not_allowed' => "Cette clé d'API n'est pas habilitée à faire payer ce type d'objet.",
+    'subject_type_not_external' => "Ce type d'objet n'est pas servi par l'API externe.",
+    'payer_type_not_allowed' => 'Un produit externe ne peut pas désigner un compte de la plateforme comme payeur.',
+
     'payable_type_unknown' => "Ce type d'objet payable n'est pas enregistré : :type.",
     'nothing_due' => "Il n'y a rien à payer sur cet objet.",
 

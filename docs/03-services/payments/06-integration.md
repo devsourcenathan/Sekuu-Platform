@@ -14,8 +14,12 @@ Quatre choses. Trois sont mécaniques ; la deuxième contient tout le sujet.
 > `config/payments.php` — donc un module de `Modules/`, comme Billing.
 >
 > **Un service externe, qui ne consomme que l'API HTTP, ne peut rien faire de
-> tout cela.** Son intégration passe par [07-external-api.md](07-external-api.md),
-> et les deux chemins n'offrent pas exactement les mêmes garanties.
+> tout cela.** Son intégration passe par [07-external-api.md](07-external-api.md) :
+> il déclare son prix par une clé scopée au lieu de l'exposer par une interface,
+> et reçoit l'issue par webhook au lieu de la recevoir dans la transaction.
+>
+> Les deux chemins n'offrent donc pas les mêmes garanties : **un module interne
+> obtient l'atomicité, un service externe non.**
 
 ---
 

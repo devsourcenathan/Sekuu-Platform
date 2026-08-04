@@ -25,6 +25,12 @@ final class CreateApiKeyRequest extends FormRequest
             'scopes' => ['required', 'array', 'min:1'],
             'scopes.*' => [Rule::in(IssueApiKey::SCOPES)],
             'expires_at' => ['sometimes', 'nullable', 'date', 'after:now'],
+
+            // Le périmètre d'objets qu'un scope de paiement autorise à faire
+            // payer. Le format `{module}.{ressource}` est celui des événements
+            // de domaine : une seule convention pour toute la plateforme.
+            'subject_types' => ['sometimes', 'array'],
+            'subject_types.*' => ['string', 'max:40', 'regex:/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/'],
         ];
     }
 }

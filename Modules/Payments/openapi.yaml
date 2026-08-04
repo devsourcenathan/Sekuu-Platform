@@ -40,6 +40,7 @@ tags:
   - name: Service
   - name: Paiements
   - name: Webhooks
+  - name: Externe
 
 security:
   - bearerAuth: []
@@ -73,6 +74,186 @@ paths:
                           providers: { type: array, items: { type: string } }
                           can_collect: { type: boolean }
                           currency: { type: string, example: XAF }
+
+  /payments/charges:
+    post:
+      tags: [Externe]
+      summary: Déclarer un prix et demander l'encaissement
+      description: |
+        Réservée aux produits qui **ne partagent pas la base de code** de la
+        plateforme — Sekuu Learn, notamment.
+
+        `POST /payments` n'existe pas ici parce que la couche de paiement ignore
+        ce qu'elle encaisse. Cette route n'est pas une exception à cette règle :
+        la règle est **seul le propriétaire de l'objet nomme son prix**, prouvé
+        par une interface pour un module du monolithe, par une clé scopée pour
+        un service externe.
+
+        Le montant traverse donc HTTP, **une fois**, borné par deux choses :
+
+        - la clé porte la liste des `subject_type` qu'elle peut faire payer, et
+          `billing.invoice` n'y figure jamais ;
+        - le type doit être servi par l'API externe côté plateforme.
+
+        **Cette clé est strictement serveur à serveur.** Exposée dans un
+        navigateur ou une application mobile, elle permet de déclarer n'importe
+        quel montant sur n'importe quel objet du produit, et toute la protection
+        tombe d'un coup.
+
+        ## Ce que cette route ne peut pas offrir
+
+        L'atomicité. Chez un module interne, « l'argent est encaissé » et « le
+        service est ouvert » sont vrais au même instant. Un service externe ne
+        participe pas à cette transaction : il existe une fenêtre pendant
+        laquelle un client a payé et n'a pas son service.
+
+        Elle est **irréductible**. Elle est seulement rendue courte — webhook —
+        et rattrapable — sondage et réconciliation. Un produit qui ne met en
+        place que le webhook aura tôt ou tard un client payé sans service.
+      security:
+        - apiKey: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string }
+          description: |
+            Portée **par payeur**. Deux produits peuvent utiliser `order-1` sans
+            se voler mutuellement leur intention.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject_type, subject_id, payer_type, payer_id, amount, currency, description, msisdn]
+              properties:
+                subject_type:
+                  type: string
+                  example: learn.enrollment
+                  description: '`{module}.{ressource}`. Doit figurer dans l''allowlist de la clé.'
+                subject_id: { type: string, format: uuid }
+                payer_type:
+                  type: string
+                  example: learn.learner
+                  description: |
+                    Jamais `identity.*` : un produit externe ne peut pas se
+                    réclamer d'un compte de la plateforme.
+                payer_id: { type: string, format: uuid }
+                amount:
+                  type: integer
+                  minimum: 1
+                  example: 15000
+                  description: '**0 décimale en XAF** : 15 000 XAF s''écrit `15000`.'
+                currency: { type: string, example: XAF }
+                description:
+                  type: string
+                  description: Reprise dans le libellé vu par le client sur son téléphone.
+                msisdn: { type: string, example: '+237650000000' }
+      responses:
+        '202':
+          description: |
+            Intention créée. **Jamais `201`** : le client n'a pas encore validé
+            quoi que ce soit sur son téléphone.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/DeclaredCharge' }
+        '401':
+          description: '`UNAUTHENTICATED`, `API_KEY_INVALID`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '403':
+          description: |
+            `SUBJECT_TYPE_NOT_ALLOWED` — la clé ne porte pas ce type, ou le type
+            n'est pas servi par l'API externe. Le même code pour les deux :
+            distinguer permettrait d'énumérer les types de la plateforme.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '409':
+          description: |
+            `PAYMENT_ALREADY_PENDING` — le garde-fou anti-triple-clic. À lire
+            comme une **information**, pas comme une erreur à réessayer.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '422':
+          description: '`VALIDATION_ERROR`, `PAYER_TYPE_NOT_ALLOWED`, `INVALID_MSISDN`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '503':
+          description: '`PROVIDER_UNAVAILABLE` — aucun agrégateur n''a accepté la demande, donc aucun client n''a été sollicité.'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+    get:
+      tags: [Externe]
+      summary: Réconcilier
+      description: |
+        Le **troisième** mécanisme, et le seul filet quand le webhook et le
+        sondage ont tous deux échoué. Sans lui, un client payé sans service
+        reste invisible jusqu'à sa réclamation.
+
+        À passer périodiquement, pas seulement en cas d'incident : son intérêt
+        est de révéler ce dont on ignore l'existence.
+      security:
+        - apiKey: []
+      parameters:
+        - name: since
+          in: query
+          schema: { type: string, format: date-time }
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, paid, failed, expired] }
+      responses:
+        '200':
+          description: Charges de ce produit, les 200 plus récentes
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/ExternalCharge' }
+        '403':
+          description: '`INSUFFICIENT_PERMISSIONS` — la clé ne porte pas `payments.read`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /payments/charges/{chargeId}:
+    get:
+      tags: [Externe]
+      summary: Sonder une charge
+      description: |
+        Le **second** mécanisme, et il n'est pas optionnel. Un webhook se perd :
+        un produit qui ne met en place que lui aura tôt ou tard un client payé
+        sans service, et aucun moyen de s'en apercevoir.
+
+        `Retry-After` accompagne la réponse tant que l'issue n'est pas tranchée.
+
+        `expired` signifie **on ne sait pas**, et non « cela a échoué ». Un
+        paiement dont l'issue est inconnue peut avoir été encaissé ; le traiter
+        comme un échec risquerait de facturer deux fois.
+      security:
+        - apiKey: []
+      parameters:
+        - name: chargeId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: État de la charge
+          headers:
+            Retry-After:
+              schema: { type: integer }
+              description: Présent tant que l'issue n'est pas tranchée.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/ExternalCharge' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /payments:
     get:
@@ -229,6 +410,21 @@ components:
       scheme: bearer
       bearerFormat: JWT
 
+    apiKey:
+      type: http
+      scheme: bearer
+      description: |
+        Cle d'API de service, prefixee `sk_live_` ou `sk_test_`. Elle agit au
+        nom d'un **produit**, pas d'une personne : il n'existe aucun utilisateur
+        Sekuu derriere un apprenant Learn.
+
+        Elle porte le scope `payments.charge` ou `payments.read`, **et** la
+        liste des `subject_type` qu'elle peut faire payer. Les deux vont
+        ensemble : un scope sans perimetre autoriserait a declarer un prix sans
+        dire sur quoi.
+
+        Strictement serveur a serveur.
+
   responses:
     Unauthenticated:
       description: '`UNAUTHENTICATED`, `INVALID_TOKEN`, `TOKEN_EXPIRED`, `TOKEN_REVOKED`'
@@ -265,6 +461,48 @@ components:
       type: object
       properties:
         request_id: { type: string }
+
+    DeclaredCharge:
+      type: object
+      properties:
+        charge_id: { type: string, format: uuid }
+        payment_id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [pending, processing, succeeded, failed, expired, cancelled]
+        operator: { type: [string, 'null'], enum: [mtn, orange, null] }
+        amount: { type: integer }
+        currency: { type: string }
+        currency_exponent: { type: integer }
+        formatted: { type: string, example: '15 000 XAF' }
+        expires_at: { type: string, format: date-time }
+        instructions: { type: string }
+
+    ExternalCharge:
+      type: object
+      properties:
+        charge_id: { type: string, format: uuid }
+        payment_id:
+          type: [string, 'null']
+          format: uuid
+          description: Renseigne au reglement, pas a la creation.
+        subject_type: { type: string, example: learn.enrollment }
+        subject_id: { type: string, format: uuid }
+        payer_type: { type: string, example: learn.learner }
+        payer_id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [pending, paid, failed, expired]
+          description: |
+            `expired` signifie **on ne sait pas**, ce qui n'est pas « cela a
+            echoue ». Ces charges partent au rapprochement manuel.
+        amount: { type: integer }
+        currency: { type: string }
+        currency_exponent: { type: integer }
+        formatted: { type: string }
+        description: { type: string }
+        created_at: { type: string, format: date-time }
+        settled_at: { type: [string, 'null'], format: date-time }
 
     PaymentIntent:
       type: object
