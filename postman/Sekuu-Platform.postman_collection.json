@@ -102,6 +102,18 @@
     {
       "key": "payment_id",
       "value": ""
+    },
+    {
+      "key": "payments_api_key",
+      "value": ""
+    },
+    {
+      "key": "charge_id",
+      "value": ""
+    },
+    {
+      "key": "test_msisdn",
+      "value": "+237650000000"
     }
   ],
   "item": [
@@ -1490,7 +1502,7 @@
               "mode": "raw",
               "raw": "{\n  \"name\": \"Integration produit\",\n  \"scopes\": [\n    \"notifications.send\"\n  ]\n}"
             },
-            "description": "Requiert `organization.manage`.\n\nLa valeur est renvoyee **une seule fois**. Seul son hachage est conserve : elle n'est jamais relisible."
+            "description": "Requiert `organization.manage`.\n\nLa valeur est renvoyee **une seule fois**. Seul son hachage est conserve : elle n'est jamais relisible.\n\nUn scope de paiement — `payments.charge`, `payments.read` — exige en plus `subject_types` : il autoriserait sinon a declarer un prix sans dire sur quoi. Voir la requete suivante."
           },
           "event": [
             {
@@ -1502,6 +1514,89 @@
                   "const d = pm.response.json().data;",
                   "pm.collectionVariables.set('api_key', d.key);",
                   "pm.collectionVariables.set('api_key_id', d.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Creer une cle de paiement (produit externe)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/api-keys",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api-keys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sekuu Learn\",\n  \"scopes\": [\n    \"payments.charge\",\n    \"payments.read\"\n  ],\n  \"subject_types\": [\n    \"learn.enrollment\"\n  ]\n}"
+            },
+            "description": "**Le perimetre est obligatoire.** `payments.charge` autorise a declarer un prix ; sans `subject_types`, il autoriserait a en declarer un sur n'importe quel objet de la plateforme.\n\n`billing.invoice` ne peut etre porte par **aucune** cle : le prix d'une facture est produit par Billing, en base. L'emission echoue en 422.\n\nCette cle est **strictement serveur a serveur**. Dans un navigateur ou une application mobile, n'importe qui declare n'importe quel montant, et toute la protection tombe d'un coup."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cle creee', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data;",
+                  "pm.collectionVariables.set('payments_api_key', d.key);",
+                  "pm.test('Le perimetre est porte par la cle', function () {",
+                  "  pm.expect(d.subject_types).to.include('learn.enrollment');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refuse : aucune cle ne peut porter billing.invoice",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/api-keys",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api-keys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Tentative\",\n  \"scopes\": [\n    \"payments.charge\"\n  ],\n  \"subject_types\": [\n    \"billing.invoice\"\n  ]\n}"
+            },
+            "description": "Le prix d'une facture vient de Billing. Laisser une cle le declarer rouvrirait exactement le trou que ce module ferme : regler 49 663 XAF avec 100 XAF."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Emission refusee', () => pm.response.to.have.status(422));"
                 ]
               }
             }
@@ -4153,6 +4248,398 @@
                   "  pm.response.to.have.status(401);",
                   "  pm.expect(pm.response.json().error.code).to.eql('WEBHOOK_SIGNATURE_INVALID');",
                   "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Callback Tranzak sans secret (401 attendu)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/webhooks/tranzak",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "webhooks",
+                "tranzak"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"REQUEST.COMPLETED\",\n  \"resourceId\": \"inconnu\"\n}"
+            },
+            "description": "Tranzak authentifie par un `authKey` transporte **dans le corps** : cela prouve que l'emetteur connait le secret, jamais que le corps est intact. D'ou la relecture systematique du statut chez l'agregateur.\n\nLe callback est **enregistre** avec `signature_valid = false` malgre le 401 : le jeter en silence priverait de toute trace en cas de fraude."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 WEBHOOK_SIGNATURE_INVALID', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('WEBHOOK_SIGNATURE_INVALID');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ancienne adresse de callback (a retirer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/billing/webhooks/tranzak",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "billing",
+                "webhooks",
+                "tranzak"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"REQUEST.COMPLETED\",\n  \"resourceId\": \"inconnu\"\n}"
+            },
+            "description": "Strictement equivalente a `/payments/webhooks/{provider}`.\n\nConservee parce que des transactions deja initialisees portent cette URL **figee dans leur payload** : la retirer trop tot ferait echouer leurs callbacks, donc laisserait des clients debites sans service.\n\n**A supprimer** une fois qu'aucune transaction en cours ne la reference."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('L ancienne adresse repond encore', function () {",
+                  "  pm.expect([200, 401]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "14 - Payments (service externe)",
+      "description": "Encaisser depuis un produit qui **ne partage pas la base de code** — Sekuu Learn.\n\nLa regle n'a jamais ete « le montant ne vient jamais d'HTTP ». Elle est **seul le proprietaire de l'objet nomme son prix** : prouve par une interface PHP pour un module du monolithe, par une cle scopee ici.\n\nLe montant traverse HTTP **une fois**, a la declaration. Il est ecrit dans `external_charges` — l'analogue d'une facture — puis **relu en base** au moment de payer. `InitiatePayment` n'a toujours aucun parametre de montant.\n\n**Ce que ce chemin ne donne pas :** l'atomicite. Un service externe ne participe pas a la transaction d'encaissement ; il existe une fenetre ou un client a paye et n'a pas son service. Elle est irreductible, seulement rendue courte (webhook) et rattrapable (sondage, reconciliation). **Les trois sont obligatoires.**\n\nPrerequis : la cle du dossier 06, et un endpoint declare par `payments:endpoint` cote plateforme.",
+      "item": [
+        {
+          "name": "Declarer un prix et encaisser",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/charges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "charges"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{payments_api_key}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject_type\": \"learn.enrollment\",\n  \"subject_id\": \"{{$guid}}\",\n  \"payer_type\": \"learn.learner\",\n  \"payer_id\": \"{{$guid}}\",\n  \"amount\": 15000,\n  \"currency\": \"XAF\",\n  \"description\": \"Sekuu Learn - Comptabilite pour PME\",\n  \"msisdn\": \"{{test_msisdn}}\"\n}"
+            },
+            "description": "`202`, jamais `201` : ce qui est cree est une **intention**. Le client n'a pas encore valide quoi que ce soit sur son telephone.\n\n`amount` est un **entier**, dans l'unite la plus petite de la devise. Le franc CFA n'a pas de centime : 15 000 XAF s'ecrit `15000`, et la reponse porte `currency_exponent: 0` pour qu'aucun client n'ait a le deviner.\n\n`payer_type` ne peut jamais commencer par `identity.` : un produit externe ne peut pas se reclamer d'un compte de la plateforme.\n\nLe montant est **fige a la declaration**. Si le prix change avant que le client ne valide, le paiement aboutira quand meme a ce montant — le produit doit echouer bruyamment sur un ecart, pas l'ignorer."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Intention creee', () => pm.response.to.have.status(202));",
+                  "const d = pm.response.json().data;",
+                  "pm.collectionVariables.set('charge_id', d.charge_id);",
+                  "pm.test('Le XAF n a pas de centime', () => pm.expect(d.currency_exponent).to.eql(0));",
+                  "console.log('Charge ' + d.charge_id + ' : ' + d.formatted + ' (' + d.status + ')');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refuse : un type que la cle ne porte pas",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/charges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "charges"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{payments_api_key}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject_type\": \"stock.order\",\n  \"subject_id\": \"{{$guid}}\",\n  \"payer_type\": \"learn.learner\",\n  \"payer_id\": \"{{$guid}}\",\n  \"amount\": 100,\n  \"currency\": \"XAF\",\n  \"description\": \"Objet d un autre produit\",\n  \"msisdn\": \"{{test_msisdn}}\"\n}"
+            },
+            "description": "**L'invariant.** Sans cette borne, une cle fuitee permettrait de declarer un prix sur les objets de tous les produits.\n\nLe meme code repond a « la cle ne porte pas ce type » et a « ce type n'est pas servi par l'API externe » : deux reponses distinctes permettraient d'enumerer les types de la plateforme."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Refuse', () => pm.response.to.have.status(403));",
+                  "pm.test('Code explicite', () => pm.expect(pm.response.json().error.code).to.eql('SUBJECT_TYPE_NOT_ALLOWED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refuse : un payeur de la plateforme",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/charges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "charges"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{payments_api_key}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject_type\": \"learn.enrollment\",\n  \"subject_id\": \"{{$guid}}\",\n  \"payer_type\": \"identity.user\",\n  \"payer_id\": \"{{$guid}}\",\n  \"amount\": 15000,\n  \"currency\": \"XAF\",\n  \"description\": \"Tentative\",\n  \"msisdn\": \"{{test_msisdn}}\"\n}"
+            },
+            "description": "Un produit externe ne peut pas faire porter un paiement par un utilisateur Sekuu qu'il n'authentifie pas : le paiement apparaitrait dans ceux d'une organisation qui ne l'a jamais demande."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Refuse', () => pm.response.to.have.status(422));",
+                  "pm.test('Code explicite', () => pm.expect(pm.response.json().error.code).to.eql('PAYER_TYPE_NOT_ALLOWED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sonder une charge",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/charges/{{charge_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "charges",
+                "{{charge_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{payments_api_key}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Le **second** des trois mecanismes, et il n'est pas optionnel. Un webhook se perd : un produit qui ne met en place que lui aura tot ou tard un client paye sans service, et aucun moyen de s'en apercevoir.\n\n`Retry-After` accompagne la reponse tant que l'issue n'est pas tranchee.\n\n`expired` signifie **on ne sait pas**, et non « cela a echoue ». Un paiement dont l'issue est inconnue peut avoir ete encaisse : le traiter comme un echec risquerait de facturer deux fois."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Charge lisible', () => pm.response.to.have.status(200));",
+                  "console.log('Statut : ' + pm.response.json().data.status);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reconcilier",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/charges?status=paid",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "charges"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "paid"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{payments_api_key}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Le **troisieme** mecanisme, et le seul filet quand le webhook et le sondage ont tous deux echoue. Sans lui, un client paye sans service reste invisible jusqu'a sa reclamation.\n\nA passer **periodiquement**, pas seulement en cas d'incident : son interet est de reveler ce dont on ignore l'existence.\n\nFiltres : `since`, `status`. Les 200 charges les plus recentes de ce produit."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Liste lisible', () => pm.response.to.have.status(200));",
+                  "pm.test('Seulement les charges de ce produit', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refuse : lire exige son propre scope",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/charges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "charges"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{api_key}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "La cle du dossier 06 ne porte que `notifications.send`. Encaisser et lire sont deux droits distincts, et aucun des deux n'est implicite."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Refuse', () => pm.response.to.have.status(403));",
+                  "pm.test('Code explicite', () => pm.expect(pm.response.json().error.code).to.eql('INSUFFICIENT_PERMISSIONS'));"
                 ]
               }
             }
