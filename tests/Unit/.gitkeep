@@ -1,0 +1,11 @@
+# Ce répertoire est déclaré comme suite de tests dans phpunit.xml, et il est
+# vide : la plateforme n'a que des tests de fonctionnalité, exécutés contre une
+# vraie base PostgreSQL.
+#
+# Git ne versionnant pas les répertoires vides, son absence faisait échouer
+# toute la suite sur un dépôt fraîchement cloné — `Test directory not found`,
+# avant même le premier test. Constaté sur la CI, invisible en local.
+#
+# La suite est conservée plutôt que retirée : sans elle, un futur
+# `tests/Unit/FooTest.php` ne serait tout simplement jamais exécuté, sans que
+# rien ne le signale.
