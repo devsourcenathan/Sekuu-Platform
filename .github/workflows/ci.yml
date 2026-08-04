@@ -1,0 +1,115 @@
+name: CI
+
+# La suite existe depuis le début ; rien ne l'exécutait. 501 tests qui ne
+# tournent qu'à la demande protègent moins qu'ils n'en donnent l'impression.
+#
+# @see docs/06-operations/02-ci.md
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Une nouvelle poussée annule la précédente sur la même branche : inutile de
+# payer deux fois pour un code déjà remplacé.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    services:
+      # PostgreSQL, jamais SQLite. Le schéma repose sur des index uniques
+      # partiels, des contraintes CHECK et citext — une suite verte sur SQLite
+      # ne prouverait rien de ce qui protège l'argent.
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: sekuu_platform
+          POSTGRES_USER: sekuu
+          POSTGRES_PASSWORD: sekuu
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U sekuu -d sekuu_platform"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pgsql, pdo_pgsql, redis, bcmath, intl
+          coverage: none
+
+      - name: Cache des dépendances
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.lock') }}
+
+      - run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Préparer l'environnement
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          # Une configuration en cache annulerait les neutralisations de
+          # phpunit.xml : `env()` ne serait plus jamais consulté.
+          php artisan config:clear
+
+      # `phpunit.xml` neutralise les identifiants des fournisseurs, mais rien
+      # ne le vérifiait avant l'exécution. Ce contrôle échoue avant qu'un seul
+      # test ne parte, plutôt qu'après une centaine de vrais messages.
+      - name: Aucun identifiant réel dans l'environnement de test
+        run: php artisan test --filter=TestEnvironmentIsolationTest
+
+      - name: Style
+        run: ./vendor/bin/pint --test
+
+      - name: Contrats OpenAPI
+        run: php artisan test --filter=OpenApiContractTest
+
+      - name: Architecture
+        run: php artisan test --filter=ArchitectureTest
+
+      - name: Suite complète
+        run: php artisan test
+        env:
+          DB_HOST: 127.0.0.1
+          DB_DATABASE: sekuu_platform
+          DB_USERNAME: sekuu
+          DB_PASSWORD: sekuu
+          REDIS_HOST: 127.0.0.1
+
+  # Une dépendance connue vulnérable dans un service qui encaisse est un
+  # incident, pas une dette. Le signaler tôt coûte moins cher que de l'apprendre
+  # d'un tiers.
+  audit:
+    name: Dépendances
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - run: composer install --prefer-dist --no-progress --no-interaction
+      - run: composer audit

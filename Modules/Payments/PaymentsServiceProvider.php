@@ -10,6 +10,8 @@ use Modules\Payments\Application\Payments\PayableRegistry;
 use Modules\Payments\Infrastructure\Console\ManageEndpointCommand;
 use Modules\Payments\Infrastructure\Console\ReconcilePaymentsCommand;
 use Modules\Payments\Infrastructure\Console\SettleRefundCommand;
+use Modules\Payments\Infrastructure\Console\VerifyCredentialsCommand;
+use Modules\Payments\Infrastructure\Providers\CredentialGuard;
 use Modules\Payments\Infrastructure\Providers\ProviderRegistry;
 use Modules\Payments\Infrastructure\Webhooks\WebhookRegistry;
 
@@ -28,6 +30,23 @@ final class PaymentsServiceProvider extends ModuleServiceProvider
     public function register(): void
     {
         $this->app->singleton(ProviderRegistry::class, function ($app): ProviderRegistry {
+            /*
+            | L'environnement et les identifiants doivent etre d'accord, dans
+            | les deux sens : une cle de production hors production debite de
+            | vraies personnes, une cle de test en production ouvre des services
+            | sans rien encaisser.
+            |
+            | Ici plutot qu'au demarrage de l'application : c'est le dernier
+            | instant ou aucun telephone n'a encore sonne, et le premier ou un
+            | paiement devient possible. Le placer plus tot rendait `artisan`
+            | inutilisable — y compris les commandes qui servent a corriger la
+            | configuration fautive.
+            |
+            | Corollaire : `GET /payments/health` est la verification d'avant-vol,
+            | puisqu'elle resout ce registre.
+            */
+            CredentialGuard::assert($app->environment());
+
             $registry = new ProviderRegistry($app);
 
             // L'ordre vaut priorité. La bascule est **volontairement étroite** :
@@ -72,6 +91,7 @@ final class PaymentsServiceProvider extends ModuleServiceProvider
                 ReconcilePaymentsCommand::class,
                 ManageEndpointCommand::class,
                 SettleRefundCommand::class,
+                VerifyCredentialsCommand::class,
             ]);
         }
 

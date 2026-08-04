@@ -1,0 +1,52 @@
+# Dépendances de développement de Sekuu Platform.
+#
+# PHP et Composer restent sur la machine : ce fichier ne fournit que ce que la
+# plateforme ne sait pas simuler — une vraie base PostgreSQL et un vrai Redis.
+#
+# La base est **PostgreSQL, pas SQLite**, y compris pour les tests. Le schéma
+# repose sur des index uniques partiels, des contraintes `CHECK` et `citext` :
+# une suite verte sur SQLite ne prouverait rien de ce qui protège l'argent.
+#
+# @see docs/06-operations/01-go-live.md
+
+services:
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: sekuu-postgres
+    environment:
+      POSTGRES_DB: sekuu_platform
+      POSTGRES_USER: sekuu
+      POSTGRES_PASSWORD: sekuu
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` seul répond « prêt » avant que la base ne le soit
+      # réellement au premier démarrage : on interroge donc la base nommée.
+      test: ['CMD-SHELL', 'pg_isready -U sekuu -d sekuu_platform']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: sekuu-redis
+    ports:
+      - '6379:6379'
+    # `appendonly` : les files de Notify et de Payments portent des envois et
+    # des livraisons sortantes. Un redémarrage qui les perdrait laisserait un
+    # produit externe sans nouvelle d'un encaissement.
+    command: redis-server --appendonly yes
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres:
+  redis:

@@ -19,19 +19,28 @@ Développé comme un **monolithe modulaire Laravel** — une application, une ba
 
 ## Installation
 
+PostgreSQL et Redis viennent avec le dépôt :
+
 ```bash
-composer install
+docker compose up -d
 ```
 
 ```bash
-cp .env.example .env && php artisan key:generate
+composer install && cp .env.example .env && php artisan key:generate
 ```
-
-Créez la base, renseignez `DB_*` dans `.env`, puis :
 
 ```bash
 php artisan migrate
 ```
+
+Les identifiants de `.env.example` correspondent à `compose.yaml`. Si vous
+préférez vos propres services, renseignez `DB_*` et `REDIS_*`.
+
+> **Une clé de paiement de production hors production est refusée**, dans les
+> deux sens, et sans possibilité de contournement. Notch
+> Pay ne distingue pas ses environnements par l'URL : seul le préfixe `test_` le
+> fait, et un copier-coller suffirait à débiter une vraie personne. Voir
+> [la mise en service](docs/06-operations/01-go-live.md#1-la-règle-qui-prime-sur-tout-le-reste).
 
 ## Démarrer
 

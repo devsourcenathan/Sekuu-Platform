@@ -10,11 +10,11 @@
 | | |
 | --- | --- |
 | Application | Monolithe modulaire Laravel 13, PHP 8.3, PostgreSQL 18 |
-| Modules livrés | **Identity** · **Notify** (email, SMS, interne) · **Payments** (Notch Pay, Tranzak) · **Billing** |
+| Modules livrés | **Identity** · **Notify** (email, SMS, interne) · **Payments** (Notch Pay, Tranzak, API externe, remboursements) · **Billing** |
 | Modules non démarrés | Verify, Storage, AI, Search, Analytics |
-| Endpoints | 81 sous `/api/v1` + `/.well-known/jwks.json` |
-| Migrations | 27 |
-| Tests | 464, sur PostgreSQL |
+| Endpoints | 87 sous `/api/v1` + `/.well-known/jwks.json` |
+| Migrations | 32 |
+| Tests | 501, sur PostgreSQL |
 | Contrats | `Modules/*/openapi.yaml`, vérifiés par test |
 | Collection de test | `postman/` |
 
@@ -244,6 +244,8 @@ Les tests ne couvrent pas seulement le chemin nominal ; ils verrouillent les pro
 
 **Contrat OpenAPI** — parité exacte avec les routes réelles, références résolues, codes d'erreur présents au catalogue.
 
+**Accord entre l'environnement et les identifiants** — une clé de paiement de production hors production est refusée, et une clé de test en production aussi. Les deux fautes coûtent : la première débite de vraies personnes, la seconde ouvre des services sans rien encaisser.
+
 **Règle de bascule** — table de vérité **exhaustive** itérant sur `AttemptStatus::cases()` : un état ajouté demain sans décision explicite fait échouer le test. C'est l'endroit où une régression coûte de l'argent réel à un tiers.
 
 **Indépendance de Payments** — aucun fichier de `Modules/Payments`, code de test compris, ne nomme Billing. Le chemin de paiement s'éprouve donc entièrement sur un objet payable factice ; ce qui reste chez Billing est ce qui n'a de sens que pour une facture.
@@ -298,20 +300,26 @@ GET  /audit-logs                 →  trace des quatre étapes
 
 ## 8.1 Bloquant pour la production
 
-* **La mise en service du domaine expéditeur** — `sekuu.com` doit être vérifié chez Resend (DKIM, Return-Path, DMARC), puis `RESEND_API_KEY` et `RESEND_WEBHOOK_SECRET` renseignés. Sans cela les messages partent par le mailer Laravel, qui ne rapporte aucun rebond : le service paraît fonctionner tout en accumulant une dette de délivrabilité invisible. Procédure dans [Notify § 8.2](03-services/notify/01-overview.md).
-* **Redis, et un worker qui tourne** — pour les queues, le cache et la liste de révocation. Les envois passent aujourd'hui par la file `database`. Depuis l'API de paiement externe, l'enjeu a changé de nature : sans worker, les webhooks sortants ne partent jamais, et un produit externe ignore ses encaissements jusqu'à ce qu'il sonde ou réconcilie.
-* **Clés de signature** en gestionnaire de secrets, et procédure de rotation à 90 jours.
-* **CI** — la suite existe, rien ne l'exécute automatiquement.
-* **La crontab qui appelle `schedule:run`.** Les trois tâches — `billing:advance`, `payments:reconcile`, `notify:purge` — sont déclarées par leurs modules et visibles dans `schedule:list`. Il manque l'entrée système qui les déclenche. Sans elle, aucun rappel d'échéance ne part et aucun callback perdu n'est rattrapé.
+Tout ce qui suit est **de l'exploitation**, pas du code. La procédure complète
+est dans [06-operations/01-go-live.md](06-operations/01-go-live.md).
+
+* **Les identifiants de production en place, et `APP_ENV=production` avec eux.** `CredentialGuard` échoue dès qu'un agrégateur est résolu si les deux ne s'accordent pas, dans les deux sens, et sans possibilité de contournement. `GET /payments/health` est la vérification d'avant-vol. Notch Pay ne distingue pas ses environnements par l'URL : seul le préfixe `test_` le fait.
+* **Les URL de callback** enregistrées dans les tableaux de bord Notch Pay et Tranzak, ainsi que `TRANZAK_AUTH_KEY` et `NOTCHPAY_WEBHOOK_HASH`. Sans ces secrets, aucun callback n'est accepté — la réconciliation rattrape, mais plus lentement.
+* **La mise en service du domaine expéditeur** — `sekuu.com` doit être vérifié chez Resend (DKIM, Return-Path, DMARC). Sans cela les messages partent par le mailer Laravel, qui ne rapporte aucun rebond : le service paraît fonctionner tout en accumulant une dette de délivrabilité invisible.
+* **Le worker Supervisor** (`deploy/sekuu-worker.conf`). Il porte les envois de Notify **et les webhooks sortants de Payments** : sans lui, un produit externe n'apprend jamais ses encaissements autrement qu'en sondant.
+* **La crontab** (`deploy/crontab`). Une ligne. Sans elle, aucun callback perdu n'est rattrapé et aucun rappel d'échéance ne part.
+* **Redis en production** — `compose.yaml` le fournit en développement. `database` fonctionne, au prix d'une latence et d'une charge en écriture qui ne tiennent pas sous volume.
+* **Le `.env` chiffré** (`php artisan env:encrypt`) ou en gestionnaire, et `chmod 600`.
 
 ## 8.2 Prochaines étapes
 
 Par ordre décroissant de valeur :
 
-* **Les comptes marchands de production**, Notch Pay et Tranzak. Administratif et long, à engager en parallèle.
-* **La documentation Tara**, à réclamer directement — elle n'est pas publique.
+* **Le premier paiement réel**, fait à la main sur un petit montant. C'est la seule vérification qui prouve que la chaîne entière fonctionne : les deux agrégateurs ont déjà démenti deux hypothèses chacun lors de leur intégration, et aucun bac à sable ne prouve la production.
+* **Storage** — dont dépend le PDF de facture, qui renvoie `503`. Une facture non téléchargeable est un problème légal, pas un confort.
+* **La documentation Tara**, à réclamer directement — elle n'est pas publique. Deux agrégateurs suffisent à supprimer le point de défaillance unique ; le troisième améliore.
 
-Puis Verify, et Storage — dont dépend le PDF de facture, qui renvoie `503` aujourd'hui.
+Puis Verify.
 
 Le canal WhatsApp reste le plus attendu au Cameroun ; il suppose un compte Business vérifié et des modèles approuvés par Meta, donc un délai externe qu'il vaut mieux engager tôt.
 

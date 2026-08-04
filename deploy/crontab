@@ -1,0 +1,26 @@
+# Ordonnanceur de Sekuu Platform.
+#
+# À installer avec `crontab -e -u www-data`, ou dans /etc/cron.d/sekuu.
+#
+# ## Une seule ligne, et elle suffit
+#
+# Laravel décide lui-même quelle tâche est due. Les trois tâches de la
+# plateforme sont déclarées par leurs modules et visibles avec
+# `php artisan schedule:list` :
+#
+#   */5 * * * *   payments:reconcile   rattrape les callbacks perdus
+#   30  2 * * *   billing:advance      grâce, suspension, rappels d'échéance
+#   15  3 * * *   notify:purge         rétention des notifications
+#
+# ## Ce que son absence produit
+#
+# Sur un modèle prépayé, aucun rappel d'échéance ne part : un client découvre
+# son accès fermé un lundi matin sans avoir été prévenu.
+#
+# Et surtout, **aucun callback perdu n'est rattrapé**. Un client débité dont la
+# plateforme ignore le paiement reste sans service jusqu'à sa réclamation —
+# la pire défaillance que ce module existe pour empêcher.
+#
+# @see docs/06-operations/01-go-live.md
+
+* * * * * cd /var/www/sekuu-platform && php artisan schedule:run >> /dev/null 2>&1

@@ -20,6 +20,7 @@ Sekuu Platform est le socle technique commun de l'écosystème Sekuu : une plate
 | Faire encaisser un **service externe** | [Payments — API externe](03-services/payments/07-external-api.md) |
 | **Rendre** l'argent | [Payments — remboursements](03-services/payments/08-refunds.md) |
 | Comprendre un choix d'architecture | [Décisions (ADR)](#04-decisions--décisions-darchitecture) |
+| **Mettre en production** | [Mise en service](06-operations/01-go-live.md) |
 
 Parcours conseillé pour une première lecture : Vision → Architecture → API Guidelines → Identity.
 
@@ -32,7 +33,8 @@ docs/
 ├── 01-overview/     Vision et architecture de la plateforme
 ├── 02-standards/    Règles applicables à tous les modules et produits
 ├── 03-services/     Spécification de chaque domaine
-└── 04-decisions/    Décisions d'architecture (ADR)
+├── 04-decisions/    Décisions d'architecture (ADR)
+└── 06-operations/   Mise en service, CI, exploitation
 ```
 
 ### 01-overview — Vue d'ensemble
@@ -79,8 +81,15 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | [ADR-0007](04-decisions/adr-0007-mobile-money-prepaid-subscriptions.md) | Billing : abonnements prépayés plutôt que reconduction automatique |
 | [ADR-0008](04-decisions/adr-0008-payment-aggregators-failover.md) | Payments : agrégateurs de paiement et règle de bascule |
 | [ADR-0009](04-decisions/adr-0009-payments-module-extraction.md) | Extraction de la couche de paiement hors de Billing |
-| [ADR-0011](04-decisions/adr-0011-refunds.md) | Payments : rendre l'argent, sans décaissement automatique |
 | [ADR-0010](04-decisions/adr-0010-external-payment-api.md) | Encaisser depuis un service externe |
+| [ADR-0011](04-decisions/adr-0011-refunds.md) | Payments : rendre l'argent, sans décaissement automatique |
+
+### 06-operations — Exploitation
+
+| Document | Contenu |
+| --- | --- |
+| [01-go-live.md](06-operations/01-go-live.md) | Ce qu'il faut pour qu'un premier franc soit encaissé pour de vrai |
+| [02-ci.md](06-operations/02-ci.md) | Intégration continue : ce qu'elle vérifie, et dans quel ordre |
 
 ---
 
