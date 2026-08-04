@@ -90,6 +90,7 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | --- | --- |
 | [01-go-live.md](06-operations/01-go-live.md) | Ce qu'il faut pour qu'un premier franc soit encaissé pour de vrai |
 | [02-ci.md](06-operations/02-ci.md) | Intégration continue : ce qu'elle vérifie, et dans quel ordre |
+| [03-deployment.md](06-operations/03-deployment.md) | Premier déploiement, redéploiements, retour arrière |
 
 ---
 

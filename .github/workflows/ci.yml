@@ -71,9 +71,10 @@ jobs:
         run: |
           cp .env.example .env
           php artisan key:generate
-          # Une configuration en cache annulerait les neutralisations de
-          # phpunit.xml : `env()` ne serait plus jamais consulté.
-          php artisan config:clear
+          # Un cache compilé annulerait les neutralisations de phpunit.xml :
+          # `env()` ne serait plus jamais consulté, et la suite tournerait avec
+          # les identifiants du .env.
+          php artisan optimize:clear
 
       # `phpunit.xml` neutralise les identifiants des fournisseurs, mais rien
       # ne le vérifiait avant l'exécution. Ce contrôle échoue avant qu'un seul

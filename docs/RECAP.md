@@ -301,7 +301,8 @@ GET  /audit-logs                 →  trace des quatre étapes
 ## 8.1 Bloquant pour la production
 
 Tout ce qui suit est **de l'exploitation**, pas du code. La procédure complète
-est dans [06-operations/01-go-live.md](06-operations/01-go-live.md).
+est dans [06-operations/01-go-live.md](06-operations/01-go-live.md), et le
+déploiement lui-même dans [03-deployment.md](06-operations/03-deployment.md).
 
 * **Les identifiants de production en place, et `APP_ENV=production` avec eux.** `CredentialGuard` échoue dès qu'un agrégateur est résolu si les deux ne s'accordent pas, dans les deux sens, et sans possibilité de contournement. `GET /payments/health` est la vérification d'avant-vol. Notch Pay ne distingue pas ses environnements par l'URL : seul le préfixe `test_` le fait.
 * **Les URL de callback** enregistrées dans les tableaux de bord Notch Pay et Tranzak, ainsi que `TRANZAK_AUTH_KEY` et `NOTCHPAY_WEBHOOK_HASH`. Sans ces secrets, aucun callback n'est accepté — la réconciliation rattrape, mais plus lentement.
@@ -310,6 +311,7 @@ est dans [06-operations/01-go-live.md](06-operations/01-go-live.md).
 * **La crontab** (`deploy/crontab`). Une ligne. Sans elle, aucun callback perdu n'est rattrapé et aucun rappel d'échéance ne part.
 * **Redis en production** — `compose.yaml` le fournit en développement. `database` fonctionne, au prix d'une latence et d'une charge en écriture qui ne tiennent pas sous volume.
 * **Le `.env` chiffré** (`php artisan env:encrypt`) ou en gestionnaire, et `chmod 600`.
+* **Les clés JWT passées par `IDENTITY_JWT_PRIVATE_KEY` / `IDENTITY_JWT_PUBLIC_KEY`**, jamais laissées dans `storage/` : un déploiement par releases les effacerait, une nouvelle paire serait générée, et tous les tokens en circulation deviendraient invalides d'un coup.
 
 ## 8.2 Prochaines étapes
 
