@@ -11,6 +11,20 @@
 
 set -e
 
+# Render remplace la commande **entiere**, pas seulement le CMD. La commande a
+# saisir dans son interface est donc `/usr/local/bin/entrypoint all`, et non
+# `all` seul.
+#
+# Ce cas est absorbe ici : si le premier argument est le chemin de ce script,
+# on le retire et on continue. Le meme reglage fonctionne alors que Render
+# remplace le CMD ou la commande complete, sans qu'un integrateur ait a savoir
+# lequel.
+case "${1:-}" in
+    */entrypoint) shift ;;
+esac
+
+echo "[entrypoint] mode=${1:-web}"
+
 # --------------------------------------------------------------------------
 # Migrations, au demarrage — **sur demande explicite**
 # --------------------------------------------------------------------------

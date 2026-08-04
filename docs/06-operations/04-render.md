@@ -12,7 +12,7 @@ Render change, et ce qu'il faut prendre en compte **avant** de commencer.
 
 ---
 
-# 1. Les cinq choses qui changent tout
+# 1. Les six choses qui changent tout
 
 ## 1.1 Render n'a pas de runtime PHP
 
@@ -56,7 +56,17 @@ sans service.
 
 `render.yaml` pose `maxmemoryPolicy: noeviction`. Vérifiez-le après création.
 
-## 1.4 Le worker est un service à part
+## 1.4 La commande de démarrage prend le chemin complet
+
+Le champ *Docker Command* de Render remplace la commande **entière**, pas
+seulement le `CMD`. On y écrit donc `/usr/local/bin/entrypoint worker`, jamais
+`worker` seul.
+
+Saisir le mode seul fait chercher un binaire de ce nom : le conteneur sort en
+`status 128` **sans aucune sortie**. L'entrypoint absorbe désormais les deux
+formes, mais le chemin complet reste ce qu'il faut écrire.
+
+## 1.5 Le worker est un service à part
 
 Render n'exécute qu'un processus par service. Le worker de files et
 l'ordonnanceur sont donc deux services distincts, qui partagent **la même
@@ -65,7 +75,7 @@ image** que le web — le worker ne peut pas tourner un autre code.
 `deploy/sekuu-worker.conf` (Supervisor) ne sert pas ici : Render redémarre
 lui-même un processus qui meurt.
 
-## 1.5 L'ordonnanceur boucle au lieu d'être appelé
+## 1.6 L'ordonnanceur boucle au lieu d'être appelé
 
 Pas de crontab. Render facture chaque exécution d'un service cron, et
 `schedule:run` à la minute en produirait 43 200 par mois.

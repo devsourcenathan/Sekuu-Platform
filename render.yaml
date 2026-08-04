@@ -122,7 +122,8 @@ services:
     name: sekuu-worker
     runtime: docker
     plan: starter
-    dockerCommand: worker
+    # Chemin complet : Render remplace la commande entiere, pas seulement le CMD.
+    dockerCommand: /usr/local/bin/entrypoint worker
     envVars:
       # Recopies depuis le service web, jamais ressaisis : un worker qui pointe
       # sur une autre base est un incident **invisible** — les tâches
@@ -200,7 +201,7 @@ services:
     name: sekuu-scheduler
     runtime: docker
     plan: starter
-    dockerCommand: scheduler
+    dockerCommand: /usr/local/bin/entrypoint scheduler
     envVars:
       # Recopies depuis le service web, jamais ressaisis : un worker qui pointe
       # sur une autre base est un incident **invisible** — les tâches

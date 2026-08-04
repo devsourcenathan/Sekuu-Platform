@@ -86,11 +86,17 @@ l'ignore.
 
 # 4. Configuration
 
-Sur le service web, remplacez la commande de démarrage :
+Sur le service web, remplacez la commande de démarrage — **avec le chemin
+complet** :
 
 ```text
-all
+/usr/local/bin/entrypoint all
 ```
+
+Le champ *Docker Command* de Render remplace la commande **entière**, pas
+seulement le `CMD` du Dockerfile. Saisir `all` seul fait chercher un binaire de
+ce nom, et le conteneur meurt avec `status 128` **sans aucune sortie** — l'échec
+le plus difficile à diagnostiquer, puisqu'il ne dit rien.
 
 Puis les variables, comme en production — sauf `QUEUE_CONNECTION`.
 
