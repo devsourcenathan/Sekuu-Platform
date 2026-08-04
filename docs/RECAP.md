@@ -226,6 +226,10 @@ Les tests ne couvrent pas seulement le chemin nominal ; ils verrouillent les pro
 
 **Contrat OpenAPI** — parité exacte avec les routes réelles, références résolues, codes d'erreur présents au catalogue.
 
+**Règle de bascule** — table de vérité **exhaustive** itérant sur `AttemptStatus::cases()` : un état ajouté demain sans décision explicite fait échouer le test. C'est l'endroit où une régression coûte de l'argent réel à un tiers.
+
+**Indépendance de Payments** — aucun fichier de `Modules/Payments`, code de test compris, ne nomme Billing. Le chemin de paiement s'éprouve donc entièrement sur un objet payable factice ; ce qui reste chez Billing est ce qui n'a de sens que pour une facture.
+
 ---
 
 # 6. Deux bugs que les tests ont révélés
@@ -298,5 +302,4 @@ Le canal WhatsApp reste le plus attendu au Cameroun ; il suppose un compte Busin
 * Aucun endpoint de listing des rôles globaux — la collection Postman doit lire l'identifiant en base.
 * `GET /users` et `PATCH /users/{id}` sont spécifiés mais pas implémentés.
 * Pas de MFA ni de passkeys — prévus au modèle, non développés.
-* Les tests du chemin de paiement vivent encore sous `Modules/Billing/Tests/` — `FailoverInvariantTest`, `PaymentFailoverTest`, `RealFailoverTest`, `WebhookAndReconciliationTest`. Ils éprouvent Payments ; leur place est de ce côté-là.
 * Internationalisation limitée à `en` et `fr`. Ajouter une langue suppose de traduire les 93 clés et les 10 templates de Notify ; un test échoue tant qu'une clé manque.

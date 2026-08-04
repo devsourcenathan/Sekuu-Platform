@@ -2,16 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Tests\Feature;
+namespace Modules\Payments\Tests\Feature;
 
+use App\Platform\Exceptions\DomainException;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
-use Modules\Billing\Tests\Concerns\BillsAnOrganization;
 use Modules\Payments\Application\Payments\SettlePayment;
 use Modules\Payments\Domain\AttemptStatus;
 use Modules\Payments\Domain\Models\PaymentIntent;
 use Modules\Payments\Infrastructure\Providers\ChargeOutcome;
+use Modules\Payments\Tests\Concerns\PaysAFakeSubject;
 use Modules\Payments\Tests\Support\FakeProvider;
 use Tests\TestCase;
 
@@ -22,19 +23,21 @@ use Tests\TestCase;
  * découvre sur son relevé, et qu'un remboursement Mobile Money rend pénible à
  * corriger.
  *
+ * La traduction de ces issues en codes HTTP appartient au module qui expose la
+ * route de paiement, et s'éprouve chez lui.
+ *
  * @see docs/04-decisions/adr-0008-payment-aggregators-failover.md
  */
 final class PaymentFailoverTest extends TestCase
 {
-    use BillsAnOrganization;
+    use PaysAFakeSubject;
     use RefreshDatabase;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->useFakeProviders();
-        $this->signInAsOwner();
+        $this->useFakePayments();
     }
 
     /**
@@ -103,51 +106,50 @@ final class PaymentFailoverTest extends TestCase
         $this->assertSame(PaymentIntent::PROCESSING, $intent->status);
     }
 
+    /**
+     * Tous refusent : aucune invite n'est partie, donc aucun client n'a été
+     * débité. L'intention échoue plutôt que de rester en attente.
+     */
     public function test_every_aggregator_rejecting_charges_nobody(): void
     {
         FakeProvider::willReturn('primary', ChargeOutcome::rejected('PROVIDER_AUTH_FAILED', 'Clé refusée'));
         FakeProvider::willReturn('secondary', ChargeOutcome::rejected('PROVIDER_AUTH_FAILED', 'Panne'));
 
-        $invoice = $this->subscribe();
-
-        $this->withToken($this->ownerToken)
-            ->postJson('/api/v1/payments', [
-                'invoice_id' => $invoice->id,
-                'msisdn' => '+237650000000',
-            ])
-            ->assertStatus(503)
-            ->assertJsonPath('error.code', 'PROVIDER_UNAVAILABLE');
+        try {
+            $this->pay();
+            $this->fail('Un refus de tous les agrégateurs doit lever.');
+        } catch (DomainException $e) {
+            $this->assertSame('PROVIDER_UNAVAILABLE', $e->errorCode);
+            $this->assertSame(503, $e->status);
+        }
 
         $this->assertSame(['primary', 'secondary'], FakeProvider::$charged);
-        $this->assertSame(PaymentIntent::FAILED, PaymentIntent::query()->firstOrFail()->status);
+
+        $intent = PaymentIntent::query()->firstOrFail();
+
+        $this->assertSame(PaymentIntent::FAILED, $intent->status);
+        $this->assertSame(0, $intent->attempts()->where('customer_prompted', true)->count());
     }
 
     /**
      * Le garde-fou contre le client impatient : trois clics ne produisent pas
      * trois invites, donc pas trois débits.
      */
-    public function test_a_second_payment_on_the_same_invoice_is_refused(): void
+    public function test_a_second_payment_on_the_same_subject_is_refused(): void
     {
         FakeProvider::willReturn('primary', ChargeOutcome::prompted('ref-1'));
 
-        $invoice = $this->subscribe();
+        $subject = (string) Str::uuid();
 
-        $this->withToken($this->ownerToken)
-            ->postJson('/api/v1/payments', ['invoice_id' => $invoice->id, 'msisdn' => '+237650000000'])
-            ->assertStatus(202);
+        $this->pay($subject);
 
-        $this->flushHeaders();
+        $this->expectException(DomainException::class);
 
-        $this->withToken($this->ownerToken)
-            ->postJson('/api/v1/payments', ['invoice_id' => $invoice->id, 'msisdn' => '+237650000000'])
-            ->assertStatus(409)
-            ->assertJsonPath('error.code', 'PAYMENT_ALREADY_PENDING');
-
-        $this->assertSame(1, PaymentIntent::query()->count());
+        $this->pay($subject);
     }
 
     /**
-     * Le jumeau du test précédent, **sans facture**.
+     * Le même garde-fou, éprouvé **en base**.
      *
      * L'index d'unicité portait auparavant sur `invoice_id` et excluait
      * explicitement les intentions qui n'en avaient pas : un paiement sans
@@ -155,7 +157,7 @@ final class PaymentFailoverTest extends TestCase
      * tant que seul un abonnement se payait — et c'est exactement le cas
      * nominal d'un produit qui vend autre chose.
      */
-    public function test_a_second_payment_on_any_subject_is_refused(): void
+    public function test_the_database_itself_refuses_a_second_live_intent(): void
     {
         $intent = PaymentIntent::create([
             'subject_type' => 'learn.enrollment',
@@ -171,7 +173,7 @@ final class PaymentFailoverTest extends TestCase
 
         $this->expectException(QueryException::class);
 
-        // Même sujet, aucune facture : la base doit refuser.
+        // Même sujet, payeur différent : la base doit refuser.
         PaymentIntent::create([
             'subject_type' => $intent->subject_type,
             'subject_id' => $intent->subject_id,
@@ -228,12 +230,5 @@ final class PaymentFailoverTest extends TestCase
 
         $this->assertTrue($attempt->fresh()->customer_prompted);
         $this->assertFalse($attempt->fresh()->allowsFailover());
-    }
-
-    private function pay(): PaymentIntent
-    {
-        $invoice = $this->subscribe();
-
-        return $this->payInvoice($invoice, '+237650000000')->fresh();
     }
 }

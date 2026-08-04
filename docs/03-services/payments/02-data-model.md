@@ -280,7 +280,7 @@ La règle est encodée **trois fois** — `AttemptStatus::allowsFailover()`,
 boucle de `InitiatePayment`. La redondance est délibérée : c'est l'endroit du
 module où une régression coûte de l'argent réel à un tiers, et une table de
 vérité exhaustive la verrouille dans
-[`FailoverInvariantTest`](../../../Modules/Billing/Tests/Feature/FailoverInvariantTest.php).
+[`FailoverInvariantTest`](../../../Modules/Payments/Tests/Feature/FailoverInvariantTest.php).
 
 ---
 

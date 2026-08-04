@@ -4,23 +4,17 @@ declare(strict_types=1);
 
 namespace Modules\Payments\Tests\Feature;
 
-use App\Platform\Contracts\PayableRef;
-use App\Platform\Contracts\PayerContext;
 use App\Platform\Exceptions\DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
-use Modules\Payments\Application\Payments\InitiatePayment;
-use Modules\Payments\Application\Payments\PayableRegistry;
 use Modules\Payments\Application\Payments\ReconcilePayments;
 use Modules\Payments\Domain\AttemptStatus;
 use Modules\Payments\Domain\Models\PaymentIntent;
 use Modules\Payments\Domain\Models\PaymentTransaction;
 use Modules\Payments\Infrastructure\Providers\ChargeOutcome;
-use Modules\Payments\Infrastructure\Providers\ProviderRegistry;
+use Modules\Payments\Tests\Concerns\PaysAFakeSubject;
 use Modules\Payments\Tests\Support\FakePayable;
 use Modules\Payments\Tests\Support\FakeProvider;
-use Modules\Payments\Tests\Support\PrimaryProvider;
-use Modules\Payments\Tests\Support\SecondaryProvider;
 use Tests\TestCase;
 
 /**
@@ -34,43 +28,14 @@ use Tests\TestCase;
  */
 final class PaymentWithoutBillingTest extends TestCase
 {
+    use PaysAFakeSubject;
     use RefreshDatabase;
-
-    private string $payeur;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        FakeProvider::reset();
-        FakePayable::reset();
-
-        $this->payeur = (string) Str::uuid();
-
-        config()->set('payments.providers', [PrimaryProvider::class, SecondaryProvider::class]);
-        config()->set('payments.payables', [FakePayable::TYPE => FakePayable::class]);
-
-        foreach ([ProviderRegistry::class, PayableRegistry::class] as $registre) {
-            $this->app->forgetInstance($registre);
-        }
-
-        $this->app->singleton(ProviderRegistry::class, function ($app): ProviderRegistry {
-            $r = new ProviderRegistry($app);
-            foreach ((array) config('payments.providers') as $p) {
-                $r->register($p);
-            }
-
-            return $r;
-        });
-
-        $this->app->singleton(PayableRegistry::class, function ($app): PayableRegistry {
-            $r = new PayableRegistry($app);
-            foreach ((array) config('payments.payables') as $type => $source) {
-                $r->register($type, $source);
-            }
-
-            return $r;
-        });
+        $this->useFakePayments();
     }
 
     /**
@@ -217,14 +182,5 @@ final class PaymentWithoutBillingTest extends TestCase
 
         $this->assertSame(AttemptStatus::Succeeded, $attempt->fresh()->status);
         $this->assertSame('ref-retrouvee', $attempt->fresh()->provider_ref);
-    }
-
-    private function pay(string $sujet): PaymentIntent
-    {
-        return $this->app->make(InitiatePayment::class)->handle(
-            subject: new PayableRef(FakePayable::TYPE, $sujet),
-            payer: PayerContext::user($this->payeur),
-            rawMsisdn: '+237650000000',
-        )->fresh();
     }
 }

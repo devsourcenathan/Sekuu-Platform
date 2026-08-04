@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Tests\Feature;
+namespace Modules\Payments\Tests\Feature;
 
+use App\Platform\Exceptions\DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
-use Modules\Billing\Tests\Concerns\BillsAnOrganization;
 use Modules\Payments\Domain\AttemptStatus;
 use Modules\Payments\Domain\Models\PaymentIntent;
 use Modules\Payments\Infrastructure\Providers\NotchPayProvider;
-use Modules\Payments\Infrastructure\Providers\ProviderRegistry;
 use Modules\Payments\Infrastructure\Providers\TranzakProvider;
+use Modules\Payments\Tests\Concerns\PaysAFakeSubject;
 use Tests\TestCase;
 
 /**
@@ -25,32 +25,22 @@ use Tests\TestCase;
  */
 final class RealFailoverTest extends TestCase
 {
-    use BillsAnOrganization;
+    use PaysAFakeSubject;
     use RefreshDatabase;
 
     protected function setUp(): void
     {
         parent::setUp();
 
+        $this->useFakePayments();
+
         config()->set('payments.notchpay.base_url', 'https://api.notchpay.co');
         config()->set('payments.notchpay.public_key', 'test_public_key');
         config()->set('payments.tranzak.base_url', 'https://sandbox.dsapi.tranzak.me');
         config()->set('payments.tranzak.app_id', 'app');
         config()->set('payments.tranzak.app_key', 'key');
-        config()->set('payments.providers', [NotchPayProvider::class, TranzakProvider::class]);
 
-        $this->app->forgetInstance(ProviderRegistry::class);
-        $this->app->singleton(ProviderRegistry::class, function ($app): ProviderRegistry {
-            $registry = new ProviderRegistry($app);
-
-            foreach ((array) config('payments.providers') as $provider) {
-                $registry->register($provider);
-            }
-
-            return $registry;
-        });
-
-        $this->signInAsOwner();
+        $this->useProviders([NotchPayProvider::class, TranzakProvider::class]);
     }
 
     /**
@@ -97,17 +87,17 @@ final class RealFailoverTest extends TestCase
             ], 200),
         ]);
 
-        $invoice = $this->subscribe();
-
-        // Les deux agrégateurs refusent : aucune invite n'est partie, donc
-        // aucun client n'a été débité.
-        $this->withToken($this->ownerToken)
-            ->postJson('/api/v1/payments', ['invoice_id' => $invoice->id, 'msisdn' => '+237650000000'])
-            ->assertStatus(503)
-            ->assertJsonPath('error.code', 'PROVIDER_UNAVAILABLE');
+        try {
+            $this->pay();
+            $this->fail('Deux refus doivent lever PROVIDER_UNAVAILABLE.');
+        } catch (DomainException $e) {
+            $this->assertSame('PROVIDER_UNAVAILABLE', $e->errorCode);
+        }
 
         $intent = PaymentIntent::query()->firstOrFail();
 
+        // Les deux agrégateurs refusent : aucune invite n'est partie, donc
+        // aucun client n'a été débité.
         $this->assertSame(PaymentIntent::FAILED, $intent->status);
         $this->assertSame(2, $intent->attempts()->count());
         $this->assertSame(0, $intent->attempts()->where('customer_prompted', true)->count());
@@ -135,12 +125,5 @@ final class RealFailoverTest extends TestCase
         $this->assertSame('notchpay', $intent->attempts()->firstOrFail()->provider);
 
         Http::assertNotSent(fn ($request) => str_contains($request->url(), 'tranzak'));
-    }
-
-    private function pay(): PaymentIntent
-    {
-        $invoice = $this->subscribe();
-
-        return $this->payInvoice($invoice, '+237650000000')->fresh();
     }
 }

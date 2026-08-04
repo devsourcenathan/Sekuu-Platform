@@ -2,42 +2,41 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Tests\Feature;
+namespace Modules\Payments\Tests\Feature;
 
 use App\Platform\Contracts\PayableRef;
 use App\Platform\Contracts\PayerContext;
-use App\Platform\Contracts\PaymentSettlement;
-use App\Platform\Support\Money;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
-use Modules\Billing\Application\Invoicing\InvoicePayable;
-use Modules\Billing\Domain\Models\Invoice;
-use Modules\Billing\Tests\Concerns\BillsAnOrganization;
 use Modules\Payments\Application\Payments\InitiatePayment;
 use Modules\Payments\Domain\AttemptStatus;
-use Modules\Payments\Domain\Models\PaymentIntent;
-use Modules\Payments\Infrastructure\Providers\ChargeOutcome;
-use Modules\Payments\Tests\Support\FakeProvider;
+use Modules\Payments\Tests\Concerns\PaysAFakeSubject;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
- * Les invariants que l'extraction met le plus en danger.
+ * L'invariant que ce module met le plus en danger.
  *
  * La règle de bascule ne vit dans aucun fichier : elle est une **redondance
  * délibérée** répartie sur trois — un statut, un drapeau, et un `&&` qui les
  * combine. Une réécriture peut l'abîmer sans faire tomber un seul test
  * existant, parce que chaque test ne couvre qu'un chemin rencontré.
  *
- * Ces tests-ci couvrent la règle **exhaustivement**, et la couture entre la
- * couche de paiement et le propriétaire de l'objet payé.
+ * Ces tests-ci couvrent la règle **exhaustivement**.
  *
  * @see docs/04-decisions/adr-0008-payment-aggregators-failover.md
  */
 final class FailoverInvariantTest extends TestCase
 {
-    use BillsAnOrganization;
+    use PaysAFakeSubject;
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->useFakePayments();
+    }
 
     /**
      * Table de vérité **exhaustive** de la règle de bascule.
@@ -98,45 +97,6 @@ final class FailoverInvariantTest extends TestCase
     }
 
     /**
-     * La couture ajoute un point de rejeu que rien ne couvrait.
-     *
-     * Le rejeu d'un callback est bloqué en amont par l'unicité
-     * `(provider, provider_event_id)`. Mais le propriétaire de l'objet est
-     * désormais appelé par une méthode ordinaire : rien n'empêche qu'elle le
-     * soit deux fois, par un callback puis par le sondage.
-     */
-    public function test_settling_the_same_payment_twice_pays_the_invoice_once(): void
-    {
-        $this->useFakeProviders();
-        $this->signInAsOwner();
-
-        FakeProvider::willReturn('primary', ChargeOutcome::succeeded('ref-1', gross: 178875));
-
-        $invoice = $this->subscribe('business');
-        $this->payInvoice($invoice);
-
-        $invoice->refresh();
-
-        $this->assertSame(Invoice::PAID, $invoice->status);
-        $this->assertSame($invoice->total, $invoice->amount_paid);
-
-        // Second règlement du même paiement, appelé directement.
-        $intent = PaymentIntent::query()->firstOrFail();
-
-        $this->app->make(InvoicePayable::class)->settled(new PaymentSettlement(
-            paymentIntentId: $intent->id,
-            subject: new PayableRef(InvoicePayable::TYPE, $invoice->id),
-            payer: PayerContext::organization($invoice->organization_id),
-            amount: Money::of($invoice->total, $invoice->currency),
-            provider: 'primary',
-        ));
-
-        // Le montant réglé n'a pas doublé.
-        $this->assertSame($invoice->total, $invoice->fresh()->amount_paid);
-        $this->assertSame(1, PaymentIntent::query()->count());
-    }
-
-    /**
      * Un type d'objet inconnu échoue **durement**.
      *
      * Un repli silencieux ferait aboutir un paiement que personne ne saurait
@@ -145,14 +105,11 @@ final class FailoverInvariantTest extends TestCase
      */
     public function test_an_unregistered_payable_type_is_refused(): void
     {
-        $this->useFakeProviders();
-        $this->signInAsOwner();
-
-        $this->expectExceptionMessage('learn.enrollment');
+        $this->expectExceptionMessage('stock.order');
 
         $this->app->make(InitiatePayment::class)->handle(
-            subject: new PayableRef('learn.enrollment', (string) Str::uuid()),
-            payer: PayerContext::organization($this->organizationId),
+            subject: new PayableRef('stock.order', (string) Str::uuid()),
+            payer: PayerContext::user($this->payer),
             rawMsisdn: '+237650000000',
         );
     }

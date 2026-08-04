@@ -2,19 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Tests\Feature;
+namespace Modules\Payments\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Modules\Billing\Domain\Models\Invoice;
-use Modules\Billing\Domain\Models\Subscription;
-use Modules\Billing\Domain\SubscriptionStatus;
-use Modules\Billing\Tests\Concerns\BillsAnOrganization;
 use Modules\Payments\Application\Payments\ReconcilePayments;
 use Modules\Payments\Domain\Models\PaymentIntent;
 use Modules\Payments\Domain\Models\PaymentTransaction;
 use Modules\Payments\Domain\Models\ProviderEvent;
 use Modules\Payments\Infrastructure\Providers\ChargeOutcome;
 use Modules\Payments\Infrastructure\Webhooks\WebhookRegistry;
+use Modules\Payments\Tests\Concerns\PaysAFakeSubject;
+use Modules\Payments\Tests\Support\FakePayable;
 use Modules\Payments\Tests\Support\FakeProvider;
 use Modules\Payments\Tests\Support\FakeWebhookHandler;
 use Tests\TestCase;
@@ -26,26 +24,24 @@ use Tests\TestCase;
  */
 final class WebhookAndReconciliationTest extends TestCase
 {
-    use BillsAnOrganization;
+    use PaysAFakeSubject;
     use RefreshDatabase;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->useFakeProviders();
+        $this->useFakePayments();
 
         config()->set('payments.webhooks.primary', FakeWebhookHandler::class);
         config()->set('payments.tranzak.auth_key', 'secret-partage');
 
         $this->app->forgetInstance(WebhookRegistry::class);
-
-        $this->signInAsOwner();
     }
 
     public function test_an_invalid_signature_is_refused_but_still_recorded(): void
     {
-        $this->postJson('/api/v1/billing/webhooks/primary', [
+        $this->postJson('/api/v1/payments/webhooks/primary', [
             'authKey' => 'mauvais-secret',
             'resourceId' => 'ref-1',
         ])
@@ -58,12 +54,27 @@ final class WebhookAndReconciliationTest extends TestCase
     }
 
     /**
+     * L'ancienne adresse reste servie tant que des transactions en cours la
+     * portent figée dans leur payload. La retirer trop tôt ferait échouer leurs
+     * callbacks, donc laisserait des clients débités sans service.
+     */
+    public function test_the_legacy_billing_path_still_answers(): void
+    {
+        $this->postJson('/api/v1/billing/webhooks/primary', [
+            'authKey' => 'secret-partage',
+            'resourceId' => 'reference-inconnue',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.reason', 'unknown_reference');
+    }
+
+    /**
      * Le secret partagé ne doit pas être conservé avec le corps brut : il
      * servirait à forger un callback valide à quiconque lirait la table.
      */
     public function test_the_shared_secret_is_never_stored(): void
     {
-        $this->postJson('/api/v1/billing/webhooks/primary', [
+        $this->postJson('/api/v1/payments/webhooks/primary', [
             'authKey' => 'mauvais-secret',
             'resourceId' => 'ref-1',
         ])->assertStatus(401);
@@ -85,7 +96,7 @@ final class WebhookAndReconciliationTest extends TestCase
         // Le corps prétend un succès ; l'agrégateur dira le contraire.
         FakeProvider::willPoll('primary', ChargeOutcome::failed('PAYMENT_FAILED', 'Solde insuffisant', $attempt->provider_ref));
 
-        $this->postJson('/api/v1/billing/webhooks/primary', [
+        $this->postJson('/api/v1/payments/webhooks/primary', [
             'authKey' => 'secret-partage',
             'eventType' => 'REQUEST.COMPLETED',
             'resourceId' => $attempt->provider_ref,
@@ -94,7 +105,10 @@ final class WebhookAndReconciliationTest extends TestCase
         ])->assertOk();
 
         $this->assertSame(PaymentIntent::FAILED, $intent->fresh()->status);
-        $this->assertSame(Invoice::OPEN, Invoice::query()->firstOrFail()->status);
+
+        // Le propriétaire de l'objet n'a **pas** été réglé.
+        $this->assertSame([], FakePayable::$regles);
+        $this->assertSame(0, PaymentTransaction::query()->where('type', 'charge')->count());
     }
 
     public function test_a_replayed_callback_is_processed_once(): void
@@ -110,11 +124,11 @@ final class WebhookAndReconciliationTest extends TestCase
             'resourceId' => $attempt->provider_ref,
         ];
 
-        $this->postJson('/api/v1/billing/webhooks/primary', $payload)
+        $this->postJson('/api/v1/payments/webhooks/primary', $payload)
             ->assertOk()
             ->assertJsonPath('data.processed', true);
 
-        $this->postJson('/api/v1/billing/webhooks/primary', $payload)
+        $this->postJson('/api/v1/payments/webhooks/primary', $payload)
             ->assertOk()
             ->assertJsonPath('data.reason', 'duplicate');
 
@@ -124,7 +138,7 @@ final class WebhookAndReconciliationTest extends TestCase
 
     public function test_an_unknown_reference_is_reported_not_silently_dropped(): void
     {
-        $this->postJson('/api/v1/billing/webhooks/primary', [
+        $this->postJson('/api/v1/payments/webhooks/primary', [
             'authKey' => 'secret-partage',
             'resourceId' => 'reference-inconnue',
         ])
@@ -136,7 +150,7 @@ final class WebhookAndReconciliationTest extends TestCase
 
     /**
      * Le sondage seul suffit à constater un paiement : c'est ce qui empêche un
-     * callback perdu de laisser un client débité sans accès.
+     * callback perdu de laisser un client débité sans service.
      */
     public function test_polling_alone_settles_a_payment(): void
     {
@@ -149,7 +163,9 @@ final class WebhookAndReconciliationTest extends TestCase
 
         $this->assertSame(1, $result['settled']);
         $this->assertSame(PaymentIntent::SUCCEEDED, $intent->fresh()->status);
-        $this->assertSame(SubscriptionStatus::Active, Subscription::query()->firstOrFail()->status);
+
+        // Le propriétaire a été prévenu, sans qu'aucun callback n'arrive.
+        $this->assertSame([$intent->subject_id], FakePayable::$regles);
     }
 
     /**
@@ -176,8 +192,6 @@ final class WebhookAndReconciliationTest extends TestCase
     {
         FakeProvider::willReturn('primary', ChargeOutcome::prompted('ref-primary-1'));
 
-        $invoice = $this->subscribe('business');
-
-        return $this->payInvoice($invoice, '+237650000000')->fresh();
+        return $this->pay();
     }
 }
