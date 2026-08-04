@@ -69,7 +69,16 @@ COPY docker/supervisord.conf /etc/supervisord.conf
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint
 RUN chmod +x /usr/local/bin/entrypoint
 
-RUN composer dump-autoload --no-dev --optimize --classmap-authoritative \
+# Composer n'est pas dans l'image d'exécution, et n'a pas à y rester : on
+# l'emprunte le temps de construire l'autoloader, puis on le retire.
+#
+# `--no-scripts` : le script `post-autoload-dump` lance `package:discover`, donc
+# amorce Laravel pendant la construction — sans APP_KEY ni base de données.
+# Laravel reconstruit ce manifeste tout seul au premier démarrage.
+COPY --from=vendor /usr/bin/composer /usr/local/bin/composer
+
+RUN composer dump-autoload --no-dev --optimize --classmap-authoritative --no-scripts \
+ && rm /usr/local/bin/composer \
  && chown -R www-data:www-data storage bootstrap/cache \
  && chmod -R ug+rwx storage bootstrap/cache
 
