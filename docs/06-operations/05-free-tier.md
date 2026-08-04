@@ -116,6 +116,27 @@ migrations de Laravel créent la table `jobs`.
 Attention : ce choix **ne dispense pas** du worker. Une file sans worker
 accumule des tâches que personne n'exécute.
 
+## 4.1 Les migrations, faute de mieux
+
+```dotenv
+RUN_MIGRATIONS_ON_BOOT=true
+```
+
+Sans plan payant, il n'y a **ni `preDeployCommand` ni shell** : aucun moyen de
+créer les tables. L'entrypoint les applique donc au démarrage du conteneur.
+
+Ce n'est pas le bon endroit, et il faut savoir pourquoi. Normalement, une
+migration tourne **avant** que le trafic ne bascule ; un échec annule le
+déploiement, et l'ancienne version continue de servir. Ici, un échec laisse un
+conteneur qui redémarre en boucle — visible, mais après coup.
+
+**Ne l'activez jamais avec plusieurs instances.** Deux conteneurs démarrant
+ensemble migreraient simultanément, sur des tables monétaires. Tant qu'il n'y a
+qu'un service gratuit, le cas ne peut pas se présenter — c'est la seule raison
+pour laquelle cette option est acceptable.
+
+Retirez-la au passage au payant, et remettez `preDeployCommand`.
+
 ---
 
 # 5. Quand passer au payant
@@ -131,6 +152,10 @@ dort, et ses clients paieraient sans obtenir leur formation.
 
 **Avant que la base gratuite n'expire.** Sinon la question ne se pose plus : les
 données sont parties.
+
+Au passage, retirez `RUN_MIGRATIONS_ON_BOOT` et remettez le `preDeployCommand` :
+un échec de migration doit annuler un déploiement, pas se découvrir en
+production.
 
 Le minimum viable payant n'est pas le blueprint complet. Un service web payant —
 qui ne dort pas — plus une base payante suffisent, en gardant la commande `all`.

@@ -12,6 +12,22 @@
 set -e
 
 # --------------------------------------------------------------------------
+# Migrations, au demarrage — **sur demande explicite**
+# --------------------------------------------------------------------------
+# Normalement, les migrations tournent avant que le trafic ne bascule
+# (`preDeployCommand`), et un echec annule le deploiement sans que personne ne
+# voie une page cassee.
+#
+# L'offre gratuite de Render n'offre ni cette etape ni un shell : sans cette
+# option, il n'existe aucun moyen de creer les tables.
+#
+# **Ne l'activez jamais avec plusieurs instances.** Deux conteneurs demarrant
+# ensemble migreraient en meme temps, sur des tables monetaires.
+if [ "${RUN_MIGRATIONS_ON_BOOT:-false}" = "true" ]; then
+    php artisan migrate --force
+fi
+
+# --------------------------------------------------------------------------
 # Caches compilés
 # --------------------------------------------------------------------------
 # Au **démarrage**, pas à la construction : les variables d'environnement de
