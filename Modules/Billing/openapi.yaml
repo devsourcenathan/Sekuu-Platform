@@ -28,8 +28,13 @@ info:
     deviner.
 
 servers:
-  - url: https://billing.sekuu.com/api/v1
-    description: Production
+  - url: https://platform.sekuu.com/api/v1
+    description: |
+      Production. Un seul domaine sert tous les modules : leur separation
+      est logique, pas encore reseau.
+
+      `https://billing.sekuu.com` est l adresse cible, le jour ou ce
+      module partira dans son propre service. Rien ne l expose aujourd hui.
   - url: http://localhost:8000/api/v1
     description: Local
 

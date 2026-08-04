@@ -65,7 +65,7 @@ Ce qui change par rapport à `.env.example` :
 ```dotenv
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=https://api.sekuu.com
+APP_URL=https://platform.sekuu.com
 
 QUEUE_CONNECTION=redis
 CACHE_STORE=redis
@@ -131,7 +131,7 @@ Et la vérification, en lecture seule :
 ```bash
 php artisan payments:verify
 php artisan schedule:list
-curl -s https://api.sekuu.com/api/v1/payments/health
+curl -s https://platform.sekuu.com/api/v1/payments/health
 ```
 
 ## 3.1 Le serveur web

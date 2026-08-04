@@ -117,8 +117,8 @@ qui pointe sur une autre base est un incident silencieux.
 ## 3.4 Vérifier
 
 ```bash
-curl https://sekuu-api.onrender.com/api/v1/health
-curl https://sekuu-api.onrender.com/api/v1/payments/health
+curl https://platform.sekuu.com/api/v1/health
+curl https://platform.sekuu.com/api/v1/payments/health
 ```
 
 Le second doit répondre `can_collect: true` avec les deux agrégateurs.
@@ -131,8 +131,8 @@ chaque minute. S'il n'y en a aucune, rien ne rattrape les callbacks perdus.
 C'est ici que le domaine de production devient réel :
 
 ```text
-https://sekuu-api.onrender.com/api/v1/payments/webhooks/notchpay
-https://sekuu-api.onrender.com/api/v1/payments/webhooks/tranzak
+https://platform.sekuu.com/api/v1/payments/webhooks/notchpay
+https://platform.sekuu.com/api/v1/payments/webhooks/tranzak
 ```
 
 À enregistrer dans les deux tableaux de bord. Si vous branchez un domaine
@@ -145,7 +145,7 @@ partout, et une transaction en cours porte l'ancienne, figée dans son payload.
 
 ## 4.1 Ce que Render fournit
 
-`sekuu-api.onrender.com`, avec certificat, sans rien faire.
+`platform.sekuu.com`, avec certificat, sans rien faire.
 
 Un domaine personnalisé s'ajoute au service et demande un `CNAME` chez votre
 registrar. Render émet le certificat. Plusieurs domaines peuvent pointer sur le
@@ -163,7 +163,7 @@ La raison est plus forte aujourd'hui qu'à la rédaction de ce chapitre. Sekuu
 Learn consommera `payments.sekuu.com` depuis l'extérieur, et ses URL de callback
 vivront dans les tableaux de bord des agrégateurs. Le jour où Payments part dans
 son propre service, **rien ne change pour personne** — alors qu'avec un
-`api.sekuu.com` unique, il faudrait faire migrer tous les consommateurs et
+`platform.sekuu.com` unique, il faudrait faire migrer tous les consommateurs et
 toutes les URL enregistrées.
 
 Le coût est faible : un enregistrement DNS par sous-domaine, et Render émet les
@@ -205,7 +205,7 @@ C'est le seul point irréversible.
 
 Les URL de callback vivent dans les tableaux de bord des agrégateurs, et une
 transaction en cours porte la sienne **figée dans son payload**. Passer de
-`api.sekuu.com/api/v1/payments/webhooks/tranzak` à
+`platform.sekuu.com/api/v1/payments/webhooks/tranzak` à
 `payments.sekuu.com/…` plus tard oblige à garder les deux adresses servies le
 temps que les transactions en vol se terminent.
 

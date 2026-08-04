@@ -122,8 +122,8 @@ d'encaissement qui ne repartiront jamais.
 À enregistrer dans les deux tableaux de bord :
 
 ```text
-https://payments.sekuu.com/api/v1/payments/webhooks/notchpay
-https://payments.sekuu.com/api/v1/payments/webhooks/tranzak
+https://platform.sekuu.com/api/v1/payments/webhooks/notchpay
+https://platform.sekuu.com/api/v1/payments/webhooks/tranzak
 ```
 
 L'ancienne adresse `/api/v1/billing/webhooks/{provider}` reste servie : des
@@ -163,7 +163,7 @@ Elle ne prouve **pas** que les callbacks arriveront — voir § 3.4.
 ## 3.4 Vérifier le service
 
 ```bash
-curl https://payments.sekuu.com/api/v1/payments/health
+curl https://platform.sekuu.com/api/v1/payments/health
 ```
 
 `can_collect: true` et les deux agrégateurs dans `providers`. Un agrégateur sans
