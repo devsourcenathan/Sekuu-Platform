@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Modules\Billing\Domain\Models;
 
+use App\Platform\Support\Money;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Modules\Billing\Domain\Money;
 
 final class Invoice extends Model
 {

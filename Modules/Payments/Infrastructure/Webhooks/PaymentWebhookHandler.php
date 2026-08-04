@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Infrastructure\Webhooks;
+namespace Modules\Payments\Infrastructure\Webhooks;
 
 use Illuminate\Http\Request;
 

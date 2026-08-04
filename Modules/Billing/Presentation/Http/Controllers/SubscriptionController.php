@@ -16,9 +16,9 @@ use Modules\Billing\Application\Subscriptions\SubscribeToPlan;
 use Modules\Billing\Domain\Models\Invoice;
 use Modules\Billing\Domain\Models\Plan;
 use Modules\Billing\Domain\Models\Subscription;
+use Modules\Billing\Presentation\Http\Controllers\Concerns\EngagesTheOrganization;
 use Modules\Billing\Presentation\Http\Requests\ChangePlanRequest;
 use Modules\Billing\Presentation\Http\Requests\SubscribeRequest;
-use Modules\Billing\Presentation\Support\ResolvesOrganization;
 
 /**
  * Abonnement de l'organisation active.
@@ -30,7 +30,7 @@ use Modules\Billing\Presentation\Support\ResolvesOrganization;
  */
 final class SubscriptionController
 {
-    use ResolvesOrganization;
+    use EngagesTheOrganization;
 
     public function __construct(private readonly CreditLedger $credit) {}
 
@@ -40,7 +40,7 @@ final class SubscriptionController
      */
     public function show(Request $request): JsonResponse
     {
-        $organizationId = $this->organizationId($request);
+        $organizationId = $this->organizationId();
 
         $subscription = Subscription::query()
             ->where('organization_id', $organizationId)
@@ -61,7 +61,7 @@ final class SubscriptionController
     public function history(Request $request): JsonResponse
     {
         $subscriptions = Subscription::query()
-            ->where('organization_id', $this->organizationId($request))
+            ->where('organization_id', $this->organizationId())
             ->with(['plan', 'price'])
             ->orderByDesc('created_at')
             ->limit(50)
@@ -72,13 +72,13 @@ final class SubscriptionController
 
     public function store(SubscribeRequest $request, SubscribeToPlan $subscribe): JsonResponse
     {
-        $context = $this->requireBillingRole($request);
+        $this->requireBillingRole();
 
         $result = $subscribe->handle(
-            organizationId: $this->organizationId($request),
+            organizationId: $this->organizationId(),
             planKey: $request->string('plan_key')->toString(),
             priceId: $request->input('price_id'),
-            userId: $context->user->id,
+            userId: $this->userId(),
         );
 
         return ApiResponse::created([
@@ -89,7 +89,7 @@ final class SubscriptionController
 
     public function change(ChangePlanRequest $request, ChangePlan $change): JsonResponse
     {
-        $this->requireBillingRole($request);
+        $this->requireBillingRole();
 
         $subscription = $this->aliveSubscription($request);
         $plan = Plan::query()->active()->where('key', $request->string('plan_key')->toString())->first();
@@ -127,7 +127,7 @@ final class SubscriptionController
      */
     public function renew(Request $request, RenewSubscription $renew): JsonResponse
     {
-        $this->requireBillingRole($request);
+        $this->requireBillingRole();
 
         $invoice = $renew->handle($this->aliveSubscription($request, includeSuspended: true));
 
@@ -140,7 +140,7 @@ final class SubscriptionController
      */
     public function cancel(Request $request): JsonResponse
     {
-        $this->requireBillingRole($request);
+        $this->requireBillingRole();
 
         $subscription = $this->aliveSubscription($request);
 
@@ -157,7 +157,7 @@ final class SubscriptionController
 
     public function resume(Request $request): JsonResponse
     {
-        $this->requireBillingRole($request);
+        $this->requireBillingRole();
 
         $subscription = $this->aliveSubscription($request);
 
@@ -173,7 +173,7 @@ final class SubscriptionController
     private function aliveSubscription(Request $request, bool $includeSuspended = false): Subscription
     {
         $subscription = Subscription::query()
-            ->where('organization_id', $this->organizationId($request))
+            ->where('organization_id', $this->organizationId())
             ->when(
                 $includeSuspended,
                 fn ($q) => $q->whereNotIn('status', ['expired']),

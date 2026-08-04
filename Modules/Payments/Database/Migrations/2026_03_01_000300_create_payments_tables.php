@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * @see docs/04-decisions/adr-0008-payment-aggregators-failover.md
+ * @see docs/05-analyses/extraction-payments.md
  */
 return new class extends Migration
 {
@@ -16,9 +17,40 @@ return new class extends Migration
     {
         Schema::create('payment_intents', function (Blueprint $table): void {
             $table->uuid('id')->primary();
-            $table->uuid('organization_id');
-            $table->foreignUuid('invoice_id')->nullable()
-                ->constrained('invoices')->nullOnDelete();
+
+            /*
+             * Ce que ce paiement règle, sans que la couche de paiement sache ce
+             * que c'est. `subject_type` suit `{module}.{ressource}` —
+             * `billing.invoice`, `learn.enrollment` — et n'est jamais
+             * interprété ici : il est porté, indexé, et remis à un résolveur.
+             *
+             * NOT NULL tous les deux, et c'est le point : c'est ce qui permet à
+             * l'index d'unicité ci-dessous de se passer d'une clause
+             * d'exclusion. La version précédente portait `invoice_id NULL` et
+             * excluait explicitement les intentions sans facture — autrement
+             * dit, un paiement sans facture n'avait **aucune** protection
+             * anti-double-invite.
+             */
+            $table->string('subject_type', 40);
+            $table->uuid('subject_id');
+
+            /*
+             * Qui paie et qui encaisse, séparément.
+             *
+             * Les confondre marche tant qu'il n'y a qu'un vendeur. Sekuu
+             * facturant ses organisations clientes, `organization_id` désignait
+             * jusqu'ici le **payeur** ; le jour où un centre de formation
+             * encaisse via la plateforme, il désigne le **bénéficiaire**. Un
+             * seul champ ne peut pas dire les deux, et s'en apercevoir plus
+             * tard obligerait à remigrer des données monétaires.
+             */
+            $table->string('payer_type', 40);
+            $table->uuid('payer_id');
+
+            // `null` = la plateforme encaisse pour elle-même. Référence
+            // logique : aucune contrainte vers un autre module.
+            $table->uuid('payee_organization_id')->nullable();
+
             $table->bigInteger('amount');
             $table->char('currency', 3);
             $table->string('method', 20);
@@ -38,7 +70,9 @@ return new class extends Migration
             $table->string('request_id', 64)->nullable();
             $table->timestamps();
 
-            $table->index('organization_id');
+            $table->index(['payer_type', 'payer_id']);
+            $table->index('payee_organization_id');
+            $table->index(['subject_type', 'subject_id']);
         });
 
         DB::statement("ALTER TABLE payment_intents ADD CONSTRAINT payment_intents_status_check
@@ -46,19 +80,31 @@ return new class extends Migration
         DB::statement('ALTER TABLE payment_intents ADD CONSTRAINT payment_intents_amount_check
                        CHECK (amount > 0)');
 
+        /*
+         * Idempotence **scopée au payeur**.
+         *
+         * L'index portait auparavant sur la seule colonne `idempotency_key`, et
+         * la lecture correspondante ne filtrait sur rien. Avec deux produits
+         * dont les clients dérivent naturellement leurs clés du métier —
+         * `invoice-123`, `order-1` — un payeur pouvait recevoir en réponse
+         * l'intention d'un autre, montant et tentatives compris, et voir son
+         * propre paiement silencieusement non lancé.
+         */
         DB::statement(
             'CREATE UNIQUE INDEX payment_intents_idempotency_unique
-             ON payment_intents (idempotency_key) WHERE idempotency_key IS NOT NULL'
+             ON payment_intents (payer_type, payer_id, idempotency_key)
+             WHERE idempotency_key IS NOT NULL'
         );
 
-        // Le garde-fou contre le client impatient : sans lui, trois clics
-        // produisent trois invites, et trois débits possibles. La contrainte est
-        // en base, pas dans le code — une vérification applicative perdrait la
-        // course sous concurrence.
+        /*
+         * Le garde-fou contre le client impatient : trois clics ne produisent
+         * pas trois invites. **Sans clause d'exclusion**, donc valable pour tout
+         * objet payable, pas seulement pour une facture.
+         */
         DB::statement(
-            "CREATE UNIQUE INDEX payment_intents_one_alive_per_invoice
-             ON payment_intents (invoice_id)
-             WHERE status IN ('pending','processing') AND invoice_id IS NOT NULL"
+            "CREATE UNIQUE INDEX payment_intents_one_alive_per_subject
+             ON payment_intents (subject_type, subject_id)
+             WHERE status IN ('pending','processing')"
         );
 
         Schema::create('payment_attempts', function (Blueprint $table): void {
@@ -114,17 +160,29 @@ return new class extends Migration
              WHERE status IN ('created','prompted','processing')"
         );
 
-        // Registre append-only. Pas de `updated_at` : rien n'est modifié après
-        // coup. Corriger une écriture en la réécrivant efface la trace de
-        // l'erreur, et avec elle toute possibilité d'expliquer un solde.
-        Schema::create('transactions', function (Blueprint $table): void {
+        /*
+         * Registre des mouvements de caisse, append-only.
+         *
+         * Ne porte que ce qui touche à l'argent réellement encaissé : `charge`,
+         * `fee`, `refund`. Le crédit commercial d'une organisation vit dans
+         * `credit_entries`, côté Billing — la frontière existait déjà dans le
+         * code (`creditTypes()` excluait exactement `charge` et `fee`), elle
+         * devient physique.
+         *
+         * Pas de colonne `updated_at` : rien n'est modifié après coup. Corriger
+         * une écriture en la réécrivant efface la trace de l'erreur, et avec
+         * elle toute possibilité d'expliquer un solde.
+         */
+        Schema::create('payment_transactions', function (Blueprint $table): void {
             $table->uuid('id')->primary();
-            $table->uuid('organization_id');
-            $table->uuid('invoice_id')->nullable();
-            $table->foreignUuid('payment_intent_id')->nullable()
-                ->constrained('payment_intents')->nullOnDelete();
-            $table->foreignUuid('payment_attempt_id')->nullable()
-                ->constrained('payment_attempts')->nullOnDelete();
+
+            // Références **logiques** : ces tables changeront de module.
+            $table->uuid('payment_intent_id')->nullable();
+            $table->uuid('payment_attempt_id')->nullable();
+            $table->string('subject_type', 40)->nullable();
+            $table->uuid('subject_id')->nullable();
+            $table->uuid('payee_organization_id')->nullable();
+
             $table->string('type', 20);
             $table->bigInteger('amount');
             $table->char('currency', 3);
@@ -133,13 +191,30 @@ return new class extends Migration
             $table->jsonb('metadata')->default('{}');
             $table->timestamp('created_at')->nullable();
 
-            $table->index(['organization_id', 'occurred_at']);
+            $table->index(['subject_type', 'subject_id']);
+            $table->index('payment_intent_id');
         });
 
-        DB::statement("ALTER TABLE transactions ADD CONSTRAINT transactions_type_check
-                       CHECK (type IN ('charge','fee','refund','credit','debit','adjustment'))");
-        DB::statement('ALTER TABLE transactions ADD CONSTRAINT transactions_amount_check
+        DB::statement("ALTER TABLE payment_transactions ADD CONSTRAINT payment_transactions_type_check
+                       CHECK (type IN ('charge','fee','refund'))");
+        DB::statement('ALTER TABLE payment_transactions ADD CONSTRAINT payment_transactions_amount_check
                        CHECK (amount <> 0)');
+
+        /*
+         * Anti-double-encaissement, en base cette fois.
+         *
+         * La protection était applicative : `applyToIntent()` court-circuite si
+         * l'intention est déjà `succeeded`, mais sans verrou. Deux exécutions
+         * concurrentes — le sondage toutes les cinq minutes et un callback, ou
+         * deux des trois callbacks qu'un agrégateur envoie pour un seul
+         * paiement — peuvent lire toutes deux `processing` et écrire deux
+         * lignes `charge`. La facture reste juste, la comptabilité non.
+         */
+        DB::statement(
+            "CREATE UNIQUE INDEX payment_transactions_one_charge_per_intent
+             ON payment_transactions (payment_intent_id)
+             WHERE type = 'charge' AND payment_intent_id IS NOT NULL"
+        );
 
         Schema::create('provider_events', function (Blueprint $table): void {
             $table->uuid('id')->primary();
@@ -166,7 +241,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('provider_events');
-        Schema::dropIfExists('transactions');
+        Schema::dropIfExists('payment_transactions');
         Schema::dropIfExists('payment_attempts');
         Schema::dropIfExists('payment_intents');
     }

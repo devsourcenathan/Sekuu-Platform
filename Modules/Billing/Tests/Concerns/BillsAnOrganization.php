@@ -4,52 +4,23 @@ declare(strict_types=1);
 
 namespace Modules\Billing\Tests\Concerns;
 
+use App\Platform\Contracts\PayableRef;
+use App\Platform\Contracts\PayerContext;
+use Modules\Billing\Application\Invoicing\InvoicePayable;
 use Modules\Billing\Domain\Models\Invoice;
 use Modules\Billing\Domain\Models\Subscription;
 use Modules\Billing\Domain\SubscriptionStatus;
-use Modules\Billing\Infrastructure\Providers\ProviderRegistry;
-use Modules\Billing\Tests\Support\FakeProvider;
-use Modules\Billing\Tests\Support\PrimaryProvider;
-use Modules\Billing\Tests\Support\SecondaryProvider;
+use Modules\Payments\Application\Payments\InitiatePayment;
+use Modules\Payments\Domain\Models\PaymentIntent;
+use Modules\Payments\Infrastructure\Providers\ProviderRegistry;
+use Modules\Payments\Tests\Support\FakeProvider;
+use Modules\Payments\Tests\Support\PrimaryProvider;
+use Modules\Payments\Tests\Support\SecondaryProvider;
+use Tests\Concerns\SignsInAsOwner;
 
 trait BillsAnOrganization
 {
-    protected string $ownerToken;
-
-    protected string $organizationId;
-
-    /**
-     * Inscription, création d'organisation, puis bascule du token dessus.
-     *
-     * Passe par l'API plutôt que par des factories : l'abonnement dépend de
-     * rôles et d'un claim d'organisation dans le token, et les fabriquer à la
-     * main laisserait le test vert sur un chemin que personne n'emprunte.
-     */
-    protected function signInAsOwner(string $email = 'nathan@sekuu.com'): void
-    {
-        $token = $this->postJson('/api/v1/auth/register', [
-            'first_name' => 'Nathan',
-            'last_name' => 'Tchinda',
-            'email' => $email,
-            'password' => 'un-mot-de-passe-long',
-        ])->assertCreated()->json('data.access_token');
-
-        $organization = $this->withToken($token)
-            ->postJson('/api/v1/organizations', ['name' => 'SOS Clinique'])
-            ->assertCreated()
-            ->json('data');
-
-        $this->organizationId = $organization['id'];
-
-        $this->flushHeaders();
-
-        $this->ownerToken = $this->withToken($token)
-            ->postJson('/api/v1/auth/switch-organization', ['organization_id' => $this->organizationId])
-            ->assertOk()
-            ->json('data.access_token');
-
-        $this->flushHeaders();
-    }
+    use SignsInAsOwner;
 
     /**
      * Deux agrégateurs factices, dont on contrôle exactement l'issue.
@@ -58,14 +29,14 @@ trait BillsAnOrganization
     {
         FakeProvider::reset();
 
-        config()->set('billing.providers', [PrimaryProvider::class, SecondaryProvider::class]);
+        config()->set('payments.providers', [PrimaryProvider::class, SecondaryProvider::class]);
 
         $this->app->forgetInstance(ProviderRegistry::class);
 
         $this->app->singleton(ProviderRegistry::class, function ($app): ProviderRegistry {
             $registry = new ProviderRegistry($app);
 
-            foreach ((array) config('billing.providers', []) as $provider) {
+            foreach ((array) config('payments.providers', []) as $provider) {
                 $registry->register($provider);
             }
 
@@ -90,6 +61,22 @@ trait BillsAnOrganization
         $invoiceId = $response->json('data.invoice.id');
 
         return $invoiceId === null ? null : Invoice::query()->findOrFail($invoiceId);
+    }
+
+    /**
+     * Règle une facture.
+     *
+     * Existe pour que les tests appellent le paiement en une ligne : la couche
+     * de paiement ne connaît plus la facture, et étaler la construction du
+     * `PayableRef` dans vingt tests noierait leurs assertions.
+     */
+    protected function payInvoice(Invoice $invoice, string $msisdn = '+237650000000'): PaymentIntent
+    {
+        return app(InitiatePayment::class)->handle(
+            subject: new PayableRef(InvoicePayable::TYPE, $invoice->id),
+            payer: PayerContext::organization($invoice->organization_id),
+            rawMsisdn: $msisdn,
+        );
     }
 
     /**

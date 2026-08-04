@@ -2,21 +2,24 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Presentation\Http\Controllers;
+namespace Modules\Payments\Presentation\Http\Controllers;
 
 use App\Platform\Exceptions\DomainException;
 use App\Platform\Http\ApiResponse;
+use App\Platform\Http\Concerns\ResolvesOrganization;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Billing\Application\Payments\InitiatePayment;
-use Modules\Billing\Domain\Models\Invoice;
-use Modules\Billing\Domain\Models\PaymentAttempt;
-use Modules\Billing\Domain\Models\PaymentIntent;
-use Modules\Billing\Presentation\Http\Requests\CreatePaymentRequest;
-use Modules\Billing\Presentation\Support\ResolvesOrganization;
+use Modules\Payments\Domain\Models\PaymentAttempt;
+use Modules\Payments\Domain\Models\PaymentIntent;
 
 /**
- * Paiement Mobile Money.
+ * Consultation des paiements.
+ *
+ * **Lecture seule.** Déclencher un paiement appartient au module qui possède
+ * l'objet payé : lui seul sait ce qu'il vaut et qui a le droit de le régler.
+ * Payments n'expose donc aucune route de création — il offrirait sinon un
+ * moyen de faire sonner le téléphone de quelqu'un sans savoir pourquoi.
  *
  * @see docs/04-decisions/adr-0008-payment-aggregators-failover.md
  */
@@ -24,55 +27,28 @@ final class PaymentController
 {
     use ResolvesOrganization;
 
-    public function store(CreatePaymentRequest $request, InitiatePayment $payments): JsonResponse
-    {
-        $context = $this->requireBillingRole($request);
-        $organizationId = $this->organizationId($request);
-
-        $invoice = Invoice::query()
-            ->where('organization_id', $organizationId)
-            ->whereKey($request->string('invoice_id')->toString())
-            ->first();
-
-        if ($invoice === null) {
-            throw DomainException::notFound('INVOICE_NOT_FOUND', __('billing::messages.invoice_not_found'));
-        }
-
-        // Ni le montant ni l'agrégateur ne viennent du corps : le premier vient
-        // de la facture, le second est un détail d'exploitation dont
-        // l'exposition figerait l'ordre de priorité dans les interfaces.
-        $intent = $payments->handle(
-            invoice: $invoice,
-            rawMsisdn: $request->string('msisdn')->toString(),
-            idempotencyKey: $request->header('Idempotency-Key'),
-            initiatedBy: $context->user->id,
-        );
-
-        // 202 et non 201 : ce qui est créé est une **intention**. Le client doit
-        // ensuite interroger `GET /payments/{id}`.
-        return ApiResponse::success($this->present($intent, detailed: true), status: 202);
-    }
+    /**
+     * Rôles autorisés à voir le détail des tentatives.
+     *
+     * L'ordre de priorité des agrégateurs est une information d'exploitation :
+     * un membre ordinaire n'a pas à savoir chez qui la plateforme encaisse.
+     *
+     * @var list<string>
+     */
+    private const ROLES_DETAIL = ['owner', 'admin'];
 
     public function show(Request $request, string $paymentId): JsonResponse
     {
-        $intent = PaymentIntent::query()
-            ->where('organization_id', $this->organizationId($request))
-            ->whereKey($paymentId)
-            ->with('attempts')
-            ->first();
+        $intent = $this->scoped()->whereKey($paymentId)->with('attempts')->first();
 
         if ($intent === null) {
             throw DomainException::notFound(
                 'RESOURCE_NOT_FOUND',
-                __('billing::messages.payment_not_found'),
+                __('payments::messages.payment_not_found'),
             );
         }
 
-        // Les tentatives ne sont exposées qu'aux rôles de facturation : l'ordre
-        // de priorité des agrégateurs est une information d'exploitation.
-        $detailed = $this->hasBillingRole($request);
-
-        $response = ApiResponse::success($this->present($intent, $detailed));
+        $response = ApiResponse::success($this->present($intent, $this->hasRole(self::ROLES_DETAIL)));
 
         // Sonder est le mode d'emploi de cet endpoint : le dire dans l'en-tête
         // évite que chaque client invente son propre rythme.
@@ -85,24 +61,23 @@ final class PaymentController
 
     public function index(Request $request): JsonResponse
     {
-        $intents = PaymentIntent::query()
-            ->where('organization_id', $this->organizationId($request))
-            ->orderByDesc('created_at')
-            ->limit(50)
-            ->get();
+        $intents = $this->scoped()->orderByDesc('created_at')->limit(50)->get();
 
         return ApiResponse::success($intents->map(fn (PaymentIntent $i) => $this->present($i))->all());
     }
 
-    private function hasBillingRole(Request $request): bool
+    /**
+     * Les paiements de l'organisation courante, **en tant que payeuse**.
+     *
+     * Le jour où un tiers encaisse via la plateforme, il consultera les siens
+     * par `payee_organization_id` : deux questions distinctes, deux requêtes
+     * distinctes.
+     */
+    private function scoped(): Builder
     {
-        try {
-            $this->requireBillingRole($request);
-
-            return true;
-        } catch (DomainException) {
-            return false;
-        }
+        return PaymentIntent::query()
+            ->where('payer_type', PaymentIntent::PAYER_ORGANIZATION)
+            ->where('payer_id', $this->organizationId());
     }
 
     /**
@@ -114,14 +89,15 @@ final class PaymentController
             'id' => $intent->id,
             'status' => $intent->status,
             'operator' => $intent->operator,
-            'invoice_id' => $intent->invoice_id,
+            'subject_type' => $intent->subject_type,
+            'subject_id' => $intent->subject_id,
             ...$intent->money()->toArray(),
             'expires_at' => $intent->expires_at->toIso8601ZuluString(),
             'failure_code' => $intent->failure_code,
         ];
 
         if ($intent->status === PaymentIntent::PENDING) {
-            $payload['instructions'] = __('billing::messages.payment_instructions');
+            $payload['instructions'] = __('payments::messages.payment_instructions');
         }
 
         if (! $detailed) {

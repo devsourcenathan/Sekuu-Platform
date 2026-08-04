@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Domain;
+namespace App\Platform\Support;
 
 use App\Platform\Exceptions\DomainException;
 
@@ -17,6 +17,11 @@ use App\Platform\Exceptions\DomainException;
  * développement où les montants sont inventés : d'où l'exposant porté
  * explicitement par la devise, et aucune conversion implicite.
  *
+ * Vit dans le noyau partagé, et non dans un module : Billing en a besoin pour
+ * ses factures, la couche de paiement pour ses montants. Le dupliquer créerait
+ * deux définitions de l'exposant, et un `assertSameCurrency` qui ne protégerait
+ * plus rien à la frontière entre les deux.
+ *
  * @see docs/03-services/billing/02-data-model.md
  */
 final readonly class Money
@@ -28,12 +33,12 @@ final readonly class Money
 
     public static function of(int $amount, ?string $currency = null): self
     {
-        $currency = mb_strtoupper($currency ?? (string) config('billing.default_currency'));
+        $currency = mb_strtoupper($currency ?? (string) config('sekuu.default_currency'));
 
-        if (! is_array(config('billing.currencies.'.$currency))) {
+        if (! is_array(config('sekuu.currencies.'.$currency))) {
             throw DomainException::unprocessable(
                 'CURRENCY_NOT_SUPPORTED',
-                __('billing::messages.currency_not_supported', ['currency' => $currency]),
+                __('payments::messages.currency_not_supported', ['currency' => $currency]),
             );
         }
 
@@ -47,7 +52,7 @@ final readonly class Money
 
     public function exponent(): int
     {
-        return (int) config('billing.currencies.'.$this->currency.'.exponent', 2);
+        return (int) config('sekuu.currencies.'.$this->currency.'.exponent', 2);
     }
 
     public function plus(self $other): self
@@ -137,7 +142,7 @@ final readonly class Money
         if ($other->currency !== $this->currency) {
             throw DomainException::unprocessable(
                 'CURRENCY_MISMATCH',
-                __('billing::messages.currency_mismatch'),
+                __('payments::messages.currency_mismatch'),
             );
         }
 

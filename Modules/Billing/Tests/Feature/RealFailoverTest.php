@@ -6,13 +6,12 @@ namespace Modules\Billing\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
-use Modules\Billing\Application\Payments\InitiatePayment;
-use Modules\Billing\Domain\AttemptStatus;
-use Modules\Billing\Domain\Models\PaymentIntent;
-use Modules\Billing\Infrastructure\Providers\NotchPayProvider;
-use Modules\Billing\Infrastructure\Providers\ProviderRegistry;
-use Modules\Billing\Infrastructure\Providers\TranzakProvider;
 use Modules\Billing\Tests\Concerns\BillsAnOrganization;
+use Modules\Payments\Domain\AttemptStatus;
+use Modules\Payments\Domain\Models\PaymentIntent;
+use Modules\Payments\Infrastructure\Providers\NotchPayProvider;
+use Modules\Payments\Infrastructure\Providers\ProviderRegistry;
+use Modules\Payments\Infrastructure\Providers\TranzakProvider;
 use Tests\TestCase;
 
 /**
@@ -33,18 +32,18 @@ final class RealFailoverTest extends TestCase
     {
         parent::setUp();
 
-        config()->set('billing.notchpay.base_url', 'https://api.notchpay.co');
-        config()->set('billing.notchpay.public_key', 'test_public_key');
-        config()->set('billing.tranzak.base_url', 'https://sandbox.dsapi.tranzak.me');
-        config()->set('billing.tranzak.app_id', 'app');
-        config()->set('billing.tranzak.app_key', 'key');
-        config()->set('billing.providers', [NotchPayProvider::class, TranzakProvider::class]);
+        config()->set('payments.notchpay.base_url', 'https://api.notchpay.co');
+        config()->set('payments.notchpay.public_key', 'test_public_key');
+        config()->set('payments.tranzak.base_url', 'https://sandbox.dsapi.tranzak.me');
+        config()->set('payments.tranzak.app_id', 'app');
+        config()->set('payments.tranzak.app_key', 'key');
+        config()->set('payments.providers', [NotchPayProvider::class, TranzakProvider::class]);
 
         $this->app->forgetInstance(ProviderRegistry::class);
         $this->app->singleton(ProviderRegistry::class, function ($app): ProviderRegistry {
             $registry = new ProviderRegistry($app);
 
-            foreach ((array) config('billing.providers') as $provider) {
+            foreach ((array) config('payments.providers') as $provider) {
                 $registry->register($provider);
             }
 
@@ -142,6 +141,6 @@ final class RealFailoverTest extends TestCase
     {
         $invoice = $this->subscribe();
 
-        return $this->app->make(InitiatePayment::class)->handle($invoice, '+237650000000')->fresh();
+        return $this->payInvoice($invoice, '+237650000000')->fresh();
     }
 }

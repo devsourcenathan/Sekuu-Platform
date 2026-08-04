@@ -3,12 +3,10 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
-use Modules\Billing\Presentation\Http\Controllers\HealthController;
 use Modules\Billing\Presentation\Http\Controllers\InvoiceController;
-use Modules\Billing\Presentation\Http\Controllers\PaymentController;
+use Modules\Billing\Presentation\Http\Controllers\InvoicePaymentController;
 use Modules\Billing\Presentation\Http\Controllers\PlanController;
 use Modules\Billing\Presentation\Http\Controllers\SubscriptionController;
-use Modules\Billing\Presentation\Http\Controllers\WebhookController;
 
 /*
 |--------------------------------------------------------------------------
@@ -26,26 +24,12 @@ use Modules\Billing\Presentation\Http\Controllers\WebhookController;
 |
 */
 
-Route::get('billing/health', HealthController::class)->name('health');
-
 /*
 | Catalogue. Public : une page de tarifs doit être lisible avant d'avoir un
 | compte. Il n'y a pas de POST — les plans sont versionnés avec le code.
 */
 Route::get('plans', [PlanController::class, 'index'])->name('plans.index');
 Route::get('plans/{plan}', [PlanController::class, 'show'])->name('plans.show');
-
-/*
-| Callbacks des agrégateurs. Publique au sens réseau, authentifiée par
-| signature ou secret partagé, et jamais crue sur parole : le statut est relu
-| chez l'agrégateur.
-|
-| Préfixée par `billing/` comme la route de santé : en production les
-| sous-domaines séparent les modules, mais en développement ils répondent tous
-| sur le même hôte — et `webhooks/{provider}` existe déjà pour Notify. Sans ce
-| préfixe, le dernier module enregistré écrase l'autre, silencieusement.
-*/
-Route::post('billing/webhooks/{provider}', WebhookController::class)->name('webhooks');
 
 Route::middleware(['auth:api', 'organization'])->group(function (): void {
     /*
@@ -71,7 +55,12 @@ Route::middleware(['auth:api', 'organization'])->group(function (): void {
     Route::get('invoices/{invoice}/download', [InvoiceController::class, 'download'])
         ->name('invoices.download');
 
-    Route::get('payments', [PaymentController::class, 'index'])->name('payments.index');
-    Route::post('payments', [PaymentController::class, 'store'])->name('payments.store');
-    Route::get('payments/{payment}', [PaymentController::class, 'show'])->name('payments.show');
+    /*
+    | Régler une facture.
+    |
+    | La **consultation** des paiements appartient à Payments ; leur
+    | déclenchement reste ici, parce qu'il suppose de savoir ce qu'on paie,
+    | combien cela vaut, et qui a le droit de le régler.
+    */
+    Route::post('payments', InvoicePaymentController::class)->name('payments.store');
 });

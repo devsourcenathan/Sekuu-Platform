@@ -2,20 +2,19 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Application\Payments;
+namespace Modules\Payments\Application\Payments;
 
+use App\Platform\Contracts\PayableRef;
+use App\Platform\Contracts\PayerContext;
+use App\Platform\Contracts\PaymentSettlement;
 use App\Platform\Events\PublishesDomainEvents;
+use App\Platform\Support\Money;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Modules\Billing\Application\Ledger\CreditLedger;
-use Modules\Billing\Application\Notifications\AddressesTheOrganization;
-use Modules\Billing\Application\Subscriptions\ActivateSubscription;
-use Modules\Billing\Domain\AttemptStatus;
-use Modules\Billing\Domain\Models\Invoice;
-use Modules\Billing\Domain\Models\PaymentAttempt;
-use Modules\Billing\Domain\Models\PaymentIntent;
-use Modules\Billing\Domain\Money;
-use Modules\Billing\Infrastructure\Providers\ChargeOutcome;
+use Modules\Payments\Domain\AttemptStatus;
+use Modules\Payments\Domain\Models\PaymentAttempt;
+use Modules\Payments\Domain\Models\PaymentIntent;
+use Modules\Payments\Infrastructure\Providers\ChargeOutcome;
 
 /**
  * Constatation d'un paiement.
@@ -23,15 +22,17 @@ use Modules\Billing\Infrastructure\Providers\ChargeOutcome;
  * Le point d'entrée unique par lequel passent l'appel de débit, le callback et
  * le sondage. Trois chemins, une seule écriture — sans quoi le même paiement
  * serait constaté deux fois selon qui arrive le premier.
+ *
+ * Ne sait plus ce qu'un paiement règle : il remet l'issue au propriétaire de
+ * l'objet, résolu par `subject_type`.
  */
 final class SettlePayment
 {
-    use AddressesTheOrganization;
     use PublishesDomainEvents;
 
     public function __construct(
-        private readonly CreditLedger $ledger,
-        private readonly ActivateSubscription $activation,
+        private readonly PaymentLedger $ledger,
+        private readonly PayableRegistry $payables,
     ) {}
 
     public function applyToAttempt(PaymentAttempt $attempt, ChargeOutcome $outcome): PaymentAttempt
@@ -49,18 +50,27 @@ final class SettlePayment
             'gross_amount' => $outcome->grossAmount ?? $attempt->gross_amount,
             'fee_amount' => $outcome->feeAmount ?? $attempt->fee_amount,
             'net_amount' => $outcome->netAmount ?? $attempt->net_amount,
-            'settled_at' => $outcome->status->isTerminal() ? now() : null,
+            // Une tentative aboutie ne perd pas sa date de règlement parce
+            // qu'un sondage tardif a échoué : `settled_at` ne se remet jamais
+            // à null.
+            'settled_at' => $outcome->status->isTerminal() ? now() : $attempt->settled_at,
         ])->save();
 
         return $attempt;
     }
 
     /**
-     * Report de l'état d'une tentative sur son intention, puis sur la facture.
+     * Report de l'état d'une tentative sur son intention, puis sur l'objet payé.
      */
     public function applyToIntent(PaymentIntent $intent, PaymentAttempt $attempt): PaymentIntent
     {
         return DB::transaction(function () use ($intent, $attempt): PaymentIntent {
+            // Verrou sur l'intention, et non seulement sur l'objet payé : deux
+            // exécutions concurrentes — le sondage et un callback, ou deux des
+            // trois livraisons qu'un agrégateur envoie pour un seul paiement —
+            // pouvaient lire toutes deux `processing` et encaisser deux fois.
+            $intent = PaymentIntent::query()->lockForUpdate()->find($intent->id) ?? $intent;
+
             $status = match ($attempt->status) {
                 AttemptStatus::Succeeded => PaymentIntent::SUCCEEDED,
                 AttemptStatus::Failed, AttemptStatus::Rejected => PaymentIntent::FAILED,
@@ -86,18 +96,9 @@ final class SettlePayment
             }
 
             if ($status === PaymentIntent::FAILED) {
-                $this->publish('billing.payment.failed', [
-                    'payment_intent_id' => $intent->id,
-                    'invoice_id' => $intent->invoice_id,
-                    'failure_code' => $intent->failure_code,
-                    // SMS : le client vient de tenter un paiement qui n'a pas
-                    // abouti. C'est le moment où il est le plus susceptible de
-                    // recommencer, et où il attend une réponse.
-                    ...$this->addressed($intent->organization_id, [
-                        'amount' => $intent->money()->format(),
-                        'reason' => (string) ($intent->failure_reason ?? ''),
-                    ], withPhone: true),
-                ], $intent->organization_id);
+                // Le propriétaire prévient son client dans ses propres termes,
+                // et publie l'événement que Notify connaît.
+                $this->notifyOwner($intent, $attempt, succeeded: false);
             }
 
             return $intent;
@@ -108,8 +109,6 @@ final class SettlePayment
     {
         // Le montant rapporté par l'agrégateur n'est pas cru sur parole : il
         // sert de constat, mais c'est l'intention enregistrée qui fait foi.
-        // Chez un agrégateur qui authentifie ses callbacks par secret partagé
-        // plutôt que par signature, croire le montant reçu serait une faille.
         $gross = $intent->money();
         $reported = $attempt->gross_amount;
 
@@ -128,58 +127,49 @@ final class SettlePayment
 
         $this->ledger->settle($attempt, $gross, $fee);
 
-        $this->publish('billing.payment.succeeded', [
+        $this->publish('payments.payment.succeeded', [
             'payment_intent_id' => $intent->id,
-            'invoice_id' => $intent->invoice_id,
+            'subject_type' => $intent->subject_type,
+            'subject_id' => $intent->subject_id,
             'amount' => $gross->amount,
             'currency' => $gross->currency,
-        ], $intent->organization_id);
+        ], $intent->contextOrganizationId());
 
-        if ($intent->invoice_id !== null) {
-            $this->markInvoicePaid($intent, $gross);
-        }
+        $this->notifyOwner($intent, $attempt, succeeded: true);
     }
 
     /**
-     * La facture est réglée sur le montant **brut**. Traiter le net comme le
-     * montant payé la laisserait éternellement impayée à hauteur de la
-     * commission — et l'abonnement jamais activé.
+     * Remise de l'issue au propriétaire de l'objet, **dans la transaction**.
+     *
+     * Passer par un événement créerait une fenêtre où l'argent est encaissé et
+     * le service fermé, qu'un consommateur en échec définitif rendrait
+     * permanente.
      */
-    private function markInvoicePaid(PaymentIntent $intent, Money $gross): void
+    private function notifyOwner(PaymentIntent $intent, PaymentAttempt $attempt, bool $succeeded): void
     {
-        $invoice = Invoice::query()->lockForUpdate()->find($intent->invoice_id);
+        if (! $this->payables->knows($intent->subject_type)) {
+            // Un paiement qu'on ne sait rattacher à rien doit se voir : c'est
+            // de l'argent encaissé sans service rendu.
+            Log::error('Paiement sans propriétaire connu.', [
+                'payment_intent_id' => $intent->id,
+                'subject_type' => $intent->subject_type,
+            ]);
 
-        if ($invoice === null || $invoice->status === Invoice::PAID) {
             return;
         }
 
-        $paid = $invoice->amount_paid + $gross->amount;
-        $settled = $paid >= $invoice->total;
+        $settlement = new PaymentSettlement(
+            paymentIntentId: $intent->id,
+            subject: new PayableRef($intent->subject_type, $intent->subject_id),
+            payer: new PayerContext($intent->payer_type, $intent->payer_id, $intent->initiated_by),
+            amount: $intent->money(),
+            provider: $attempt->provider,
+            failureCode: $intent->failure_code,
+            failureReason: $intent->failure_reason,
+        );
 
-        $invoice->forceFill([
-            'amount_paid' => $paid,
-            'status' => $settled ? Invoice::PAID : $invoice->status,
-            'paid_at' => $settled ? now() : null,
-        ])->save();
+        $source = $this->payables->for($intent->subject_type);
 
-        if (! $settled) {
-            return;
-        }
-
-        $this->publish('billing.invoice.paid', [
-            'invoice_id' => $invoice->id,
-            'number' => $invoice->number,
-            'total' => $invoice->total,
-            'currency' => $invoice->currency,
-            ...$this->addressed($invoice->organization_id, [
-                'invoice_number' => $invoice->number,
-                'amount' => $invoice->totalMoney()->format(),
-                'paid_at' => now()->translatedFormat('d F Y'),
-            ]),
-        ], $invoice->organization_id);
-
-        if ($invoice->subscription_id !== null) {
-            $this->activation->fromInvoice($invoice);
-        }
+        $succeeded ? $source->settled($settlement) : $source->failed($settlement);
     }
 }

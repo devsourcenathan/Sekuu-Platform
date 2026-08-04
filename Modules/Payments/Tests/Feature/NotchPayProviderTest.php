@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Tests\Feature;
+namespace Modules\Payments\Tests\Feature;
 
+use App\Platform\Support\Money;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
-use Modules\Billing\Domain\AttemptStatus;
-use Modules\Billing\Domain\Models\PaymentAttempt;
-use Modules\Billing\Domain\Money;
-use Modules\Billing\Domain\Msisdn;
-use Modules\Billing\Infrastructure\Providers\ChargeRequest;
-use Modules\Billing\Infrastructure\Providers\NotchPayProvider;
+use Modules\Payments\Domain\AttemptStatus;
+use Modules\Payments\Domain\Models\PaymentAttempt;
+use Modules\Payments\Domain\Msisdn;
+use Modules\Payments\Infrastructure\Providers\ChargeRequest;
+use Modules\Payments\Infrastructure\Providers\NotchPayProvider;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -34,15 +34,15 @@ final class NotchPayProviderTest extends TestCase
     {
         parent::setUp();
 
-        config()->set('billing.notchpay.base_url', 'https://api.notchpay.co');
-        config()->set('billing.notchpay.public_key', 'test_public_key');
+        config()->set('payments.notchpay.base_url', 'https://api.notchpay.co');
+        config()->set('payments.notchpay.public_key', 'test_public_key');
 
         $this->provider = new NotchPayProvider;
     }
 
     public function test_an_unconfigured_aggregator_is_never_attempted(): void
     {
-        config()->set('billing.notchpay.public_key', null);
+        config()->set('payments.notchpay.public_key', null);
 
         $this->assertFalse((new NotchPayProvider)->isConfigured());
     }

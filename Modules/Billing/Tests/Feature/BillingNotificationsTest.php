@@ -5,16 +5,15 @@ declare(strict_types=1);
 namespace Modules\Billing\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Modules\Billing\Application\Payments\InitiatePayment;
 use Modules\Billing\Application\Subscriptions\AdvanceLifecycle;
 use Modules\Billing\Domain\Models\Subscription;
 use Modules\Billing\Domain\SubscriptionStatus;
-use Modules\Billing\Infrastructure\Providers\ChargeOutcome;
 use Modules\Billing\Tests\Concerns\BillsAnOrganization;
-use Modules\Billing\Tests\Support\FakeProvider;
 use Modules\Identity\Domain\Models\User;
 use Modules\Notify\Domain\Models\Notification;
 use Modules\Notify\Domain\Models\NotificationTemplate;
+use Modules\Payments\Infrastructure\Providers\ChargeOutcome;
+use Modules\Payments\Tests\Support\FakeProvider;
 use Tests\TestCase;
 
 /**
@@ -80,7 +79,7 @@ final class BillingNotificationsTest extends TestCase
         FakeProvider::willReturn('primary', ChargeOutcome::succeeded('ref-1', gross: 178875));
 
         $invoice = $this->subscribe('business');
-        $this->app->make(InitiatePayment::class)->handle($invoice, '+237650000000');
+        $this->payInvoice($invoice, '+237650000000');
 
         $this->assertNotNull($this->notificationFor('invoice.paid'));
         $this->assertNotNull($this->notificationFor('subscription.activated'));
@@ -154,7 +153,7 @@ final class BillingNotificationsTest extends TestCase
         FakeProvider::willReturn('primary', ChargeOutcome::failed('PAYMENT_FAILED', 'Solde insuffisant'));
 
         $invoice = $this->subscribe('business');
-        $this->app->make(InitiatePayment::class)->handle($invoice, '+237650000000');
+        $this->payInvoice($invoice, '+237650000000');
 
         $email = $this->notificationFor('payment.failed', 'email');
 
@@ -193,7 +192,7 @@ final class BillingNotificationsTest extends TestCase
         FakeProvider::willReturn('primary', ChargeOutcome::succeeded('ref-1', gross: 178875));
 
         $invoice = $this->subscribe('business');
-        $this->app->make(InitiatePayment::class)->handle($invoice, '+237650000000');
+        $this->payInvoice($invoice, '+237650000000');
 
         Notification::query()->delete();
 

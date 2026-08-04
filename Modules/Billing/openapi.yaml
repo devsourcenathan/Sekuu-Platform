@@ -46,35 +46,6 @@ security:
 
 paths:
 
-  /billing/health:
-    get:
-      tags: [Service]
-      summary: Agrégateurs réellement configurés
-      description: |
-        Un agrégateur sans identifiants n'est jamais essayé. Le dire franchement
-        évite de croire qu'un paiement pourra partir alors que rien n'est
-        branché.
-
-        `can_collect` à `false` signifie qu'aucun paiement ne peut aboutir : sur
-        un modèle prépayé, ne plus encaisser ferme les accès un par un.
-      security: []
-      responses:
-        '200':
-          description: État du service
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessEnvelope'
-                  - properties:
-                      data:
-                        type: object
-                        properties:
-                          status: { type: string, enum: [ok, degraded] }
-                          providers: { type: array, items: { type: string } }
-                          can_collect: { type: boolean }
-                          currency: { type: string, example: XAF }
-
   /plans:
     get:
       tags: [Catalogue]
@@ -466,22 +437,6 @@ paths:
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
 
   /payments:
-    get:
-      tags: [Paiements]
-      summary: Historique des paiements
-      responses:
-        '200':
-          description: Paiements
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessEnvelope'
-                  - properties:
-                      data:
-                        type: array
-                        items: { $ref: '#/components/schemas/PaymentIntent' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
     post:
       tags: [Paiements]
       summary: Initier un paiement Mobile Money
@@ -543,107 +498,6 @@ paths:
             `PROVIDER_UNAVAILABLE` — aucun agrégateur configuré ne couvre cet
             opérateur, ou tous ont refusé la demande. Dans ce dernier cas
             **aucun débit n'a été effectué**.
-          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
-
-  /payments/{paymentId}:
-    get:
-      tags: [Paiements]
-      summary: Statut d'une intention
-      description: |
-        Fait pour être **sondé**, toutes les 3 à 5 secondes. `Retry-After`
-        accompagne la réponse tant que le statut n'est pas définitif.
-
-        `expired` n'est **pas** `failed` : il signifie *on ne sait pas*. Un
-        paiement dont on ignore l'issue peut avoir été encaissé ; le traiter
-        comme un échec risquerait de facturer deux fois.
-
-        Le détail des tentatives n'est exposé qu'aux rôles de facturation :
-        l'ordre de priorité des agrégateurs est une information d'exploitation.
-      parameters:
-        - name: paymentId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        '200':
-          description: Statut
-          headers:
-            Retry-After:
-              schema: { type: integer }
-              description: Présent tant que le statut n'est pas définitif.
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessEnvelope'
-                  - properties:
-                      data: { $ref: '#/components/schemas/PaymentIntent' }
-        '404': { $ref: '#/components/responses/NotFound' }
-
-  /billing/webhooks/{provider}:
-    post:
-      tags: [Webhooks]
-      summary: Callback d'un agrégateur
-      description: |
-        Publique au sens réseau, authentifiée selon le schéma propre à chaque
-        agrégateur :
-
-        - **Notch Pay** — HMAC-SHA256 sur le corps brut, en-tête
-          `x-notch-signature`. Une modification en transit est détectable.
-        - **Tranzak** — `authKey` transporté dans le corps. Cela prouve que
-          l'émetteur connaît le secret, jamais que le corps est intact : un
-          callback intercepté peut être rejoué modifié.
-
-        **Un callback n'est jamais cru sur parole**, quel que soit son schéma
-        d'authentification. Il déclenche une relecture du statut chez
-        l'agrégateur, il ne le dicte pas. Une signature valide prouve l'origine,
-        pas que le paiement a réussi.
-
-        Une signature invalide renvoie `401`, et le callback est **tout de même
-        enregistré** : le jeter en silence priverait de toute trace en cas de
-        tentative de fraude.
-
-        Un callback déjà vu renvoie `200` sans rien refaire. La déduplication
-        s'appuie sur l'unicité en base, pas sur une vérification applicative qui
-        perdrait la course sous concurrence.
-
-        Le callback accélère une confirmation ; il n'en est jamais la seule
-        source. `billing:reconcile` interroge les agrégateurs toutes les cinq
-        minutes.
-      security: []
-      parameters:
-        - name: provider
-          in: path
-          required: true
-          schema: { type: string, enum: [notchpay, tranzak] }
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        '200':
-          description: |
-            Reçu. Toujours `200`, y compris pour un doublon ou une référence
-            inconnue : répondre en erreur déclencherait des réessais inutiles, et
-            finirait par faire désactiver le endpoint.
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessEnvelope'
-                  - properties:
-                      data:
-                        type: object
-                        properties:
-                          processed: { type: boolean }
-                          reason: { type: string, enum: [duplicate, unknown_reference] }
-        '401':
-          description: '`WEBHOOK_SIGNATURE_INVALID`'
-          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
-        '404':
-          description: '`ENDPOINT_NOT_FOUND` — agrégateur inconnu'
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
 
 components:

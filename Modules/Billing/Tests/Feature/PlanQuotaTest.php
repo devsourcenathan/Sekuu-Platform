@@ -6,12 +6,11 @@ namespace Modules\Billing\Tests\Feature;
 
 use App\Platform\Contracts\BillingContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Modules\Billing\Application\Payments\InitiatePayment;
 use Modules\Billing\Domain\Models\Plan;
 use Modules\Billing\Domain\Models\Subscription;
-use Modules\Billing\Infrastructure\Providers\ChargeOutcome;
 use Modules\Billing\Tests\Concerns\BillsAnOrganization;
-use Modules\Billing\Tests\Support\FakeProvider;
+use Modules\Payments\Infrastructure\Providers\ChargeOutcome;
+use Modules\Payments\Tests\Support\FakeProvider;
 use Tests\TestCase;
 
 /**
@@ -157,7 +156,7 @@ final class PlanQuotaTest extends TestCase
         $invoice = $this->subscribe($planKey);
 
         if ($invoice !== null) {
-            $this->app->make(InitiatePayment::class)->handle($invoice, '+237650000000');
+            $this->payInvoice($invoice, '+237650000000');
         }
 
         $subscription = Subscription::query()->firstOrFail();

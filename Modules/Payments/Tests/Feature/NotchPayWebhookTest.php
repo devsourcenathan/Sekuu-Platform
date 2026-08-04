@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Tests\Feature;
+namespace Modules\Payments\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
-use Modules\Billing\Infrastructure\Webhooks\NotchPayWebhookHandler;
+use Modules\Payments\Infrastructure\Webhooks\NotchPayWebhookHandler;
 use Tests\TestCase;
 
 /**
@@ -28,7 +28,7 @@ final class NotchPayWebhookTest extends TestCase
     {
         parent::setUp();
 
-        config()->set('billing.notchpay.webhook_hash', 'secret-de-signature');
+        config()->set('payments.notchpay.webhook_hash', 'secret-de-signature');
 
         $this->handler = new NotchPayWebhookHandler;
     }
@@ -66,7 +66,7 @@ final class NotchPayWebhookTest extends TestCase
      */
     public function test_an_unconfigured_secret_closes_the_endpoint(): void
     {
-        config()->set('billing.notchpay.webhook_hash', null);
+        config()->set('payments.notchpay.webhook_hash', null);
 
         $body = json_encode(['type' => 'payment.complete']);
 

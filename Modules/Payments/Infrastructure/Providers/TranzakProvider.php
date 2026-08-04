@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Infrastructure\Providers;
+namespace Modules\Payments\Infrastructure\Providers;
 
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Modules\Billing\Domain\Models\PaymentAttempt;
+use Modules\Payments\Domain\Models\PaymentAttempt;
 use RuntimeException;
 use Throwable;
 
@@ -44,8 +44,8 @@ final class TranzakProvider implements PaymentProvider
 
     public function isConfigured(): bool
     {
-        return is_string(config('billing.tranzak.app_id')) && config('billing.tranzak.app_id') !== ''
-            && is_string(config('billing.tranzak.app_key')) && config('billing.tranzak.app_key') !== '';
+        return is_string(config('payments.tranzak.app_id')) && config('payments.tranzak.app_id') !== ''
+            && is_string(config('payments.tranzak.app_key')) && config('payments.tranzak.app_key') !== '';
     }
 
     /** Tranzak couvre MTN Cameroon Mobile Money et Orange Money Cameroon. */
@@ -70,7 +70,7 @@ final class TranzakProvider implements PaymentProvider
 
         try {
             $response = Http::withToken($token)
-                ->timeout((int) config('billing.tranzak.timeout', 20))
+                ->timeout((int) config('payments.tranzak.timeout', 20))
                 ->acceptJson()
                 ->post($this->url('/xp021/v1/request/create-mobile-wallet-charge'), [
                     'amount' => $request->money->amount,
@@ -146,7 +146,7 @@ final class TranzakProvider implements PaymentProvider
 
         try {
             $response = Http::withToken($this->token())
-                ->timeout((int) config('billing.tranzak.timeout', 20))
+                ->timeout((int) config('payments.tranzak.timeout', 20))
                 ->acceptJson()
                 ->get($this->url('/xp021/v1/request/details'), [
                     'requestId' => $attempt->provider_ref,
@@ -170,6 +170,49 @@ final class TranzakProvider implements PaymentProvider
         }
 
         return $this->translate($this->data($body), $attempt->provider_ref);
+    }
+
+    /**
+     * Recherche par référence marchande.
+     *
+     * **Non vérifiée contre le bac à sable** : l'historique est parcouru et
+     * filtré sur `mchTransactionRef`, faute d'endpoint de recherche documenté.
+     * Suffisant pour un rattrapage, pas pour un usage courant.
+     */
+    public function findByMerchantReference(string $reference): ChargeOutcome
+    {
+        try {
+            $response = Http::withToken($this->token())
+                ->timeout((int) config('payments.tranzak.timeout', 20))
+                ->acceptJson()
+                ->get($this->url('/xp021/v1/request/history'), ['mchTransactionRef' => $reference]);
+        } catch (Throwable $exception) {
+            return ChargeOutcome::unknown($exception->getMessage());
+        }
+
+        if ($response->failed()) {
+            return ChargeOutcome::unknown('HTTP '.$response->status());
+        }
+
+        $body = $response->json();
+        $lignes = $this->data($body);
+        $lignes = is_array($lignes[0] ?? null) ? $lignes : [$lignes];
+
+        foreach ($lignes as $ligne) {
+            if (! is_array($ligne) || ($ligne['mchTransactionRef'] ?? null) !== $reference) {
+                continue;
+            }
+
+            $providerRef = $this->providerRef($ligne);
+
+            if ($providerRef !== null) {
+                return $this->translate($ligne, $providerRef);
+            }
+        }
+
+        // Rien trouvé ne veut pas dire « jamais parti » : Tranzak peut
+        // simplement ne pas savoir répondre à cette question.
+        return ChargeOutcome::unknown('Aucune transaction pour la référence '.$reference);
     }
 
     /**
@@ -211,7 +254,7 @@ final class TranzakProvider implements PaymentProvider
             // l'invite.
             'CANCELLED_BY_PAYER' => ChargeOutcome::failed(
                 'PAYER_CANCELLED',
-                __('billing::messages.payment_cancelled_by_payer'),
+                __('payments::messages.payment_cancelled_by_payer'),
                 $providerRef,
                 $status,
             ),
@@ -221,7 +264,7 @@ final class TranzakProvider implements PaymentProvider
             // `TXN_CANCELLED`. `statusMessage` n'existe pas.
             'FAILED' => ChargeOutcome::failed(
                 'PAYMENT_FAILED',
-                (string) ($data['errorMessage'] ?? __('billing::messages.payment_failed')),
+                (string) ($data['errorMessage'] ?? __('payments::messages.payment_failed')),
                 $providerRef,
                 $status,
             ),
@@ -232,7 +275,7 @@ final class TranzakProvider implements PaymentProvider
             // rejet : cela interdit la bascule.
             'CANCELLED' => ChargeOutcome::failed(
                 'PAYMENT_CANCELLED',
-                __('billing::messages.payment_cancelled'),
+                __('payments::messages.payment_cancelled'),
                 $providerRef,
                 $status,
             ),
@@ -242,7 +285,7 @@ final class TranzakProvider implements PaymentProvider
             // normal.
             'PAYER_REDIRECT_REQUIRED' => ChargeOutcome::failed(
                 'PAYMENT_FAILED',
-                __('billing::messages.payment_failed'),
+                __('payments::messages.payment_failed'),
                 $providerRef,
                 $status,
             ),
@@ -264,11 +307,11 @@ final class TranzakProvider implements PaymentProvider
     private function token(): string
     {
         return Cache::remember('billing:tranzak:token', now()->addMinutes(90), function (): string {
-            $response = Http::timeout((int) config('billing.tranzak.timeout', 20))
+            $response = Http::timeout((int) config('payments.tranzak.timeout', 20))
                 ->acceptJson()
                 ->post($this->url('/auth/token'), [
-                    'appId' => config('billing.tranzak.app_id'),
-                    'appKey' => config('billing.tranzak.app_key'),
+                    'appId' => config('payments.tranzak.app_id'),
+                    'appKey' => config('payments.tranzak.app_key'),
                 ]);
 
             $body = $response->json();
@@ -301,7 +344,7 @@ final class TranzakProvider implements PaymentProvider
 
     private function url(string $path): string
     {
-        return rtrim((string) config('billing.tranzak.base_url'), '/').$path;
+        return rtrim((string) config('payments.tranzak.base_url'), '/').$path;
     }
 
     /**
@@ -366,7 +409,7 @@ final class TranzakProvider implements PaymentProvider
             }
         }
 
-        return __('billing::messages.provider_rejected');
+        return __('payments::messages.provider_rejected');
     }
 
     /**

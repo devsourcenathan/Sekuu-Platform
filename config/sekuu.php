@@ -60,4 +60,30 @@ return [
         'max_per_page' => 100,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Devises
+    |--------------------------------------------------------------------------
+    |
+    | L'exposant est le nombre de décimales. **Le franc CFA n'en a aucune** :
+    | 1 000 XAF se stocke `1000`, pas `100000`. Appliquer le réflexe « ×100 »
+    | multiplierait tous les montants par cent, et l'erreur est invisible en
+    | développement où les montants sont inventés.
+    |
+    | Ici et non dans un module : la facturation et le paiement lisent la même
+    | table. Deux définitions de l'exposant, c'est deux vérités sur un montant.
+    |
+    | @see app/Platform/Support/Money.php
+    |
+    */
+
+    'currencies' => [
+        'XAF' => ['exponent' => 0],
+        'XOF' => ['exponent' => 0],
+        'EUR' => ['exponent' => 2],
+        'USD' => ['exponent' => 2],
+    ],
+
+    'default_currency' => env('SEKUU_CURRENCY', 'XAF'),
+
 ];

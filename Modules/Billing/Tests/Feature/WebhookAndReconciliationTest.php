@@ -5,19 +5,18 @@ declare(strict_types=1);
 namespace Modules\Billing\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Modules\Billing\Application\Payments\InitiatePayment;
-use Modules\Billing\Application\Payments\ReconcilePayments;
 use Modules\Billing\Domain\Models\Invoice;
-use Modules\Billing\Domain\Models\PaymentIntent;
-use Modules\Billing\Domain\Models\ProviderEvent;
 use Modules\Billing\Domain\Models\Subscription;
-use Modules\Billing\Domain\Models\Transaction;
 use Modules\Billing\Domain\SubscriptionStatus;
-use Modules\Billing\Infrastructure\Providers\ChargeOutcome;
-use Modules\Billing\Infrastructure\Webhooks\WebhookRegistry;
 use Modules\Billing\Tests\Concerns\BillsAnOrganization;
-use Modules\Billing\Tests\Support\FakeProvider;
-use Modules\Billing\Tests\Support\FakeWebhookHandler;
+use Modules\Payments\Application\Payments\ReconcilePayments;
+use Modules\Payments\Domain\Models\PaymentIntent;
+use Modules\Payments\Domain\Models\PaymentTransaction;
+use Modules\Payments\Domain\Models\ProviderEvent;
+use Modules\Payments\Infrastructure\Providers\ChargeOutcome;
+use Modules\Payments\Infrastructure\Webhooks\WebhookRegistry;
+use Modules\Payments\Tests\Support\FakeProvider;
+use Modules\Payments\Tests\Support\FakeWebhookHandler;
 use Tests\TestCase;
 
 /**
@@ -36,8 +35,8 @@ final class WebhookAndReconciliationTest extends TestCase
 
         $this->useFakeProviders();
 
-        config()->set('billing.webhooks.primary', FakeWebhookHandler::class);
-        config()->set('billing.tranzak.auth_key', 'secret-partage');
+        config()->set('payments.webhooks.primary', FakeWebhookHandler::class);
+        config()->set('payments.tranzak.auth_key', 'secret-partage');
 
         $this->app->forgetInstance(WebhookRegistry::class);
 
@@ -120,7 +119,7 @@ final class WebhookAndReconciliationTest extends TestCase
             ->assertJsonPath('data.reason', 'duplicate');
 
         // Un seul encaissement au registre, malgré deux callbacks.
-        $this->assertSame(1, Transaction::query()->where('type', 'charge')->count());
+        $this->assertSame(1, PaymentTransaction::query()->where('type', 'charge')->count());
     }
 
     public function test_an_unknown_reference_is_reported_not_silently_dropped(): void
@@ -179,6 +178,6 @@ final class WebhookAndReconciliationTest extends TestCase
 
         $invoice = $this->subscribe('business');
 
-        return $this->app->make(InitiatePayment::class)->handle($invoice, '+237650000000')->fresh();
+        return $this->payInvoice($invoice, '+237650000000')->fresh();
     }
 }

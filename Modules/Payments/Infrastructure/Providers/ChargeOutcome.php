@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Infrastructure\Providers;
+namespace Modules\Payments\Infrastructure\Providers;
 
-use Modules\Billing\Domain\AttemptStatus;
+use Modules\Payments\Domain\AttemptStatus;
 
 /**
  * Ce qu'un agrégateur a répondu, traduit dans le vocabulaire du module.

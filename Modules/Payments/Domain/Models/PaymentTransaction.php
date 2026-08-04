@@ -2,14 +2,20 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Domain\Models;
+namespace Modules\Payments\Domain\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use RuntimeException;
 
 /**
- * Registre **append-only**.
+ * Registre de caisse, **append-only**.
+ *
+ * Ne porte que l'argent réellement encaissé ou rendu. Le crédit commercial
+ * d'une organisation vit dans [CreditEntry], côté facturation : les deux
+ * étaient colocalisés dans une même table `transactions`, alors que le code
+ * distinguait déjà les deux jeux de types — `creditTypes()` excluait exactement
+ * `charge` et `fee`.
  *
  * Aucun `UPDATE`, aucun `DELETE` : corriger une écriture en la réécrivant
  * efface la trace de l'erreur, et avec elle toute possibilité d'expliquer un
@@ -17,7 +23,7 @@ use RuntimeException;
  *
  * @see docs/03-services/billing/02-data-model.md
  */
-final class Transaction extends Model
+final class PaymentTransaction extends Model
 {
     use HasUuids;
 
@@ -26,19 +32,14 @@ final class Transaction extends Model
     /** Commission de l'agrégateur — charge de la plateforme, pas du client. */
     public const FEE = 'fee';
 
+    /** Remboursement effectif : l'argent quitte le compte marchand. */
     public const REFUND = 'refund';
-
-    public const CREDIT = 'credit';
-
-    public const DEBIT = 'debit';
-
-    public const ADJUSTMENT = 'adjustment';
 
     public const UPDATED_AT = null;
 
     protected $fillable = [
-        'organization_id', 'invoice_id', 'payment_intent_id',
-        'payment_attempt_id', 'type', 'amount', 'currency', 'occurred_at',
+        'payment_intent_id', 'payment_attempt_id', 'subject_type', 'subject_id',
+        'payee_organization_id', 'type', 'amount', 'currency', 'occurred_at',
         'description', 'metadata',
     ];
 
@@ -59,25 +60,11 @@ final class Transaction extends Model
     protected static function booted(): void
     {
         self::updating(static function (): void {
-            throw new RuntimeException('Le registre des transactions est append-only.');
+            throw new RuntimeException('Le registre de caisse est append-only.');
         });
 
         self::deleting(static function (): void {
-            throw new RuntimeException('Le registre des transactions est append-only.');
+            throw new RuntimeException('Le registre de caisse est append-only.');
         });
-    }
-
-    /**
-     * Types entrant dans le solde de crédit d'une organisation.
-     *
-     * `charge` et `fee` en sont exclus : le premier règle une facture, le
-     * second est une charge de la plateforme. Aucun des deux n'est une somme
-     * due au client.
-     *
-     * @return list<string>
-     */
-    public static function creditTypes(): array
-    {
-        return [self::CREDIT, self::DEBIT, self::ADJUSTMENT];
     }
 }

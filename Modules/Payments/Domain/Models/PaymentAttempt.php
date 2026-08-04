@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Domain\Models;
+namespace Modules\Payments\Domain\Models;
 
+use App\Platform\Support\Money;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Modules\Billing\Domain\AttemptStatus;
-use Modules\Billing\Domain\Money;
+use Modules\Payments\Domain\AttemptStatus;
 
 /**
  * Ce qu'on a tenté, et chez quel agrégateur.

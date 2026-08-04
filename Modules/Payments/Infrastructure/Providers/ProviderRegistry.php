@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Infrastructure\Providers;
+namespace Modules\Payments\Infrastructure\Providers;
 
 use App\Platform\Exceptions\DomainException;
 use Illuminate\Contracts\Container\Container;
@@ -43,7 +43,7 @@ final class ProviderRegistry
         if ($available === []) {
             throw new DomainException(
                 'PROVIDER_UNAVAILABLE',
-                __('billing::messages.provider_unavailable', ['operator' => $operator]),
+                __('payments::messages.provider_unavailable', ['operator' => $operator]),
                 503,
             );
         }
@@ -61,7 +61,7 @@ final class ProviderRegistry
 
         throw new DomainException(
             'PROVIDER_UNAVAILABLE',
-            __('billing::messages.provider_unknown', ['provider' => $name]),
+            __('payments::messages.provider_unknown', ['provider' => $name]),
             503,
         );
     }

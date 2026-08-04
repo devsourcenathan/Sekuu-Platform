@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Modules\Billing\Application\Invoicing;
 
 use App\Platform\Events\PublishesDomainEvents;
+use App\Platform\Support\Money;
 use Illuminate\Support\Facades\DB;
 use Modules\Billing\Application\Ledger\CreditLedger;
 use Modules\Billing\Application\Notifications\AddressesTheOrganization;
 use Modules\Billing\Domain\Models\Invoice;
 use Modules\Billing\Domain\Models\Subscription;
-use Modules\Billing\Domain\Money;
 
 /**
  * Émission d'une facture.
@@ -40,7 +40,7 @@ final class IssueInvoice
         ?string $periodEnd = null,
         array $billingDetails = [],
     ): Invoice {
-        $currency ??= (string) config('billing.default_currency');
+        $currency ??= (string) config('sekuu.default_currency');
 
         return DB::transaction(function () use (
             $organizationId, $lines, $currency, $subscription, $periodStart, $periodEnd, $billingDetails
@@ -130,6 +130,9 @@ final class IssueInvoice
      */
     private function taxRate(): float
     {
+        // Pays de **facturation**, qui détermine la TVA. Distinct du pays des
+        // réseaux mobiles : une plateforme camerounaise peut encaisser un
+        // numéro d'un autre réseau sans changer de redevable fiscal.
         $country = (string) config('billing.default_country');
 
         return (float) config('billing.tax.'.$country, 0.0);

@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Infrastructure\Providers;
+namespace Modules\Payments\Infrastructure\Providers;
 
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Modules\Billing\Domain\Models\PaymentAttempt;
+use Modules\Payments\Domain\Models\PaymentAttempt;
 use Throwable;
 
 /**
@@ -46,7 +46,7 @@ final class NotchPayProvider implements PaymentProvider
 
     public function isConfigured(): bool
     {
-        $key = config('billing.notchpay.public_key');
+        $key = config('payments.notchpay.public_key');
 
         return is_string($key) && $key !== '';
     }
@@ -79,7 +79,7 @@ final class NotchPayProvider implements PaymentProvider
                 // Vide par défaut : le tableau de bord reste le mode normal, et
                 // une URL figée dans des transactions passées survivrait à un
                 // changement d'hébergement.
-                'callback' => config('billing.notchpay.callback_url') ?: null,
+                'callback' => config('payments.notchpay.callback_url') ?: null,
             ], static fn ($value) => $value !== null));
         } catch (Throwable $exception) {
             // **Basculable malgré la temporisation.** L'initialisation ne
@@ -177,6 +177,48 @@ final class NotchPayProvider implements PaymentProvider
     }
 
     /**
+     * Recherche par référence marchande.
+     *
+     * Notch Pay renvoie notre `reference` en `trxref` et `merchant_reference` :
+     * la liste est parcourue et filtrée dessus, faute d'endpoint de recherche
+     * documenté. **Non vérifiée contre le bac à sable.**
+     */
+    public function findByMerchantReference(string $reference): ChargeOutcome
+    {
+        try {
+            $response = $this->client()->get($this->url('/payments'), ['reference' => $reference]);
+        } catch (Throwable $exception) {
+            return ChargeOutcome::unknown($exception->getMessage());
+        }
+
+        if ($response->failed()) {
+            return ChargeOutcome::unknown('HTTP '.$response->status());
+        }
+
+        foreach ((array) ($response->json('items') ?? []) as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $correspond = ($item['merchant_reference'] ?? null) === $reference
+                || ($item['trxref'] ?? null) === $reference;
+
+            if (! $correspond) {
+                continue;
+            }
+
+            $ref = $this->reference(['transaction' => $item]);
+
+            if ($ref !== null) {
+                return $this->translate((string) ($item['status'] ?? ''), $ref, ['transaction' => $item]);
+            }
+        }
+
+        // Rien trouvé ne prouve pas que rien n'est parti.
+        return ChargeOutcome::unknown('Aucun paiement pour la référence '.$reference);
+    }
+
+    /**
      * Traduction du vocabulaire Notch Pay vers celui du module.
      *
      * **La partie la plus sensible de l'adaptateur.** Aucun statut n'y produit
@@ -195,21 +237,21 @@ final class NotchPayProvider implements PaymentProvider
 
             'failed' => ChargeOutcome::failed(
                 'PAYMENT_FAILED',
-                (string) ($transaction['message'] ?? __('billing::messages.payment_failed')),
+                (string) ($transaction['message'] ?? __('payments::messages.payment_failed')),
                 $reference,
                 $status,
             ),
 
             'canceled' => ChargeOutcome::failed(
                 'PAYMENT_CANCELLED',
-                __('billing::messages.payment_cancelled'),
+                __('payments::messages.payment_cancelled'),
                 $reference,
                 $status,
             ),
 
             'expired' => ChargeOutcome::failed(
                 'PAYMENT_EXPIRED',
-                __('billing::messages.payment_expired'),
+                __('payments::messages.payment_expired'),
                 $reference,
                 $status,
             ),
@@ -316,7 +358,7 @@ final class NotchPayProvider implements PaymentProvider
      */
     private function channelFor(string $operator): string
     {
-        $country = mb_strtolower((string) config('billing.default_country'));
+        $country = mb_strtolower((string) config('payments.default_country'));
 
         return $country.'.'.$operator;
     }
@@ -327,14 +369,14 @@ final class NotchPayProvider implements PaymentProvider
         // c'est la convention de Notch Pay. `X-Grant` n'est exigé que sur les
         // endpoints sensibles (soldes, transferts), qu'on n'utilise pas.
         return Http::withHeaders([
-            'Authorization' => (string) config('billing.notchpay.public_key'),
+            'Authorization' => (string) config('payments.notchpay.public_key'),
             'Accept' => 'application/json',
-        ])->timeout((int) config('billing.notchpay.timeout', 20));
+        ])->timeout((int) config('payments.notchpay.timeout', 20));
     }
 
     private function url(string $path): string
     {
-        return rtrim((string) config('billing.notchpay.base_url'), '/').$path;
+        return rtrim((string) config('payments.notchpay.base_url'), '/').$path;
     }
 
     /**
@@ -415,6 +457,6 @@ final class NotchPayProvider implements PaymentProvider
             }
         }
 
-        return __('billing::messages.provider_rejected');
+        return __('payments::messages.provider_rejected');
     }
 }

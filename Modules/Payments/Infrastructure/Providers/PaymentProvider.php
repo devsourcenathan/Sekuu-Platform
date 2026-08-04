@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Infrastructure\Providers;
+namespace Modules\Payments\Infrastructure\Providers;
 
-use Modules\Billing\Domain\Models\PaymentAttempt;
+use Modules\Payments\Domain\Models\PaymentAttempt;
 
 /**
  * Frontière avec les agrégateurs de paiement.
@@ -48,4 +48,22 @@ interface PaymentProvider
      * plateforme le sache.
      */
     public function poll(PaymentAttempt $attempt): ChargeOutcome;
+
+    /**
+     * Retrouver une transaction à partir de **notre** référence marchande.
+     *
+     * Répond à la troisième question obligatoire du contrat, et comble une
+     * défaillance réelle : une tentative dont le processus meurt entre son
+     * enregistrement et l'appel de débit n'a pas de référence agrégateur.
+     * `poll()` ne peut rien en faire — et elle occupe indéfiniment l'unicité
+     * « une seule tentative vivante par intention », alors que le client a
+     * peut-être été sollicité et débité.
+     *
+     * C'est la seule raison d'être de `merchant_reference`, écrite en base
+     * **avant** l'appel : sans elle, un appel expiré reste à jamais irrésolu.
+     *
+     * Renvoie `unknown()` quand l'agrégateur ne sait pas répondre — jamais
+     * `rejected()`, qui rouvrirait la bascule sur un paiement peut-être parti.
+     */
+    public function findByMerchantReference(string $reference): ChargeOutcome;
 }

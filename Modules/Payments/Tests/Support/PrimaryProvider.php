@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Tests\Support;
+namespace Modules\Payments\Tests\Support;
 
 final class PrimaryProvider extends FakeProvider
 {

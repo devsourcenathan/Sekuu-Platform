@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Tests\Support;
+namespace Modules\Payments\Tests\Support;
 
 use Illuminate\Http\Request;
-use Modules\Billing\Infrastructure\Webhooks\TranzakWebhookHandler;
+use Modules\Payments\Infrastructure\Webhooks\TranzakWebhookHandler;
 
 /**
  * Reprend intégralement la vérification et l'extraction de Tranzak — c'est

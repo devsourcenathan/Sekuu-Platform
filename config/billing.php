@@ -2,10 +2,11 @@
 
 declare(strict_types=1);
 
-use Modules\Billing\Infrastructure\Providers\NotchPayProvider;
-use Modules\Billing\Infrastructure\Providers\TranzakProvider;
-use Modules\Billing\Infrastructure\Webhooks\NotchPayWebhookHandler;
-use Modules\Billing\Infrastructure\Webhooks\TranzakWebhookHandler;
+use Modules\Billing\Application\Invoicing\InvoicePayable;
+use Modules\Payments\Infrastructure\Providers\NotchPayProvider;
+use Modules\Payments\Infrastructure\Providers\TranzakProvider;
+use Modules\Payments\Infrastructure\Webhooks\NotchPayWebhookHandler;
+use Modules\Payments\Infrastructure\Webhooks\TranzakWebhookHandler;
 
 /*
 | Configuration du module Billing.
@@ -55,6 +56,24 @@ return [
         'tranzak' => TranzakWebhookHandler::class,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Objets payables
+    |--------------------------------------------------------------------------
+    |
+    | `subject_type` → module propriétaire. C'est le seul endroit où la couche
+    | de paiement apprend qu'une facture existe : elle ne l'importe jamais.
+    |
+    | Un produit s'enregistre en ajoutant une ligne. Un type absent échoue
+    | durement (`PAYABLE_TYPE_UNKNOWN`) : un repli silencieux ferait aboutir un
+    | paiement que personne ne saurait rattacher.
+    |
+    */
+
+    'payables' => [
+        InvoicePayable::TYPE => InvoicePayable::class,
+    ],
+
     'notchpay' => [
         'base_url' => env('NOTCHPAY_BASE_URL', 'https://api.notchpay.co'),
 
@@ -98,21 +117,12 @@ return [
     | Devises
     |--------------------------------------------------------------------------
     |
-    | L'exposant est le nombre de décimales. **Le franc CFA n'en a aucune** :
-    | 1 000 XAF se stocke `1000`, pas `100000`. Appliquer le réflexe « ×100 »
-    | multiplierait tous les montants par cent, et l'erreur est invisible en
-    | développement où les montants sont inventés.
+    | Déclarées dans `config/sekuu.php`, avec `Money`. Deux définitions de
+    | l'exposant, ce serait deux vérités sur un même montant — et le franc CFA,
+    | seule devise sans centime du lot, est précisément là où l'écart passerait
+    | inaperçu.
     |
     */
-
-    'currencies' => [
-        'XAF' => ['exponent' => 0],
-        'XOF' => ['exponent' => 0],
-        'EUR' => ['exponent' => 2],
-        'USD' => ['exponent' => 2],
-    ],
-
-    'default_currency' => env('BILLING_CURRENCY', 'XAF'),
 
     /*
     |--------------------------------------------------------------------------

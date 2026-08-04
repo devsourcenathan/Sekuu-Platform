@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Tests\Support;
+namespace Modules\Payments\Tests\Support;
 
-use Modules\Billing\Domain\Models\PaymentAttempt;
-use Modules\Billing\Infrastructure\Providers\ChargeOutcome;
-use Modules\Billing\Infrastructure\Providers\ChargeRequest;
-use Modules\Billing\Infrastructure\Providers\PaymentProvider;
+use Modules\Payments\Domain\Models\PaymentAttempt;
+use Modules\Payments\Infrastructure\Providers\ChargeOutcome;
+use Modules\Payments\Infrastructure\Providers\ChargeRequest;
+use Modules\Payments\Infrastructure\Providers\PaymentProvider;
 
 /**
  * Agrégateur factice, pour éprouver la règle de bascule sans réseau.
@@ -73,5 +73,11 @@ abstract class FakeProvider implements PaymentProvider
     {
         return self::$polls[$this->name()]
             ?? ChargeOutcome::processing($attempt->provider_ref);
+    }
+
+    public function findByMerchantReference(string $reference): ChargeOutcome
+    {
+        return self::$polls[$this->name()]
+            ?? ChargeOutcome::unknown('Aucune transaction pour '.$reference);
     }
 }

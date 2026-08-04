@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Infrastructure\Console;
+namespace Modules\Payments\Infrastructure\Console;
 
 use Illuminate\Console\Command;
-use Modules\Billing\Application\Payments\ReconcilePayments;
+use Modules\Payments\Application\Payments\ReconcilePayments;
 
 /**
  * Sondage des paiements en attente.

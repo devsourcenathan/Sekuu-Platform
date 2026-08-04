@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Presentation\Http\Controllers;
+namespace Modules\Payments\Presentation\Http\Controllers;
 
 use App\Platform\Exceptions\DomainException;
 use App\Platform\Http\ApiResponse;
@@ -10,11 +10,11 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Modules\Billing\Application\Payments\SettlePayment;
-use Modules\Billing\Domain\Models\PaymentAttempt;
-use Modules\Billing\Domain\Models\ProviderEvent;
-use Modules\Billing\Infrastructure\Providers\ProviderRegistry;
-use Modules\Billing\Infrastructure\Webhooks\WebhookRegistry;
+use Modules\Payments\Application\Payments\SettlePayment;
+use Modules\Payments\Domain\Models\PaymentAttempt;
+use Modules\Payments\Domain\Models\ProviderEvent;
+use Modules\Payments\Infrastructure\Providers\ProviderRegistry;
+use Modules\Payments\Infrastructure\Webhooks\WebhookRegistry;
 
 /**
  * Callbacks des agrégateurs.
@@ -47,7 +47,7 @@ final class WebhookController
             // trace en cas de tentative de fraude.
             throw new DomainException(
                 'WEBHOOK_SIGNATURE_INVALID',
-                __('billing::messages.webhook_signature_invalid'),
+                __('payments::messages.webhook_signature_invalid'),
                 401,
             );
         }

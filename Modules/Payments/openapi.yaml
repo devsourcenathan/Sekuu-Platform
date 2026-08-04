@@ -1,0 +1,322 @@
+openapi: 3.1.0
+
+info:
+  title: Sekuu Payments API
+  version: '1.0'
+  description: |
+    Encaissement Mobile Money, quel que soit le motif.
+
+    **Aucune route de création.** Déclencher un paiement suppose de savoir ce
+    qu'on paie, combien cela vaut et qui a le droit de le régler — trois choses
+    que ce module ignore délibérément. Il porte un `subject_type` et un
+    `subject_id` qu'il n'interprète jamais, et remet la question au module
+    propriétaire de l'objet.
+
+    Une route de création exposée ici offrirait un moyen de faire sonner le
+    téléphone de quelqu'un sans motif vérifiable.
+
+    Pour régler une facture d'abonnement : `POST /payments` côté
+    [Billing](../Billing/openapi.yaml).
+
+    Deux décisions gouvernent le reste :
+
+    - [ADR-0007](../../docs/04-decisions/adr-0007-mobile-money-prepaid-subscriptions.md) —
+      un paiement Mobile Money ne peut pas être déclenché sans le client, et le
+      sondage est obligatoire parce qu'un callback se perd.
+    - [ADR-0008](../../docs/04-decisions/adr-0008-payment-aggregators-failover.md) —
+      la bascule entre agrégateurs est **volontairement étroite** : on ne
+      réessaie ailleurs que si l'invite n'est jamais partie sur le téléphone.
+
+    Tous les montants sont des **entiers**, dans l'unité la plus petite de leur
+    devise. Le franc CFA n'a pas de centime : 45 000 XAF s'écrit `45000`.
+
+servers:
+  - url: https://payments.sekuu.com/api/v1
+    description: Production
+  - url: http://localhost:8000/api/v1
+    description: Local
+
+tags:
+  - name: Service
+  - name: Paiements
+  - name: Webhooks
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  /payments/health:
+    get:
+      tags: [Service]
+      summary: Agrégateurs réellement configurés
+      description: |
+        Un agrégateur sans identifiants n'est jamais essayé. Le dire franchement
+        évite de croire qu'un paiement pourra partir alors que rien n'est
+        branché.
+
+        `can_collect` à `false` signifie qu'aucun paiement ne peut aboutir.
+      security: []
+      responses:
+        '200':
+          description: État du service
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          status: { type: string, enum: [ok, degraded] }
+                          providers: { type: array, items: { type: string } }
+                          can_collect: { type: boolean }
+                          currency: { type: string, example: XAF }
+
+  /payments:
+    get:
+      tags: [Paiements]
+      summary: Paiements de l'organisation
+      description: |
+        Les paiements dont l'organisation courante est **payeuse**.
+
+        Le jour où un tiers encaisse via la plateforme, il consultera les siens
+        par bénéficiaire : deux questions distinctes, deux requêtes distinctes.
+      responses:
+        '200':
+          description: Paiements
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/PaymentIntent' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/OrganizationRequired' }
+
+  /payments/{paymentId}:
+    get:
+      tags: [Paiements]
+      summary: Statut d'une intention
+      description: |
+        Fait pour être **sondé**, toutes les 3 à 5 secondes. `Retry-After`
+        accompagne la réponse tant que le statut n'est pas définitif.
+
+        `expired` n'est **pas** `failed` : il signifie *on ne sait pas*. Un
+        paiement dont on ignore l'issue peut avoir été encaissé ; le traiter
+        comme un échec risquerait de facturer deux fois.
+
+        Le détail des tentatives n'est exposé qu'aux rôles `Owner` et `Admin` :
+        l'ordre de priorité des agrégateurs est une information d'exploitation.
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Statut
+          headers:
+            Retry-After:
+              schema: { type: integer }
+              description: Présent tant que le statut n'est pas définitif.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/PaymentIntent' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /payments/webhooks/{provider}:
+    post:
+      tags: [Webhooks]
+      summary: Callback d'un agrégateur
+      description: |
+        Publique au sens réseau, authentifiée selon le schéma propre à chaque
+        agrégateur :
+
+        - **Notch Pay** — HMAC-SHA256 sur le corps brut, en-tête
+          `x-notch-signature`. Une modification en transit est détectable.
+        - **Tranzak** — `authKey` transporté dans le corps. Cela prouve que
+          l'émetteur connaît le secret, jamais que le corps est intact.
+
+        **Un callback n'est jamais cru sur parole.** Il déclenche une relecture
+        du statut chez l'agrégateur, il ne le dicte pas — un paiement produit
+        plusieurs livraisons, dans un ordre variable, et croire le statut
+        annoncé ferait régresser un encaissement constaté.
+
+        Une signature invalide renvoie `401`, et le callback est **tout de même
+        enregistré** : le jeter en silence priverait de toute trace en cas de
+        tentative de fraude.
+
+        Les deux agrégateurs n'utilisent pas la même clé de déduplication, et
+        c'est délibéré — celui qui ne signe pas est vulnérable au rejeu avec un
+        identifiant de livraison forgé.
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string, enum: [notchpay, tranzak] }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: |
+            Reçu. Toujours `200`, y compris pour un doublon ou une référence
+            inconnue : répondre en erreur déclencherait des réessais inutiles, et
+            finirait par faire désactiver le endpoint.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          processed: { type: boolean }
+                          reason: { type: string, enum: [duplicate, unknown_reference] }
+        '401':
+          description: '`WEBHOOK_SIGNATURE_INVALID`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '404':
+          description: '`ENDPOINT_NOT_FOUND` — agrégateur inconnu'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /billing/webhooks/{provider}:
+    post:
+      tags: [Webhooks]
+      summary: Callback d'un agrégateur (ancienne adresse)
+      description: |
+        Strictement équivalente à `/payments/webhooks/{provider}`.
+
+        Conservée le temps que les tableaux de bord des agrégateurs soient mis à
+        jour : des transactions déjà initialisées portent cette URL **figée dans
+        leur payload**, et la retirer trop tôt ferait échouer leurs callbacks —
+        donc laisserait des clients débités sans service.
+
+        À supprimer une fois qu'aucune transaction en cours ne la référence.
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string, enum: [notchpay, tranzak] }
+      responses:
+        '200':
+          description: Reçu
+          content: { application/json: { schema: { $ref: '#/components/schemas/SuccessEnvelope' } } }
+        '401':
+          description: '`WEBHOOK_SIGNATURE_INVALID`'
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    Unauthenticated:
+      description: '`UNAUTHENTICATED`, `INVALID_TOKEN`, `TOKEN_EXPIRED`, `TOKEN_REVOKED`'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    OrganizationRequired:
+      description: '`ORGANIZATION_REQUIRED` — le token ne porte aucune organisation active'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    NotFound:
+      description: '`RESOURCE_NOT_FOUND`'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  schemas:
+
+    SuccessEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        data: {}
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    ErrorEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: { type: array, items: { type: object, additionalProperties: true } }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    Meta:
+      type: object
+      properties:
+        request_id: { type: string }
+
+    PaymentIntent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [pending, processing, succeeded, failed, expired, cancelled]
+          description: |
+            `expired` signifie **on ne sait pas**, ce qui n'est pas « cela a
+            échoué ». Ces intentions partent au rapprochement manuel, jamais à
+            une nouvelle tentative automatique.
+        operator: { type: [string, 'null'], enum: [mtn, orange, null] }
+        subject_type:
+          type: string
+          example: billing.invoice
+          description: |
+            Ce que le paiement règle, au format `{module}.{ressource}`. Porté et
+            indexé, jamais interprété par ce module.
+        subject_id: { type: string, format: uuid }
+        amount: { type: integer }
+        currency: { type: string }
+        currency_exponent:
+          type: integer
+          description: '**0** pour le XAF : 45 000 XAF s''écrit `45000`.'
+        formatted: { type: string, example: '45 000 XAF' }
+        expires_at: { type: string, format: date-time }
+        failure_code: { type: [string, 'null'] }
+        instructions: { type: string }
+        attempts:
+          type: array
+          description: Réservé aux rôles `Owner` et `Admin`.
+          items: { $ref: '#/components/schemas/PaymentAttempt' }
+
+    PaymentAttempt:
+      type: object
+      properties:
+        provider: { type: string, enum: [notchpay, tranzak] }
+        status:
+          type: string
+          enum: [created, rejected, prompted, processing, succeeded, failed, expired]
+          description: |
+            `rejected` est le **seul** état qui autorise à essayer l'agrégateur
+            suivant : l'agrégateur a refusé la demande, donc le client n'a
+            jamais rien reçu.
+        customer_prompted:
+          type: boolean
+          description: |
+            L'invite est-elle partie sur le téléphone ? Aucun agrégateur ne
+            l'expose ; elle est déduite de l'issue de l'appel de débit.
+
+            Une fois à `true`, plus aucune bascule — le client peut valider avec
+            dix minutes de retard, et réessayer ailleurs le débiterait deux fois.
+        failure_code: { type: [string, 'null'] }
+        started_at: { type: string, format: date-time }

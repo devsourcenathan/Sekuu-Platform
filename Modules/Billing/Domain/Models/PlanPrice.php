@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Modules\Billing\Domain\Models;
 
+use App\Platform\Support\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Modules\Billing\Domain\Money;
 
 final class PlanPrice extends Model
 {

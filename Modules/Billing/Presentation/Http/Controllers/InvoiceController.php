@@ -11,7 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Billing\Domain\Models\Invoice;
 use Modules\Billing\Domain\Models\InvoiceLine;
-use Modules\Billing\Presentation\Support\ResolvesOrganization;
+use Modules\Billing\Presentation\Http\Controllers\Concerns\EngagesTheOrganization;
 
 /**
  * Factures.
@@ -24,12 +24,12 @@ use Modules\Billing\Presentation\Support\ResolvesOrganization;
  */
 final class InvoiceController
 {
-    use ResolvesOrganization;
+    use EngagesTheOrganization;
 
     public function index(Request $request): JsonResponse
     {
         $query = Invoice::query()
-            ->where('organization_id', $this->organizationId($request))
+            ->where('organization_id', $this->organizationId())
             ->orderByDesc('issued_at')
             ->orderByDesc('id');
 
@@ -50,7 +50,7 @@ final class InvoiceController
     public function show(Request $request, string $invoiceId): JsonResponse
     {
         $invoice = Invoice::query()
-            ->where('organization_id', $this->organizationId($request))
+            ->where('organization_id', $this->organizationId())
             ->whereKey($invoiceId)
             ->with('lines')
             ->first();
@@ -70,7 +70,7 @@ final class InvoiceController
      */
     public function download(Request $request, string $invoiceId): JsonResponse
     {
-        $this->organizationId($request);
+        $this->organizationId();
 
         throw new DomainException(
             'SERVICE_UNAVAILABLE',

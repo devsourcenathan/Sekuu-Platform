@@ -56,7 +56,8 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | **Identity** | **Implémenté** | [vision](03-services/identity/01-overview.md) · [modèle de données](03-services/identity/02-data-model.md) · [API](03-services/identity/03-api.md) · [contrat OpenAPI](../Modules/Identity/openapi.yaml) |
 | **Notify** | **Implémenté** — canaux email, SMS et interne ; WhatsApp et push non développés | [vision](03-services/notify/01-overview.md) · [modèle de données](03-services/notify/02-data-model.md) · [API](03-services/notify/03-api.md) · [événements](03-services/notify/04-events.md) · [contrat OpenAPI](../Modules/Notify/openapi.yaml) |
 | Verify | À spécifier | — |
-| **Billing** | **Implémenté** — Tranzak ; NotchPay et Tara à venir | [vision](03-services/billing/01-overview.md) · [modèle de données](03-services/billing/02-data-model.md) · [API](03-services/billing/03-api.md) · [événements](03-services/billing/04-events.md) · [agrégateurs](03-services/billing/05-providers.md) |
+| **Payments** | **Implémenté** — Notch Pay, Tranzak | [vision](03-services/payments/01-overview.md) · [agrégateurs](03-services/payments/05-providers.md) · [contrat OpenAPI](../Modules/Payments/openapi.yaml) |
+| **Billing** | **Implémenté** — abonnements prépayés | [vision](03-services/billing/01-overview.md) · [modèle de données](03-services/billing/02-data-model.md) · [API](03-services/billing/03-api.md) · [événements](03-services/billing/04-events.md) |
 | Storage | À spécifier | — |
 | AI | Esquissé dans [architecture.md](01-overview/architecture.md) | — |
 | Search | À spécifier | — |
@@ -73,7 +74,8 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | [ADR-0005](04-decisions/adr-0005-notify-asynchronous-delivery.md) | Notify : envoi asynchrone, contenu figé à l'acceptation |
 | [ADR-0006](04-decisions/adr-0006-transactional-vs-marketing.md) | Catégories de messages et liste de suppression |
 | [ADR-0007](04-decisions/adr-0007-mobile-money-prepaid-subscriptions.md) | Billing : abonnements prépayés plutôt que reconduction automatique |
-| [ADR-0008](04-decisions/adr-0008-payment-aggregators-failover.md) | Billing : agrégateurs de paiement et règle de bascule |
+| [ADR-0008](04-decisions/adr-0008-payment-aggregators-failover.md) | Payments : agrégateurs de paiement et règle de bascule |
+| [ADR-0009](04-decisions/adr-0009-payments-module-extraction.md) | Extraction de la couche de paiement hors de Billing |
 
 ---
 
@@ -107,7 +109,9 @@ Les confusions les plus fréquentes, tranchées une fois pour toutes :
 
 | Sujet | Propriétaire | Précision |
 | --- | --- | --- |
-| Plans, abonnements, paiements, factures | **Billing** | Identity ne stocke que des droits d'accès (`organization_products`) |
+| Plans, abonnements, factures | **Billing** | Identity ne stocke que des droits d'accès (`organization_products`) |
+| Encaisser de l'argent | **Payments** | Il ignore ce qu'il encaisse : Billing lui dit combien vaut une facture |
+| Combien vaut un objet, et qui peut le payer | **Le module propriétaire** | Payments ne peut pas trancher : il ne sait rien des rôles |
 | Envoi d'emails, SMS, push | **Notify** | Identity publie des événements, il n'envoie rien |
 | Décision d'envoyer un message | **Le module émetteur** | Notify n'a aucune logique métier |
 | Réputation d'expédition | **Notify** | Liste de suppression, prime sur toute catégorie |

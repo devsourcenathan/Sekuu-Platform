@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace Modules\Billing\Tests\Feature;
 
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Modules\Billing\Application\Payments\InitiatePayment;
-use Modules\Billing\Application\Payments\SettlePayment;
-use Modules\Billing\Domain\AttemptStatus;
-use Modules\Billing\Domain\Models\PaymentIntent;
-use Modules\Billing\Infrastructure\Providers\ChargeOutcome;
+use Illuminate\Support\Str;
 use Modules\Billing\Tests\Concerns\BillsAnOrganization;
-use Modules\Billing\Tests\Support\FakeProvider;
+use Modules\Payments\Application\Payments\SettlePayment;
+use Modules\Payments\Domain\AttemptStatus;
+use Modules\Payments\Domain\Models\PaymentIntent;
+use Modules\Payments\Infrastructure\Providers\ChargeOutcome;
+use Modules\Payments\Tests\Support\FakeProvider;
 use Tests\TestCase;
 
 /**
@@ -146,6 +147,72 @@ final class PaymentFailoverTest extends TestCase
     }
 
     /**
+     * Le jumeau du test précédent, **sans facture**.
+     *
+     * L'index d'unicité portait auparavant sur `invoice_id` et excluait
+     * explicitement les intentions qui n'en avaient pas : un paiement sans
+     * facture n'avait donc aucune protection anti-triple-clic. Sans conséquence
+     * tant que seul un abonnement se payait — et c'est exactement le cas
+     * nominal d'un produit qui vend autre chose.
+     */
+    public function test_a_second_payment_on_any_subject_is_refused(): void
+    {
+        $intent = PaymentIntent::create([
+            'subject_type' => 'learn.enrollment',
+            'subject_id' => (string) Str::uuid(),
+            'payer_type' => PaymentIntent::PAYER_USER,
+            'payer_id' => (string) Str::uuid(),
+            'amount' => 15000,
+            'currency' => 'XAF',
+            'method' => 'mobile_money',
+            'status' => PaymentIntent::PENDING,
+            'expires_at' => now()->addMinutes(10),
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        // Même sujet, aucune facture : la base doit refuser.
+        PaymentIntent::create([
+            'subject_type' => $intent->subject_type,
+            'subject_id' => $intent->subject_id,
+            'payer_type' => PaymentIntent::PAYER_USER,
+            'payer_id' => (string) Str::uuid(),
+            'amount' => 15000,
+            'currency' => 'XAF',
+            'method' => 'mobile_money',
+            'status' => PaymentIntent::PENDING,
+            'expires_at' => now()->addMinutes(10),
+        ]);
+    }
+
+    /**
+     * L'idempotence est scopée au payeur.
+     *
+     * Elle était globale, et la recherche correspondante ne filtrait sur rien :
+     * deux produits dont les clients dérivent leurs clés du métier auraient pu
+     * se renvoyer mutuellement leurs intentions.
+     */
+    public function test_the_same_idempotency_key_may_serve_two_payers(): void
+    {
+        foreach ([Str::uuid(), Str::uuid()] as $payeur) {
+            PaymentIntent::create([
+                'subject_type' => 'learn.enrollment',
+                'subject_id' => (string) Str::uuid(),
+                'payer_type' => PaymentIntent::PAYER_USER,
+                'payer_id' => (string) $payeur,
+                'amount' => 15000,
+                'currency' => 'XAF',
+                'method' => 'mobile_money',
+                'status' => PaymentIntent::PENDING,
+                'idempotency_key' => 'order-1',
+                'expires_at' => now()->addMinutes(10),
+            ]);
+        }
+
+        $this->assertSame(2, PaymentIntent::query()->where('idempotency_key', 'order-1')->count());
+    }
+
+    /**
      * Une invite partie ne se rétracte pas : écraser ce drapeau par un `false`
      * venu d'un statut mal traduit rouvrirait la porte au double débit.
      */
@@ -167,9 +234,6 @@ final class PaymentFailoverTest extends TestCase
     {
         $invoice = $this->subscribe();
 
-        return $this->app->make(InitiatePayment::class)->handle(
-            invoice: $invoice,
-            rawMsisdn: '+237650000000',
-        )->fresh();
+        return $this->payInvoice($invoice, '+237650000000')->fresh();
     }
 }

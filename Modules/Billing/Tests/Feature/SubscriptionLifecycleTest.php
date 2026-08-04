@@ -6,14 +6,13 @@ namespace Modules\Billing\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Modules\Billing\Application\Payments\InitiatePayment;
 use Modules\Billing\Application\Subscriptions\AdvanceLifecycle;
 use Modules\Billing\Domain\Models\Invoice;
 use Modules\Billing\Domain\Models\Subscription;
 use Modules\Billing\Domain\SubscriptionStatus;
-use Modules\Billing\Infrastructure\Providers\ChargeOutcome;
 use Modules\Billing\Tests\Concerns\BillsAnOrganization;
-use Modules\Billing\Tests\Support\FakeProvider;
+use Modules\Payments\Infrastructure\Providers\ChargeOutcome;
+use Modules\Payments\Tests\Support\FakeProvider;
 use Tests\TestCase;
 
 /**
@@ -91,7 +90,7 @@ final class SubscriptionLifecycleTest extends TestCase
 
         $invoice = $this->subscribe('business');
 
-        $this->app->make(InitiatePayment::class)->handle($invoice, '+237650000000');
+        $this->payInvoice($invoice, '+237650000000');
 
         $subscription = Subscription::query()->firstOrFail();
 
@@ -118,10 +117,12 @@ final class SubscriptionLifecycleTest extends TestCase
 
         $invoice = $this->subscribe('business');
 
-        $this->app->make(InitiatePayment::class)->handle($invoice, '+237650000000');
+        $this->payInvoice($invoice, '+237650000000');
 
-        $this->assertDatabaseHas('transactions', ['type' => 'charge', 'amount' => $invoice->total]);
-        $this->assertDatabaseHas('transactions', ['type' => 'fee', 'amount' => -3000]);
+        // Registre de **caisse** : ce que le client a payé et ce que
+        // l'agrégateur a prélevé. Le crédit commercial vit ailleurs.
+        $this->assertDatabaseHas('payment_transactions', ['type' => 'charge', 'amount' => $invoice->total]);
+        $this->assertDatabaseHas('payment_transactions', ['type' => 'fee', 'amount' => -3000]);
 
         // La facture est réglée sur le brut, pas sur le net.
         $this->assertSame(Invoice::PAID, $invoice->fresh()->status);
@@ -194,7 +195,7 @@ final class SubscriptionLifecycleTest extends TestCase
         FakeProvider::willReturn('primary', ChargeOutcome::succeeded('ref-1', gross: 178875));
 
         $invoice = $this->subscribe('business');
-        $this->app->make(InitiatePayment::class)->handle($invoice, '+237650000000');
+        $this->payInvoice($invoice, '+237650000000');
 
         Subscription::query()->firstOrFail()->forceFill([
             'status' => SubscriptionStatus::Grace,

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Domain;
+namespace Modules\Payments\Domain;
 
 /**
  * État d'une tentative de paiement chez un agrégateur.

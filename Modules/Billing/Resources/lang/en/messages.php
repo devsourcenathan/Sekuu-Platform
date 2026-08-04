@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 return [
 
+    'payable_type_unknown' => 'This payable type is not registered: :type.',
+    'nothing_due' => 'There is nothing to pay on this item.',
     'plan_not_found' => 'This plan does not exist.',
     'plan_archived' => 'This plan is no longer offered.',
     'price_not_available' => 'No price available for this plan in that currency.',

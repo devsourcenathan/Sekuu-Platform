@@ -10,11 +10,11 @@
 | | |
 | --- | --- |
 | Application | Monolithe modulaire Laravel 13, PHP 8.3, PostgreSQL 18 |
-| Modules livrés | **Identity** (complet) · **Notify** (email, SMS, interne) · **Billing** (Tranzak + Notch Pay) |
+| Modules livrés | **Identity** · **Notify** (email, SMS, interne) · **Payments** (Notch Pay, Tranzak) · **Billing** |
 | Modules non démarrés | Verify, Storage, AI, Search, Analytics |
-| Endpoints | 85 sous `/api/v1` + `/.well-known/jwks.json` |
-| Migrations | 26 |
-| Tests | 437, sur PostgreSQL |
+| Endpoints | 81 sous `/api/v1` + `/.well-known/jwks.json` |
+| Migrations | 27 |
+| Tests | 464, sur PostgreSQL |
 | Contrats | `Modules/*/openapi.yaml`, vérifiés par test |
 | Collection de test | `postman/` |
 
@@ -37,6 +37,9 @@ Dans `app/Platform/`, commun à tous les futurs modules :
 | `IdentityContract` | Lecture synchrone d'Identity par les autres modules |
 | `BillingContract` | Limites du plan courant d'une organisation |
 | `QuotaGuard` | Refus d'une écriture dépassant le quota — le comptage reste au module appelant |
+| `RequestContext` | Qui appelle, sans exposer l'infrastructure d'authentification d'Identity |
+| `PayableSource` | Combien vaut un objet, qui peut le payer, et que faire une fois payé |
+| `Money` | Montant entier — le franc CFA n'a pas de centime, et une seule définition de l'exposant |
 
 Conséquence : un module ne formate jamais une erreur lui-même, et n'a rien à câbler pour exposer ses routes.
 
@@ -96,19 +99,15 @@ C'est aussi le seul recours contre un faux positif de fournisseur, qui bloquait 
 
 ## 2.4 Module Billing
 
-**Implémenté** — catalogue de plans, abonnements prépayés, factures numérotées avec TVA figée, paiements Mobile Money via **Notch Pay puis Tranzak**, registre append-only, callbacks et réconciliation par sondage.
+**Implémenté** — catalogue de plans, abonnements prépayés, factures numérotées avec TVA figée, registre de crédit append-only, quotas de plan.
+
+**L'encaissement appartient à [Payments](#25-module-payments)** depuis l'[ADR-0009](04-decisions/adr-0009-payments-module-extraction.md). Billing lui dit seulement combien vaut une facture et qui a le droit de la régler, via `InvoicePayable`.
 
 **Ce qui alimente enfin `organization_products`.** Cette table existait, était lue à chaque requête, et se modifiait à la main. Identity consomme désormais les événements de Billing et applique un **état cible** — jamais un delta, puisqu'un même événement peut être livré deux fois.
 
 Le consommateur ne touche jamais les lignes `source = 'manual'` : une activation commerciale accordée par un humain ne se révoque pas au motif qu'aucun abonnement ne la justifie.
 
 **Le modèle est prépayé** ([ADR-0007](04-decisions/adr-0007-mobile-money-prepaid-subscriptions.md)) : il n'existe aucun moyen technique de prélever un client en Mobile Money. Le renouvellement est un acte volontaire, précédé de rappels à J-7, J-3 et J-1, suivi d'une grâce de 7 jours puis d'une suspension — jamais d'une suppression.
-
-**La bascule entre agrégateurs est volontairement étroite** ([ADR-0008](04-decisions/adr-0008-payment-aggregators-failover.md)) : on ne réessaie ailleurs que si l'invite n'est jamais partie sur le téléphone du client. Une temporisation compte comme « invite partie ». Ne pas encaisser est un incident réparable ; encaisser deux fois est une faute que le client découvre sur son relevé.
-
-**Le sondage n'est pas optionnel.** `billing:reconcile` interroge les agrégateurs toutes les 5 minutes. Un callback perdu retarde une confirmation, il ne la fait pas disparaître — sans quoi un client peut être débité sans obtenir son accès.
-
-**Le montant d'un callback n'est jamais cru** : le statut est relu chez l'agrégateur. Notch Pay signe en HMAC-SHA256 sur le corps brut ; Tranzak se contente d'un `authKey` transporté dans le corps, ce qui prouve que l'émetteur connaît le secret mais rien sur l'intégrité du corps.
 
 **Les deux adaptateurs ont été exécutés contre leur bac à sable**, et chacun a démenti deux hypothèses — jamais les mêmes. Le détail est dans [05-providers.md](03-services/billing/05-providers.md) ; le résumé est qu'aucune de ces erreurs n'était visible en test unitaire, puisque les fixtures reproduisaient les suppositions.
 
@@ -135,6 +134,28 @@ Un paiement produit **trois** livraisons dans un ordre variable : croire le stat
 Les deux agrégateurs n'utilisent **pas la même clé de déduplication**, et c'est délibéré. Notch Pay signe ses callbacks : son identifiant de livraison suffit. Tranzak n'authentifie que par un secret dans le corps, donc rejouable avec un identifiant forgé — sa clé ne dépend que du fait rapporté.
 
 Le paiement Tranzak a produit la ligne `fee −3 XAF` attendue : la séparation brut / net est éprouvée contre du réel, ce que le bac à sable de Notch Pay ne permet pas.
+
+---
+
+
+## 2.5 Module Payments
+
+**Extrait de Billing** ([ADR-0009](04-decisions/adr-0009-payments-module-extraction.md)) pour qu'un produit vendant autre chose qu'un abonnement — Sekuu Learn et ses formations — puisse encaisser sans dépendre de la facturation.
+
+**Il ignore ce qu'il encaisse.** Une intention porte un `subject_type` et un `subject_id` qu'il n'interprète jamais. La résolution vers le module propriétaire passe par `config/payments.php` : aucun de ses fichiers n'importe Billing, et un test d'architecture le vérifie.
+
+**Le montant est indicible.** `InitiatePayment::handle()` n'a aucun paramètre de montant — on ne *peut pas* demander à régler 49 663 XAF avec 100 XAF. Il est produit par `PayableSource::quote()`, chez le propriétaire de l'objet, qui en profite pour vérifier que ce payeur a le droit de le régler.
+
+**Aucune route de création.** Déclencher un paiement suppose de savoir ce qu'on paie, combien cela vaut et qui peut le régler. Une route ici offrirait un moyen de faire sonner le téléphone de quelqu'un sans motif vérifiable.
+
+**Quatre défauts corrigés au passage**, tous préexistants et invisibles :
+
+* un paiement **sans facture** n'avait aucune protection anti-triple-clic — l'index d'unicité les excluait explicitement, et c'était le cas nominal de Learn ;
+* l'idempotence était globale et lue sans filtre : deux produits dérivant leurs clés du métier auraient pu se renvoyer mutuellement leurs intentions ;
+* aucun verrou sur l'intention pendant l'encaissement — deux exécutions concurrentes pouvaient écrire deux lignes `charge` ;
+* une tentative morte avant l'appel de débit n'était ni sondée ni expirée, et bloquait indéfiniment l'unicité « une seule tentative vivante ».
+
+**Non implémenté** — encaisser pour le compte d'un tiers. `payee_organization_id` existe et laisse la porte ouverte, mais rien derrière n'est construit : pas de compte de destination, pas de type `payout`, pas d'état de reversement. Le remboursement reste déclaré et jamais écrit.
 
 ---
 

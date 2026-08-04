@@ -15,7 +15,7 @@ use Illuminate\Foundation\Http\FormRequest;
  * L'agrégateur est absent lui aussi : c'est un détail d'exploitation, et
  * l'exposer figerait l'ordre de priorité dans les interfaces clientes.
  */
-final class CreatePaymentRequest extends FormRequest
+final class PayInvoiceRequest extends FormRequest
 {
     public function authorize(): bool
     {

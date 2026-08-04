@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Identity;
 
 use App\Platform\Contracts\IdentityContract;
+use App\Platform\Contracts\RequestContext;
 use App\Platform\Events\DomainEvent;
 use App\Platform\Support\ModuleServiceProvider;
 use Illuminate\Routing\Router;
@@ -17,6 +18,7 @@ use Modules\Identity\Domain\AuthenticatedContext;
 use Modules\Identity\Infrastructure\Auth\JwtUserResolver;
 use Modules\Identity\Infrastructure\Console\GenerateJwtKeysCommand;
 use Modules\Identity\Infrastructure\Contracts\IdentityGateway;
+use Modules\Identity\Infrastructure\Contracts\JwtRequestContext;
 use Modules\Identity\Infrastructure\Jwt\AccessTokenIssuer;
 use Modules\Identity\Infrastructure\Jwt\AccessTokenVerifier;
 use Modules\Identity\Infrastructure\Jwt\SigningKeys;
@@ -99,6 +101,13 @@ final class IdentityServiceProvider extends ModuleServiceProvider
         // seule façon dont ils peuvent l'interroger : jamais son modèle
         // Eloquent, jamais sa table.
         $this->app->singleton(IdentityContract::class, IdentityGateway::class);
+
+        // Lié par requête, jamais en singleton : un contexte partagé fuirait
+        // d'une requête à l'autre.
+        $this->app->bind(RequestContext::class, fn ($app) => new JwtRequestContext(
+            $app->make(JwtUserResolver::class),
+            $app->make('request'),
+        ));
 
         if ($this->app->runningInConsole()) {
             $this->commands([GenerateJwtKeysCommand::class]);

@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Presentation\Http\Controllers;
+namespace Modules\Payments\Presentation\Http\Controllers;
 
 use App\Platform\Http\ApiResponse;
 use Illuminate\Http\JsonResponse;
-use Modules\Billing\Infrastructure\Providers\PaymentProvider;
-use Modules\Billing\Infrastructure\Providers\ProviderRegistry;
+use Modules\Payments\Infrastructure\Providers\PaymentProvider;
+use Modules\Payments\Infrastructure\Providers\ProviderRegistry;
 
 /**
  * Indique quels agrégateurs sont réellement configurés.
@@ -33,7 +33,7 @@ final class HealthController
             // prépayé, ne plus encaisser ferme les accès un par un.
             'can_collect' => $configured !== [],
 
-            'currency' => config('billing.default_currency'),
+            'currency' => config('sekuu.default_currency'),
         ]);
     }
 }

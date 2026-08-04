@@ -50,6 +50,10 @@ final class DomainEventSubscriber implements ShouldQueue
         'billing.subscription.suspended' => 'subscription.suspended',
         'billing.invoice.issued' => 'invoice.issued',
         'billing.invoice.paid' => 'invoice.paid',
+        // Publié par **Billing**, pas par Payments : le préfixe désigne le
+        // module émetteur, et c'est le propriétaire de la facture qui prévient
+        // son client. Payments publie de son côté des événements nus, sans
+        // destinataire, que Notify n'écoute pas.
         'billing.payment.failed' => 'payment.failed',
     ];
 

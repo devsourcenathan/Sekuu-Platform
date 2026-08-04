@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Infrastructure\Providers;
+namespace Modules\Payments\Infrastructure\Providers;
 
-use Modules\Billing\Domain\Money;
-use Modules\Billing\Domain\Msisdn;
+use App\Platform\Support\Money;
+use Modules\Payments\Domain\Msisdn;
 
 /**
  * Demande de débit adressée à un agrégateur.

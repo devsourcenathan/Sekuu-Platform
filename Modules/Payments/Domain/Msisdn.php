@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Domain;
+namespace Modules\Payments\Domain;
 
 use App\Platform\Exceptions\DomainException;
 
@@ -22,10 +22,10 @@ final readonly class Msisdn
 
     public static function parse(string $raw, ?string $country = null): self
     {
-        $country = mb_strtoupper($country ?? (string) config('billing.default_country'));
+        $country = mb_strtoupper($country ?? (string) config('payments.default_country'));
 
         /** @var array{country_code: string, prefixes: array<string, list<string>>}|null $config */
-        $config = config('billing.operators.'.$country);
+        $config = config('payments.operators.'.$country);
 
         if ($config === null) {
             throw self::invalid();
@@ -91,7 +91,7 @@ final readonly class Msisdn
     {
         return DomainException::unprocessable(
             'INVALID_MSISDN',
-            __('billing::messages.invalid_msisdn'),
+            __('payments::messages.invalid_msisdn'),
         );
     }
 }

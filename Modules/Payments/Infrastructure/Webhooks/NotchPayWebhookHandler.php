@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Infrastructure\Webhooks;
+namespace Modules\Payments\Infrastructure\Webhooks;
 
 use Illuminate\Http\Request;
 
@@ -32,7 +32,7 @@ class NotchPayWebhookHandler implements PaymentWebhookHandler
 
     public function verify(Request $request): bool
     {
-        $secret = config('billing.notchpay.webhook_hash');
+        $secret = config('payments.notchpay.webhook_hash');
 
         // Sans secret configuré, aucun callback n'est accepté. Accepter par
         // défaut ferait d'une variable d'environnement oubliée une porte

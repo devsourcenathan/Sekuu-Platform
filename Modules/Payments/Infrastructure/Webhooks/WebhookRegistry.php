@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Infrastructure\Webhooks;
+namespace Modules\Payments\Infrastructure\Webhooks;
 
 use App\Platform\Exceptions\DomainException;
 use Illuminate\Contracts\Container\Container;
@@ -31,7 +31,7 @@ final class WebhookRegistry
             // quels autres endpoints existent.
             throw DomainException::notFound(
                 'ENDPOINT_NOT_FOUND',
-                __('billing::messages.webhook_provider_unknown'),
+                __('payments::messages.webhook_provider_unknown'),
             );
         }
 

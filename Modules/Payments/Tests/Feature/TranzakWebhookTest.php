@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Tests\Feature;
+namespace Modules\Payments\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
-use Modules\Billing\Infrastructure\Webhooks\TranzakWebhookHandler;
+use Modules\Payments\Infrastructure\Webhooks\TranzakWebhookHandler;
 use Tests\TestCase;
 
 /**
@@ -28,7 +28,7 @@ final class TranzakWebhookTest extends TestCase
     {
         parent::setUp();
 
-        config()->set('billing.tranzak.auth_key', 'secret-partage');
+        config()->set('payments.tranzak.auth_key', 'secret-partage');
 
         $this->handler = new TranzakWebhookHandler;
     }
@@ -53,7 +53,7 @@ final class TranzakWebhookTest extends TestCase
      */
     public function test_an_unconfigured_secret_closes_the_endpoint(): void
     {
-        config()->set('billing.tranzak.auth_key', null);
+        config()->set('payments.tranzak.auth_key', null);
 
         $this->assertFalse($this->handler->verify($this->request($this->realPayload())));
     }

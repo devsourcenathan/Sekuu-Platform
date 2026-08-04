@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Modules\Billing\Tests\Feature;
+namespace Modules\Payments\Tests\Feature;
 
+use App\Platform\Support\Money;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
-use Modules\Billing\Domain\AttemptStatus;
-use Modules\Billing\Domain\Models\PaymentAttempt;
-use Modules\Billing\Domain\Money;
-use Modules\Billing\Domain\Msisdn;
-use Modules\Billing\Infrastructure\Providers\ChargeRequest;
-use Modules\Billing\Infrastructure\Providers\TranzakProvider;
+use Modules\Payments\Domain\AttemptStatus;
+use Modules\Payments\Domain\Models\PaymentAttempt;
+use Modules\Payments\Domain\Msisdn;
+use Modules\Payments\Infrastructure\Providers\ChargeRequest;
+use Modules\Payments\Infrastructure\Providers\TranzakProvider;
 use Tests\TestCase;
 
 /**
@@ -34,9 +34,9 @@ final class TranzakProviderTest extends TestCase
     {
         parent::setUp();
 
-        config()->set('billing.tranzak.base_url', 'https://sandbox.dsapi.tranzak.me');
-        config()->set('billing.tranzak.app_id', 'test-app');
-        config()->set('billing.tranzak.app_key', 'test-key');
+        config()->set('payments.tranzak.base_url', 'https://sandbox.dsapi.tranzak.me');
+        config()->set('payments.tranzak.app_id', 'test-app');
+        config()->set('payments.tranzak.app_key', 'test-key');
 
         Cache::flush();
 
@@ -45,7 +45,7 @@ final class TranzakProviderTest extends TestCase
 
     public function test_an_unconfigured_aggregator_is_never_attempted(): void
     {
-        config()->set('billing.tranzak.app_id', null);
+        config()->set('payments.tranzak.app_id', null);
 
         $this->assertFalse((new TranzakProvider)->isConfigured());
     }
