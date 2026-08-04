@@ -10,6 +10,10 @@ qu'on ne recrée jamais, et les **suivants**, automatisés par
 Les conditions à réunir sont dans [01-go-live.md](01-go-live.md). Ce document
 suppose qu'elles le sont.
 
+> Sur un hébergeur à **disque éphémère** — Render, Fly, Heroku — lisez d'abord
+> [04-render.md](04-render.md) : les clés JWT et les journaux n'y survivent pas
+> à un déploiement, et l'ordonnanceur ne s'installe pas par une crontab.
+
 ---
 
 # 1. Ce qu'on ne fait qu'une fois

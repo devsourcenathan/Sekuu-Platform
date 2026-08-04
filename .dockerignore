@@ -1,0 +1,46 @@
+# Ce que l'image ne doit jamais contenir.
+#
+# Sans ce fichier, `COPY . .` embarque le `.env` de la machine qui construit —
+# donc, ici, deux jeux d'identifiants de paiement de production. Une image
+# poussée dans un registre les y conserve indéfiniment, et personne ne pense à
+# regarder dedans.
+
+# ------------------------------------------------------------------ secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+storage/app/private
+
+# ------------------------------------------------- reconstruit dans l'image
+vendor
+node_modules
+bootstrap/cache/*.php
+
+# --------------------------------------------------- inutile en production
+.git
+.github
+tests
+Modules/*/Tests
+postman
+docs
+compose.yaml
+phpunit.xml
+.phpunit.result.cache
+pint.json
+
+# ------------------------------------------------------------- transitoire
+#
+# Les negations conservent les `.gitignore` : sans eux, Docker ne creerait pas
+# les repertoires, et Laravel echouerait au premier demarrage sur un
+# `storage/framework/views` introuvable.
+storage/logs/*
+!storage/logs/.gitignore
+storage/framework/cache/data/*
+!storage/framework/cache/data/.gitignore
+storage/framework/sessions/*
+!storage/framework/sessions/.gitignore
+storage/framework/views/*
+!storage/framework/views/.gitignore
+*.tmp

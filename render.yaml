@@ -1,0 +1,145 @@
+# Infrastructure Sekuu Platform sur Render.
+#
+# Trois services partageant **la même image** : le worker ne peut donc pas
+# tourner un autre code que le web. Plus une base et un Redis.
+#
+# @see docs/06-operations/04-render.md
+
+databases:
+  - name: sekuu-postgres
+    databaseName: sekuu_platform
+    user: sekuu
+    plan: basic-256mb
+    postgresMajorVersion: "17"
+
+services:
+
+  # ------------------------------------------------------------------------
+  # Redis
+  # ------------------------------------------------------------------------
+  - type: keyvalue
+    name: sekuu-redis
+    plan: starter
+    ipAllowList: []          # accessible uniquement depuis le réseau privé
+    # **`noeviction`, jamais `allkeys-lru`.** Une file n'est pas un cache : sous
+    # pression mémoire, une politique d'éviction supprimerait des tâches en
+    # attente. Ici, ce sont des livraisons d'encaissement — un produit externe
+    # n'apprendrait jamais qu'il a été payé.
+    maxmemoryPolicy: noeviction
+
+  # ------------------------------------------------------------------------
+  # Web
+  # ------------------------------------------------------------------------
+  - type: web
+    name: sekuu-api
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/v1/health
+
+    # Avant de basculer le trafic. Un échec ici annule le déploiement, et
+    # l'ancienne version continue de servir.
+    #
+    # `payments:verify` est en lecture seule : il ne déclenche aucun paiement,
+    # mais refuse un `.env` dont les identifiants ne correspondent pas à
+    # l'environnement.
+    preDeployCommand: php artisan migrate --force && php artisan payments:verify
+
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: false
+      - key: APP_KEY
+        sync: false            # à générer une fois, jamais régénéré
+      - key: LOG_CHANNEL
+        value: stderr          # le disque d'un conteneur est éphémère
+
+      - key: DB_CONNECTION
+        value: pgsql
+      # `DB_URL`, et non `DATABASE_URL` : c'est la clé que lit
+      # `config/database.php`. Render nomme la sienne autrement.
+      - key: DB_URL
+        fromDatabase:
+          name: sekuu-postgres
+          property: connectionString
+
+      - key: QUEUE_CONNECTION
+        value: redis
+      - key: CACHE_STORE
+        value: redis
+      - key: REDIS_URL
+        fromService:
+          name: sekuu-redis
+          type: keyvalue
+          property: connectionString
+
+      # Les clés JWT **par l'environnement**, jamais par storage/ : le disque
+      # est remplacé à chaque déploiement, une nouvelle paire serait générée, et
+      # tous les tokens en circulation deviendraient invalides d'un coup.
+      - key: IDENTITY_JWT_PRIVATE_KEY
+        sync: false
+      - key: IDENTITY_JWT_PUBLIC_KEY
+        sync: false
+
+      # Agrégateurs. `CredentialGuard` échoue au démarrage si l'un d'eux ne
+      # correspond pas à `APP_ENV=production`.
+      - key: NOTCHPAY_PUBLIC_KEY
+        sync: false
+      - key: NOTCHPAY_WEBHOOK_HASH
+        sync: false
+      - key: TRANZAK_BASE_URL
+        value: https://dsapi.tranzak.me
+      - key: TRANZAK_APP_ID
+        sync: false
+      - key: TRANZAK_APP_KEY
+        sync: false
+      - key: TRANZAK_AUTH_KEY
+        sync: false
+
+      # La connexion à Render Postgres exige TLS.
+      - key: DB_SSLMODE
+        value: require
+
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_WEBHOOK_SECRET
+        sync: false
+
+  # ------------------------------------------------------------------------
+  # Worker de files
+  # ------------------------------------------------------------------------
+  # Porte les envois de Notify **et les webhooks sortants de Payments**. Sans
+  # lui, un produit externe n'apprend jamais ses encaissements autrement qu'en
+  # sondant.
+  - type: worker
+    name: sekuu-worker
+    runtime: docker
+    plan: starter
+    dockerCommand: worker
+    envVars:
+      - fromGroup: sekuu-runtime
+
+  # ------------------------------------------------------------------------
+  # Ordonnanceur
+  # ------------------------------------------------------------------------
+  # `schedule:work` en processus long plutôt qu'un service cron : Render facture
+  # chaque exécution, et une tâche à la minute en produirait 43 200 par mois.
+  #
+  # **Une seule instance.** `payments:reconcile` interroge les agrégateurs ;
+  # deux exécutions concurrentes se disputeraient le même verrou d'encaissement.
+  - type: worker
+    name: sekuu-scheduler
+    runtime: docker
+    plan: starter
+    dockerCommand: scheduler
+    envVars:
+      - fromGroup: sekuu-runtime
+
+# Les trois services partagent les mêmes variables. Créez le groupe
+# `sekuu-runtime` dans l'interface Render et attachez-y les valeurs du service
+# web : les recopier trois fois est le meilleur moyen de les voir diverger.
+envVarGroups:
+  - name: sekuu-runtime
+    envVars:
+      - key: APP_ENV
+        value: production
