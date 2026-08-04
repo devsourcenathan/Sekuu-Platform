@@ -59,6 +59,15 @@ RUN { \
       echo 'post_max_size=16M'; \
     } > /usr/local/etc/php/conf.d/sekuu.ini
 
+# `libpq` cherche un certificat client dans `$HOME/.postgresql/postgresql.crt`.
+# Herite du conteneur, `HOME` vaut `/root` — que `www-data` n'a pas le droit de
+# lire. libpq recoit alors `Permission denied` au lieu de « fichier absent », et
+# **refuse la connexion** a un PostgreSQL qui exige TLS, comme Neon ou Render.
+#
+# Le certificat n'existe pas et n'a pas a exister : c'est la permission sur le
+# repertoire qui fait echouer la verification.
+ENV HOME=/var/www/html
+
 WORKDIR /var/www/html
 
 COPY --from=vendor /app/vendor ./vendor

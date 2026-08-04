@@ -12,7 +12,7 @@ Render change, et ce qu'il faut prendre en compte **avant** de commencer.
 
 ---
 
-# 1. Les six choses qui changent tout
+# 1. Les sept choses qui changent tout
 
 ## 1.1 Render n'a pas de runtime PHP
 
@@ -66,7 +66,28 @@ Saisir le mode seul fait chercher un binaire de ce nom : le conteneur sort en
 `status 128` **sans aucune sortie**. L'entrypoint absorbe désormais les deux
 formes, mais le chemin complet reste ce qu'il faut écrire.
 
-## 1.5 Le worker est un service à part
+## 1.5 Un PostgreSQL en TLS exige un `HOME` lisible
+
+Neon, Render Postgres, Supabase — tous imposent TLS. `libpq` cherche alors un
+certificat client dans `$HOME/.postgresql/postgresql.crt`.
+
+Hérité du conteneur, `HOME` vaut `/root`, que `www-data` n'a pas le droit de
+lire. libpq reçoit `Permission denied` **au lieu de « fichier absent »**, et
+refuse la connexion :
+
+```text
+SQLSTATE[08006] could not open certificate file
+"/root/.postgresql/postgresql.crt": Permission denied
+```
+
+Le certificat n'existe pas et n'a pas à exister. C'est la permission sur le
+répertoire qui fait échouer la vérification, et le message désigne un fichier
+plutôt que la cause.
+
+L'image pose donc `HOME=/var/www/html`, et les configurations Supervisor le
+répètent : **Supervisor ne transmet pas `HOME` lorsqu'il change d'utilisateur**.
+
+## 1.6 Le worker est un service à part
 
 Render n'exécute qu'un processus par service. Le worker de files et
 l'ordonnanceur sont donc deux services distincts, qui partagent **la même
@@ -75,7 +96,7 @@ image** que le web — le worker ne peut pas tourner un autre code.
 `deploy/sekuu-worker.conf` (Supervisor) ne sert pas ici : Render redémarre
 lui-même un processus qui meurt.
 
-## 1.6 L'ordonnanceur boucle au lieu d'être appelé
+## 1.7 L'ordonnanceur boucle au lieu d'être appelé
 
 Pas de crontab. Render facture chaque exécution d'un service cron, et
 `schedule:run` à la minute en produirait 43 200 par mois.
