@@ -124,7 +124,69 @@ services:
     plan: starter
     dockerCommand: worker
     envVars:
-      - fromGroup: sekuu-runtime
+      # Recopies depuis le service web, jamais ressaisis : un worker qui pointe
+      # sur une autre base est un incident **invisible** — les tâches
+      # s'exécutent, contre les mauvaises données.
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: false
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_SSLMODE
+        value: require
+      - key: QUEUE_CONNECTION
+        value: redis
+      - key: CACHE_STORE
+        value: redis
+      - key: DB_URL
+        fromDatabase:
+          name: sekuu-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: sekuu-redis
+          type: keyvalue
+          property: connectionString
+      - key: APP_KEY
+        fromService:
+          name: sekuu-api
+          type: web
+          envVarKey: APP_KEY
+      - key: IDENTITY_JWT_PRIVATE_KEY
+        fromService:
+          name: sekuu-api
+          type: web
+          envVarKey: IDENTITY_JWT_PRIVATE_KEY
+      - key: IDENTITY_JWT_PUBLIC_KEY
+        fromService:
+          name: sekuu-api
+          type: web
+          envVarKey: IDENTITY_JWT_PUBLIC_KEY
+      - key: NOTCHPAY_PUBLIC_KEY
+        fromService:
+          name: sekuu-api
+          type: web
+          envVarKey: NOTCHPAY_PUBLIC_KEY
+      - key: TRANZAK_BASE_URL
+        value: https://dsapi.tranzak.me
+      - key: TRANZAK_APP_ID
+        fromService:
+          name: sekuu-api
+          type: web
+          envVarKey: TRANZAK_APP_ID
+      - key: TRANZAK_APP_KEY
+        fromService:
+          name: sekuu-api
+          type: web
+          envVarKey: TRANZAK_APP_KEY
+      - key: RESEND_API_KEY
+        fromService:
+          name: sekuu-api
+          type: web
+          envVarKey: RESEND_API_KEY
 
   # ------------------------------------------------------------------------
   # Ordonnanceur
@@ -140,13 +202,66 @@ services:
     plan: starter
     dockerCommand: scheduler
     envVars:
-      - fromGroup: sekuu-runtime
-
-# Les trois services partagent les mêmes variables. Créez le groupe
-# `sekuu-runtime` dans l'interface Render et attachez-y les valeurs du service
-# web : les recopier trois fois est le meilleur moyen de les voir diverger.
-envVarGroups:
-  - name: sekuu-runtime
-    envVars:
+      # Recopies depuis le service web, jamais ressaisis : un worker qui pointe
+      # sur une autre base est un incident **invisible** — les tâches
+      # s'exécutent, contre les mauvaises données.
       - key: APP_ENV
         value: production
+      - key: APP_DEBUG
+        value: false
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_SSLMODE
+        value: require
+      - key: QUEUE_CONNECTION
+        value: redis
+      - key: CACHE_STORE
+        value: redis
+      - key: DB_URL
+        fromDatabase:
+          name: sekuu-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: sekuu-redis
+          type: keyvalue
+          property: connectionString
+      - key: APP_KEY
+        fromService:
+          name: sekuu-api
+          type: web
+          envVarKey: APP_KEY
+      - key: IDENTITY_JWT_PRIVATE_KEY
+        fromService:
+          name: sekuu-api
+          type: web
+          envVarKey: IDENTITY_JWT_PRIVATE_KEY
+      - key: IDENTITY_JWT_PUBLIC_KEY
+        fromService:
+          name: sekuu-api
+          type: web
+          envVarKey: IDENTITY_JWT_PUBLIC_KEY
+      - key: NOTCHPAY_PUBLIC_KEY
+        fromService:
+          name: sekuu-api
+          type: web
+          envVarKey: NOTCHPAY_PUBLIC_KEY
+      - key: TRANZAK_BASE_URL
+        value: https://dsapi.tranzak.me
+      - key: TRANZAK_APP_ID
+        fromService:
+          name: sekuu-api
+          type: web
+          envVarKey: TRANZAK_APP_ID
+      - key: TRANZAK_APP_KEY
+        fromService:
+          name: sekuu-api
+          type: web
+          envVarKey: TRANZAK_APP_KEY
+      - key: RESEND_API_KEY
+        fromService:
+          name: sekuu-api
+          type: web
+          envVarKey: RESEND_API_KEY
