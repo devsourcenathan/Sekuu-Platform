@@ -27,8 +27,11 @@ case "${1:-web}" in
 
     web)
         # Render impose le port par la variable PORT.
-        export PORT="${PORT:-8080}"
-        envsubst '${PORT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+        #
+        # `sed` plutot qu'`envsubst` : le second vient du paquet `gettext`, une
+        # dependance de plus pour remplacer un seul jeton. `sed` est dans
+        # busybox, donc toujours la.
+        sed "s|\${PORT}|${PORT:-8080}|g" /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
         exec supervisord -c /etc/supervisord.conf
         ;;
