@@ -19,6 +19,9 @@ Sekuu Platform est le socle technique commun de l'écosystème Sekuu : une plate
 | Faire encaisser un **module** du monolithe | [Payments — intégrer un module](03-services/payments/06-integration.md) |
 | Faire encaisser un **service externe** | [Payments — API externe](03-services/payments/07-external-api.md) |
 | **Rendre** l'argent | [Payments — remboursements](03-services/payments/08-refunds.md) |
+| Attacher un **fichier** à un objet | [Storage — intégrer un module](03-services/storage/05-integration.md) |
+| Ajouter un **magasin** — compte S3, R2, Drive | [Storage — destinations](03-services/storage/06-destinations.md) |
+| Faire stocker un **service externe** | [Storage — API externe](03-services/storage/07-external-api.md) |
 | Comprendre un choix d'architecture | [Décisions (ADR)](#04-decisions--décisions-darchitecture) |
 | **Mettre en production** | [Mise en service](06-operations/01-go-live.md) |
 
@@ -63,7 +66,7 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | Verify | À spécifier | — |
 | **Payments** | **Implémenté** — Notch Pay, Tranzak | [vision](03-services/payments/01-overview.md) · [modèle de données](03-services/payments/02-data-model.md) · [API](03-services/payments/03-api.md) · [événements](03-services/payments/04-events.md) · [agrégateurs](03-services/payments/05-providers.md) · [intégrer un module](03-services/payments/06-integration.md) · [**service externe**](03-services/payments/07-external-api.md) · [remboursements](03-services/payments/08-refunds.md) · [contrat OpenAPI](../Modules/Payments/openapi.yaml) |
 | **Billing** | **Implémenté** — abonnements prépayés | [vision](03-services/billing/01-overview.md) · [modèle de données](03-services/billing/02-data-model.md) · [API](03-services/billing/03-api.md) · [événements](03-services/billing/04-events.md) |
-| Storage | À spécifier | — |
+| **Storage** | **Spécifié**, non implémenté | [vision](03-services/storage/01-overview.md) · [modèle de données](03-services/storage/02-data-model.md) · [API](03-services/storage/03-api.md) · [événements](03-services/storage/04-events.md) · [intégrer un module](03-services/storage/05-integration.md) · [**destinations**](03-services/storage/06-destinations.md) · [service externe](03-services/storage/07-external-api.md) |
 | AI | Esquissé dans [architecture.md](01-overview/architecture.md) | — |
 | Search | À spécifier | — |
 | Analytics | À spécifier | — |
@@ -83,6 +86,9 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | [ADR-0009](04-decisions/adr-0009-payments-module-extraction.md) | Extraction de la couche de paiement hors de Billing |
 | [ADR-0010](04-decisions/adr-0010-external-payment-api.md) | Encaisser depuis un service externe |
 | [ADR-0011](04-decisions/adr-0011-refunds.md) | Payments : rendre l'argent, sans décaissement automatique |
+| [ADR-0012](04-decisions/adr-0012-direct-upload.md) | Storage : les octets ne traversent jamais la plateforme |
+| [ADR-0013](04-decisions/adr-0013-invoice-pdf-frozen.md) | Le PDF de facture est produit une fois et figé |
+| [ADR-0014](04-decisions/adr-0014-storage-destinations.md) | Storage : le magasin est une donnée, pas une configuration |
 
 ### 06-operations — Exploitation
 

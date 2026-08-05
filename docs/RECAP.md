@@ -11,7 +11,8 @@
 | --- | --- |
 | Application | Monolithe modulaire Laravel 13, PHP 8.3, PostgreSQL 18 |
 | Modules livrés | **Identity** · **Notify** (email, SMS, interne) · **Payments** (Notch Pay, Tranzak, API externe, remboursements) · **Billing** |
-| Modules non démarrés | Verify, Storage, AI, Search, Analytics |
+| Modules spécifiés, non implémentés | **Storage** |
+| Modules non démarrés | Verify, AI, Search, Analytics |
 | Déploiement | **En ligne** — Render + Neon, `platform.sekuu.com` |
 | Endpoints | 87 sous `/api/v1` + `/.well-known/jwks.json` |
 | Migrations | 32 |
@@ -366,7 +367,9 @@ Les trois premiers sont désormais verrouillés par des tests.
 Par ordre décroissant de valeur :
 
 * **Le premier paiement réel**, fait à la main sur un petit montant. C'est la seule vérification qui prouve que la chaîne entière fonctionne : les deux agrégateurs ont déjà démenti deux hypothèses chacun lors de leur intégration, et aucun bac à sable ne prouve la production.
-* **Storage** — dont dépend le PDF de facture, qui renvoie `503`. Une facture non téléchargeable est un problème légal, pas un confort.
+* **Storage** — [spécifié](03-services/storage/01-overview.md), à implémenter. Le PDF de facture en dépend, mais pas seulement de lui : Storage garde des octets, il n'en produit aucun. Billing doit mettre en page le document, [ADR-0013](04-decisions/adr-0013-invoice-pdf-frozen.md). Une facture non téléchargeable est un problème légal, pas un confort.
+
+  Le magasin y est une **donnée** et non une configuration : plusieurs comptes par fournisseur, un produit peut apporter le sien, et l'API externe suit le modèle de Payments — [ADR-0014](04-decisions/adr-0014-storage-destinations.md). Ajouter un compte ou un service compatible S3 ne demande pas de code ; ajouter une famille nouvelle demande une classe de cinq méthodes, et [le document le dit franchement](03-services/storage/06-destinations.md).
 * **La documentation Tara**, à réclamer directement — elle n'est pas publique. Deux agrégateurs suffisent à supprimer le point de défaillance unique ; le troisième améliore.
 
 Puis Verify.

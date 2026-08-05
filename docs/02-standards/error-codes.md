@@ -257,11 +257,27 @@ oracle.
 
 | Code | HTTP | Description |
 | --- | --- | --- |
-| `FILE_NOT_FOUND` | 404 | Fichier inexistant |
+| `FILE_NOT_FOUND` | 404 | Fichier inexistant **ou** hors de portée de l'appelant |
 | `FILE_TOO_LARGE` | 422 | Taille supérieure à la limite autorisée |
 | `MIME_TYPE_NOT_ALLOWED` | 422 | Type de fichier interdit |
-| `UPLOAD_INCOMPLETE` | 422 | Upload interrompu ou incomplet |
+| `UPLOAD_INCOMPLETE` | 422 | Les octets ne sont pas dans le magasin |
 | `STORAGE_QUOTA_EXCEEDED` | 429 | Quota de stockage de l'organisation atteint |
+| `FILE_OWNER_TYPE_UNKNOWN` | 422 | `owner_type` absent du registre |
+| `FILE_ATTACH_FORBIDDEN` | 403 | Le propriétaire refuse le rattachement |
+| `FILE_NOT_READY` | 409 | Fichier déclaré, octets jamais constatés |
+| `FILE_RETAINED` | 409 | Conservation obligatoire non expirée |
+| `STORAGE_DESTINATION_NOT_FOUND` | 404 | Magasin inexistant, ou hors de portée |
+| `STORAGE_DESTINATION_FORBIDDEN` | 403 | Magasin nommé, mais pas à cet appelant |
+| `STORAGE_DESTINATION_UNVERIFIED` | 409 | Magasin jamais éprouvé, ou retombé en échec |
+| `STORAGE_DESTINATION_IN_USE` | 409 | Suppression refusée : le magasin porte des fichiers |
+| `STORAGE_DESTINATION_UNAVAILABLE` | 503 | Le magasin refuse ou ne répond pas |
+
+`FILE_NOT_FOUND` répond de même à « inexistant » et à « pas à vous » — la règle
+déjà posée pour les factures et les charges.
+
+`FILE_ATTACH_FORBIDDEN` est un `403` assumé, et ne contredit pas la règle
+précédente : l'appelant a donné lui-même l'objet auquel il veut rattacher un
+fichier, donc il en connaît déjà l'existence. Il n'y a rien à lui apprendre.
 
 ## 4.7 AI
 
