@@ -449,6 +449,65 @@ final class DestinationResolutionTest extends TestCase
         putenv('STORAGE_DEFAULT_ROOT');
     }
 
+    /**
+     * Une premiere tentative ratee ne doit pas etre definitive.
+     *
+     * Sans cette reprise, la ligne existerait, l'amorcage passerait son chemin,
+     * et corriger une variable dans le tableau de bord n'aurait aucun effet.
+     * Sur une offre sans shell, c'est une impasse — et elle a ete rencontree en
+     * production.
+     */
+    public function test_a_broken_store_is_repaired_when_the_environment_is_corrected(): void
+    {
+        $obstacle = storage_path('framework/testing/obstacle-reprise');
+        @mkdir(dirname($obstacle), 0777, true);
+        file_put_contents($obstacle, 'pas un répertoire');
+
+        putenv('STORAGE_DEFAULT_SLUG=reprise');
+        putenv('STORAGE_DEFAULT_DRIVER=local');
+        putenv('STORAGE_DEFAULT_ROOT='.$obstacle.'/dedans');
+
+        $this->artisan('storage:destination', ['--from-env' => true])->assertSuccessful();
+        $this->assertSame(Destination::UNVERIFIED, Destination::query()->where('slug', 'reprise')->firstOrFail()->status);
+
+        // L'exploitant corrige la variable, et redeploie.
+        putenv('STORAGE_DEFAULT_ROOT='.storage_path('framework/testing/reprise-ok'));
+
+        $this->artisan('storage:destination', ['--from-env' => true])->assertSuccessful();
+
+        $destination = Destination::query()->where('slug', 'reprise')->firstOrFail();
+        $this->assertSame(Destination::ACTIVE, $destination->status);
+        $this->assertSame(1, Destination::query()->where('slug', 'reprise')->count());
+
+        putenv('STORAGE_DEFAULT_SLUG');
+        putenv('STORAGE_DEFAULT_DRIVER');
+        putenv('STORAGE_DEFAULT_ROOT');
+    }
+
+    /**
+     * En revanche, un magasin **qui sert** ne se laisse jamais reecrire par
+     * l'environnement : une variable oubliee le repointerait vers un autre
+     * compte, et les fichiers deja poses deviendraient introuvables sans
+     * qu'aucune erreur ne le dise.
+     */
+    public function test_a_working_store_is_never_rewritten_by_the_environment(): void
+    {
+        $destination = $this->destination('intouchable', isDefault: true);
+        $racine = $destination->config['root'];
+
+        putenv('STORAGE_DEFAULT_SLUG=intouchable');
+        putenv('STORAGE_DEFAULT_DRIVER=local');
+        putenv('STORAGE_DEFAULT_ROOT='.storage_path('framework/testing/ailleurs'));
+
+        $this->artisan('storage:destination', ['--from-env' => true])->assertSuccessful();
+
+        $this->assertSame($racine, $destination->fresh()->config['root']);
+
+        putenv('STORAGE_DEFAULT_SLUG');
+        putenv('STORAGE_DEFAULT_DRIVER');
+        putenv('STORAGE_DEFAULT_ROOT');
+    }
+
     private function declare(): DeclaredFile
     {
         return app(DeclareFile::class)->handle(

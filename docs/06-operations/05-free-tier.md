@@ -165,6 +165,22 @@ plateforme porte les identifiants de nos comptes cloud et sert toutes les
 organisations ; l'exposer reviendrait à confier cette infrastructure à qui
 détient un jeton d'administration.
 
+### Corriger après un échec
+
+Redéployer suffit. Tant que la destination est `unverified`, l'amorçage
+**réapplique** les variables et remet à l'épreuve : elle n'a jamais rien porté,
+la corriger ne peut rien casser.
+
+Un magasin qui **sert**, lui, ne se laisse jamais réécrire par l'environnement.
+Une variable oubliée le repointerait vers un autre compte, et les fichiers déjà
+posés deviendraient introuvables sans qu'aucune erreur ne le dise.
+
+La règle tient en une phrase : **l'environnement amorce, et répare ce qui n'a
+jamais servi ; il ne touche jamais à un magasin qui fonctionne.**
+
+Le journal du démarrage porte alors le message brut du fournisseur, tronqué —
+c'est le seul endroit où il apparaisse, et le seul lisible sans shell.
+
 ### Un échec ne bloque jamais le démarrage
 
 Contrairement aux migrations. Un magasin injoignable laisse la ligne

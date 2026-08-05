@@ -99,9 +99,18 @@ final class ManageDestinationCommand extends Command
             return self::SUCCESS;
         }
 
-        // Idempotent : le conteneur redémarre à chaque déploiement, et à chaque
-        // réveil après sommeil.
-        if (Destination::query()->where('slug', $slug)->exists()) {
+        $existing = Destination::query()->where('slug', $slug)->first();
+
+        /*
+         * Un magasin **qui sert** ne se laisse pas réécrire par
+         * l'environnement : une variable oubliée le repointerait vers un autre
+         * compte, et les fichiers déjà posés deviendraient introuvables sans
+         * qu'aucune erreur ne le dise.
+         *
+         * Le cas courant, aussi : le conteneur redémarre à chaque déploiement
+         * et à chaque réveil après sommeil.
+         */
+        if ($existing !== null && $existing->status !== Destination::UNVERIFIED) {
             $this->line("[storage] magasin « {$slug} » déjà posé.");
 
             return self::SUCCESS;
@@ -117,17 +126,37 @@ final class ManageDestinationCommand extends Command
         ], fn ($v): bool => $v !== null && $v !== '');
 
         $key = (string) env('STORAGE_DEFAULT_KEY', '');
+        $credentials = $key === ''
+            ? []
+            : ['key' => $key, 'secret' => (string) env('STORAGE_DEFAULT_SECRET', '')];
 
         try {
-            $destination = $register->handle(
-                slug: $slug,
-                preset: env('STORAGE_DEFAULT_PRESET'),
-                driver: env('STORAGE_DEFAULT_DRIVER'),
-                config: $config,
-                credentials: $key === '' ? [] : ['key' => $key, 'secret' => (string) env('STORAGE_DEFAULT_SECRET', '')],
-                environment: app()->environment(),
-                isDefault: true,
-            );
+            /*
+             * Un magasin jamais éprouvé est **repris** avec la configuration
+             * courante, puis remis à l'épreuve.
+             *
+             * Sans cela, une première tentative ratée serait définitive là où il
+             * n'y a pas de shell : la ligne existerait, l'amorçage passerait son
+             * chemin, et corriger une variable dans le tableau de bord n'aurait
+             * aucun effet. C'est une impasse, et elle a été rencontrée.
+             */
+            $destination = $existing !== null
+                ? $register->repair(
+                    destination: $existing,
+                    preset: env('STORAGE_DEFAULT_PRESET'),
+                    driver: env('STORAGE_DEFAULT_DRIVER'),
+                    config: $config,
+                    credentials: $credentials,
+                )
+                : $register->handle(
+                    slug: $slug,
+                    preset: env('STORAGE_DEFAULT_PRESET'),
+                    driver: env('STORAGE_DEFAULT_DRIVER'),
+                    config: $config,
+                    credentials: $credentials,
+                    environment: app()->environment(),
+                    isDefault: true,
+                );
         } catch (DomainException $e) {
             $this->error("[storage] magasin « {$slug} » non posé : {$e->getMessage()}");
 

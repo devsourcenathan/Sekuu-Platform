@@ -72,6 +72,53 @@ final class RegisterDestination
     }
 
     /**
+     * Réappliquer une configuration à un magasin **jamais éprouvé**, puis le
+     * remettre à l'épreuve.
+     *
+     * ## Pourquoi cette porte existe, et pourquoi elle est étroite
+     *
+     * Une destination est une donnée, pas une configuration : elle ne se laisse
+     * pas réécrire par l'environnement, sans quoi une variable oubliée
+     * repointerait un magasin en service vers un autre compte — et les fichiers
+     * déjà posés deviendraient introuvables, sans erreur.
+     *
+     * Mais un magasin `unverified` n'a **jamais rien porté**. Le corriger ne
+     * peut rien casser, et sans cette porte une première tentative ratée serait
+     * définitive là où il n'y a pas de shell : la ligne existerait, l'amorçage
+     * la verrait et passerait son chemin, et aucune correction de variable
+     * n'aurait d'effet.
+     *
+     * D'où la règle : **l'environnement amorce, et répare ce qui n'a jamais
+     * servi. Il ne touche jamais à un magasin qui fonctionne.**
+     */
+    public function repair(
+        Destination $destination,
+        ?string $preset,
+        ?string $driver,
+        array $config,
+        array $credentials,
+    ): Destination {
+        if ($destination->status !== Destination::UNVERIFIED) {
+            return $destination;
+        }
+
+        [$driver, $config] = $this->applyPreset($preset, $driver, $config);
+
+        $this->drivers->get($driver);
+
+        $destination->forceFill([
+            'driver' => $driver,
+            'preset' => $preset,
+            'config' => $config,
+            'credentials' => $credentials === [] ? null : $credentials,
+        ])->save();
+
+        $this->verifier->handle($destination);
+
+        return $destination->refresh();
+    }
+
+    /**
      * Le garde-fou d'environnement, sans échappatoire.
      *
      * Un environnement de recette pointé sur le compartiment de production y
