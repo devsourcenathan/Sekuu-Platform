@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 return [
+
+    'platform_access_denied' => "Cette route est réservée à l'administration de la plateforme.",
     'api_key_required' => "Une clé d'API de service est requise sur ce point d'entrée.",
     'api_key_invalid' => "La clé d'API est invalide ou a été révoquée.",
     'api_key_scope_missing' => "Cette clé d'API ne porte pas le scope requis.",

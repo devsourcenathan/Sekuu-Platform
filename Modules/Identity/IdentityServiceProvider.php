@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Identity;
 
 use App\Platform\Contracts\IdentityContract;
+use App\Platform\Contracts\PlatformContext;
 use App\Platform\Contracts\RequestContext;
 use App\Platform\Events\DomainEvent;
 use App\Platform\Support\ModuleServiceProvider;
@@ -17,7 +18,9 @@ use Modules\Identity\Application\Products\ApplySubscriptionAccess;
 use Modules\Identity\Domain\AuthenticatedContext;
 use Modules\Identity\Infrastructure\Auth\JwtUserResolver;
 use Modules\Identity\Infrastructure\Console\GenerateJwtKeysCommand;
+use Modules\Identity\Infrastructure\Console\ManageOperatorCommand;
 use Modules\Identity\Infrastructure\Contracts\IdentityGateway;
+use Modules\Identity\Infrastructure\Contracts\JwtPlatformContext;
 use Modules\Identity\Infrastructure\Contracts\JwtRequestContext;
 use Modules\Identity\Infrastructure\Jwt\AccessTokenIssuer;
 use Modules\Identity\Infrastructure\Jwt\AccessTokenVerifier;
@@ -27,6 +30,7 @@ use Modules\Identity\Infrastructure\OAuth\SocialiteGateway;
 use Modules\Identity\Presentation\Http\Middleware\RequireApiKey;
 use Modules\Identity\Presentation\Http\Middleware\RequireOrganization;
 use Modules\Identity\Presentation\Http\Middleware\RequireScope;
+use Modules\Identity\Presentation\Http\Middleware\RequiresPlatformOperator;
 
 final class IdentityServiceProvider extends ModuleServiceProvider
 {
@@ -109,8 +113,16 @@ final class IdentityServiceProvider extends ModuleServiceProvider
             $app->make('request'),
         ));
 
+        // Idem, et pour une raison plus forte encore : l'habilitation d'un
+        // opérateur est relue en base à chaque requête, pour qu'une révocation
+        // agisse tout de suite plutôt qu'à l'expiration du jeton.
+        $this->app->bind(PlatformContext::class, fn ($app) => new JwtPlatformContext(
+            $app->make(JwtUserResolver::class),
+            $app->make('request'),
+        ));
+
         if ($this->app->runningInConsole()) {
-            $this->commands([GenerateJwtKeysCommand::class]);
+            $this->commands([GenerateJwtKeysCommand::class, ManageOperatorCommand::class]);
         }
 
         // Identity étant le fournisseur d'identité, c'est lui qui expose les
@@ -119,6 +131,7 @@ final class IdentityServiceProvider extends ModuleServiceProvider
         $router->aliasMiddleware('organization', RequireOrganization::class);
         $router->aliasMiddleware('scope', RequireScope::class);
         $router->aliasMiddleware('api-key', RequireApiKey::class);
+        $router->aliasMiddleware('platform', RequiresPlatformOperator::class);
 
         Auth::viaRequest(
             'sekuu-jwt',

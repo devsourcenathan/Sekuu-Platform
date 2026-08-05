@@ -38,16 +38,25 @@ final class BillingGateway implements BillingContract
         $subscription = Subscription::query()
             ->where('organization_id', $organizationId)
             ->alive()
-            ->with('plan')
             ->first();
 
         // Sans abonnement vivant, il n'y a rien à plafonner : l'accès lui-même
         // est fermé, et c'est Identity qui l'applique.
-        if ($subscription === null || $subscription->plan === null) {
+        if ($subscription === null) {
             return PlanLimit::noSubscription();
         }
 
-        $limits = $subscription->plan->limits ?? [];
+        /*
+         * La copie figée sur l'abonnement, **jamais le plan**.
+         *
+         * Lire le catalogue ferait qu'une limite baissée le mardi rétrograderait
+         * le soir même des clients ayant payé une année d'avance. La copie dit
+         * ce qui leur a été promis pour la période en cours — voir ADR-0019.
+         *
+         * Un abonnement sans copie est **non couvert**, jamais illimité :
+         * `billing:regrant` remplit ce qui manque.
+         */
+        $limits = (array) ($subscription->granted_limits ?? []);
 
         // Clé absente = la ressource n'est pas couverte par ce plan. Valeur
         // nulle = illimitée. La distinction est portée jusqu'à l'appelant.

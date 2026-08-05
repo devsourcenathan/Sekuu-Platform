@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Billing\Presentation\Http\Controllers\InvoiceController;
 use Modules\Billing\Presentation\Http\Controllers\InvoicePaymentController;
 use Modules\Billing\Presentation\Http\Controllers\PlanController;
+use Modules\Billing\Presentation\Http\Controllers\PlatformPlanController;
 use Modules\Billing\Presentation\Http\Controllers\SubscriptionController;
 
 /*
@@ -63,4 +64,30 @@ Route::middleware(['auth:api', 'organization'])->group(function (): void {
     | combien cela vaut, et qui a le droit de le régler.
     */
     Route::post('payments', InvoicePaymentController::class)->name('payments.store');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Administration de la plateforme
+|--------------------------------------------------------------------------
+|
+| Hors du périmètre client : ces routes ne s'adressent pas à une organisation
+| mais à **Sekuu**. Le préfixe est délibérément visible — dans une table de
+| routage et dans un journal, on doit voir ce qui relève de l'exploitation
+| plutôt que le deviner derrière une condition.
+|
+| `platform:<permission>` vérifie l'habilitation **et journalise l'appel**, y
+| compris les lectures : consulter la facture d'un client, c'est accéder à une
+| donnée qui ne nous appartient pas.
+|
+| L'habilitation ne s'obtient que par `identity:operator`, jamais par une route.
+|
+| @see docs/04-decisions/adr-0018-platform-operator.md
+|
+*/
+Route::prefix('platform')->name('platform.')->group(function (): void {
+    Route::middleware('platform:platform.plans')->group(function (): void {
+        Route::get('plans', [PlatformPlanController::class, 'index'])->name('plans.index');
+        Route::patch('plans/{plan}', [PlatformPlanController::class, 'update'])->name('plans.update');
+    });
 });

@@ -71,6 +71,17 @@ final class ActivateSubscription
             'current_period_end' => $price->advance($start),
             'grace_ends_at' => null,
             'suspended_at' => null,
+
+            /*
+             * La copie est refaite à chaque ouverture de période.
+             *
+             * C'est le **seul** moment où une baisse du catalogue prend effet :
+             * le client entame une période qu'il vient de payer aux conditions
+             * du jour. Entre deux périodes, il garde ce qui lui a été promis —
+             * voir ADR-0019.
+             */
+            'granted_limits' => (array) ($subscription->plan?->limits ?? []),
+            'limits_granted_at' => now(),
         ])->save();
 
         $subscription->refresh()->load(['plan.products', 'price']);

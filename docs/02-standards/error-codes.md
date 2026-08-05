@@ -83,6 +83,7 @@ Ce document est la **liste de référence** de ces codes. Un code absent de ce c
 | `EMAIL_NOT_VERIFIED` | Adresse email non vérifiée |
 | `ACCOUNT_SUSPENDED` | Compte utilisateur suspendu |
 | `ORGANIZATION_SUSPENDED` | Organisation suspendue |
+| `PLATFORM_ACCESS_DENIED` | Route réservée à l'administration de la plateforme — voir [ADR-0018](../04-decisions/adr-0018-platform-operator.md) |
 
 ## 3.4 Ressource — 404 / 409 / 410
 

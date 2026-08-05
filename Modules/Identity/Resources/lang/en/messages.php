@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 return [
+
+    'platform_access_denied' => 'This route is reserved for platform administration.',
     'api_key_required' => 'A service API key is required for this endpoint.',
     'api_key_invalid' => 'The API key is invalid or has been revoked.',
     'api_key_scope_missing' => 'This API key does not carry the required scope.',

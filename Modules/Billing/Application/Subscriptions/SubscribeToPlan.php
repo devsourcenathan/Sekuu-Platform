@@ -117,6 +117,12 @@ final class SubscribeToPlan
                 'current_period_end' => $trialEnd ?? $price->advance($now),
                 'trial_ends_at' => $trialEnd,
                 'created_by' => $userId,
+
+                // Ce qui est promis pour cette période, figé tout de suite.
+                // Un abonnement sans copie est « non couvert » : le laisser
+                // vide fermerait toutes les ressources à l'instant même.
+                'granted_limits' => (array) ($plan->limits ?? []),
+                'limits_granted_at' => $now,
             ]));
         } catch (QueryException $exception) {
             if (($exception->errorInfo[0] ?? null) !== '23505') {

@@ -19,6 +19,7 @@ final class Subscription extends Model
     use HasUuids;
 
     protected $fillable = [
+        'granted_limits', 'limits_granted_at',
         'organization_id', 'plan_id', 'plan_price_id', 'status',
         'current_period_start', 'current_period_end', 'trial_ends_at',
         'grace_ends_at', 'cancelled_at', 'cancel_at_period_end',
@@ -29,6 +30,8 @@ final class Subscription extends Model
     protected function casts(): array
     {
         return [
+            'granted_limits' => 'array',
+            'limits_granted_at' => 'datetime',
             'status' => SubscriptionStatus::class,
             'current_period_start' => 'immutable_datetime',
             'current_period_end' => 'immutable_datetime',

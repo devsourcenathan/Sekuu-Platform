@@ -45,6 +45,7 @@ tags:
   - name: Factures
   - name: Paiements
   - name: Webhooks
+  - name: Plateforme
 
 security:
   - bearerAuth: []
@@ -503,6 +504,94 @@ paths:
             `PROVIDER_UNAVAILABLE` — aucun agrégateur configuré ne couvre cet
             opérateur, ou tous ont refusé la demande. Dans ce dernier cas
             **aucun débit n'a été effectué**.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /platform/plans:
+    get:
+      tags: [Plateforme]
+      summary: Le catalogue, vu par un opérateur
+      description: |
+        **Hors du périmètre client.** Cette route ne s'adresse pas à une
+        organisation mais à Sekuu.
+
+        Réservée à un utilisateur habilité `platform.plans`, habilitation qui ne
+        s'obtient que par `identity:operator` — jamais par une route, jamais par
+        un rôle d'organisation. Un `owner` reçoit `PLATFORM_ACCESS_DENIED`.
+
+        **L'appel est journalisé**, lecture comprise. Consulter le catalogue est
+        anodin ; le principe ne l'est pas, et il s'applique uniformément à tout
+        ce préfixe.
+      responses:
+        '200':
+          description: Les plans, limites comprises
+        '403':
+          description: Non habilité
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /platform/plans/{plan}:
+    patch:
+      tags: [Plateforme]
+      summary: Changer les limites d'un plan
+      description: |
+        C'est ce qui rend un quota modifiable **sans déployer**.
+
+        La fusion est le comportement : les clés envoyées sont mises à jour, les autres
+        restent. Un remplacement ferait qu'envoyer une seule limite efface
+        toutes les autres — un opérateur corrigeant les crédits d'IA viderait
+        les sièges et le stockage, en une requête qui répond `200`.
+
+        Retirer une limite demande de la nommer dans `remove` : fermer une
+        ressource ne doit pas être l'effet de bord d'autre chose.
+
+        Les clés sont une **liste close**. Une clé inventée serait acceptée en
+        base, lue par personne, et donnerait l'illusion d'une limite en place.
+
+        Un changement ne prend pas effet de la même façon dans les deux sens :
+        **une hausse est reportée tout de suite sur les abonnements en cours,
+        une baisse attend le renouvellement.** La réponse le dit plutôt que de
+        laisser l'opérateur le déduire.
+      parameters:
+        - name: plan
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [limits]
+              properties:
+                limits:
+                  type: object
+                  additionalProperties: { type: [integer, 'null'] }
+                  description: '`null` vaut **illimité**, jamais zéro.'
+                remove:
+                  type: array
+                  items: { type: string }
+      responses:
+        '200':
+          description: |
+            Modifié. `applied_now` et `applied_at_renewal` disent l'effet réel.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  key: { type: string }
+                  limits: { type: object, additionalProperties: true }
+                  applied_now: { type: array, items: { type: string } }
+                  applied_at_renewal: { type: array, items: { type: string } }
+                  subscriptions_affected: { type: integer }
+        '403':
+          description: Non habilité
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '404':
+          description: Plan inconnu
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '422':
+          description: Limite inconnue
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
 
 components:

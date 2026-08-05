@@ -65,7 +65,12 @@ final class S3DriverTest extends TestCase
 
         $this->assertStringContainsString('sekuu-test.compte.r2.cloudflarestorage.com', $url);
         $this->assertStringContainsString('X-Amz-Signature=', $url);
-        $this->assertStringContainsString('X-Amz-Expires=600', $url);
+        // Pas d'égalité stricte : le SDK décompte le temps écoulé entre le
+        // calcul de l'échéance et la signature, et rend 599 aussi souvent que
+        // 600. Ce qui compte est que l'autorisation soit **courte**.
+        preg_match('/X-Amz-Expires=(\d+)/', $url, $m);
+        $this->assertGreaterThan(590, (int) ($m[1] ?? 0));
+        $this->assertLessThanOrEqual(600, (int) ($m[1] ?? 0));
     }
 
     public function test_the_driver_signs_an_upload_ticket(): void
