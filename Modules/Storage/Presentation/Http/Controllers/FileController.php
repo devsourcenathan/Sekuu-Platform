@@ -6,7 +6,6 @@ namespace Modules\Storage\Presentation\Http\Controllers;
 
 use App\Platform\Contracts\FileActor;
 use App\Platform\Contracts\FileRef;
-use App\Platform\Contracts\RequestContext;
 use App\Platform\Exceptions\DomainException;
 use App\Platform\Http\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -17,6 +16,7 @@ use Modules\Storage\Application\Files\DeleteFile;
 use Modules\Storage\Application\Files\IssueReadUrl;
 use Modules\Storage\Application\Files\OwnerRegistry;
 use Modules\Storage\Domain\Models\StoredFile;
+use Modules\Storage\Presentation\Http\Concerns\ResolvesFileActor;
 use Modules\Storage\Presentation\Http\Requests\DeclareFileRequest;
 
 /**
@@ -26,6 +26,8 @@ use Modules\Storage\Presentation\Http\Requests\DeclareFileRequest;
  */
 final class FileController
 {
+    use ResolvesFileActor;
+
     public function __construct(private readonly OwnerRegistry $owners) {}
 
     public function store(DeclareFileRequest $request, DeclareFile $declare): JsonResponse
@@ -35,7 +37,7 @@ final class FileController
                 $request->string('owner_type')->toString(),
                 $request->string('owner_id')->toString(),
             ),
-            actor: $this->actor(),
+            actor: $this->actor($request, self::WRITE),
             name: $request->string('name')->toString(),
             mimeType: $request->string('mime_type')->toString(),
             size: $request->integer('size'),
@@ -60,14 +62,23 @@ final class FileController
 
     public function confirm(Request $request, ConfirmFile $confirm, string $fileId): JsonResponse
     {
-        $file = $confirm->handle($this->find($fileId), $this->actor());
+        $file = $confirm->handle($this->find($fileId), $this->actor($request, self::WRITE));
 
         return ApiResponse::success($this->present($file));
     }
 
     public function show(Request $request, string $fileId): JsonResponse
     {
-        return ApiResponse::success($this->present($this->find($fileId)));
+        $file = $this->find($fileId);
+        $actor = $this->actor($request, self::READ);
+
+        // Meme cloisonnement que la delivrance d'URL : sans lui, un identifiant
+        // devine renseignerait sur le nom et la taille d'un document d'autrui.
+        if (! $this->readable($file, $actor)) {
+            throw DomainException::notFound('FILE_NOT_FOUND', __('storage::messages.file_not_found'));
+        }
+
+        return ApiResponse::success($this->present($file));
     }
 
     /**
@@ -86,7 +97,7 @@ final class FileController
             'owner_id' => ['required', 'string', 'max:64'],
         ]);
 
-        $actor = $this->actor();
+        $actor = $this->actor($request, self::READ);
         $ref = new FileRef($validated['owner_type'], $validated['owner_id']);
 
         $files = StoredFile::query()
@@ -104,7 +115,7 @@ final class FileController
     public function url(Request $request, IssueReadUrl $urls, string $fileId): JsonResponse
     {
         $file = $this->find($fileId);
-        $issued = $urls->handle($file, $this->actor(), $request->ip());
+        $issued = $urls->handle($file, $this->actor($request, self::READ), $request->ip());
 
         return ApiResponse::success([
             'url' => $issued->url,
@@ -118,7 +129,7 @@ final class FileController
 
     public function destroy(Request $request, DeleteFile $delete, string $fileId): JsonResponse
     {
-        $delete->handle($this->find($fileId), $this->actor());
+        $delete->handle($this->find($fileId), $this->actor($request, self::WRITE));
 
         return ApiResponse::noContent();
     }
@@ -151,13 +162,6 @@ final class FileController
         } catch (DomainException) {
             return false;
         }
-    }
-
-    private function actor(): FileActor
-    {
-        $context = app(RequestContext::class);
-
-        return FileActor::user($context->userId(), $context->organizationId());
     }
 
     /**

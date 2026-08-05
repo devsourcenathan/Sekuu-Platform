@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Modules\Storage\Presentation\Http\Controllers;
 
-use App\Platform\Contracts\RequestContext;
 use App\Platform\Exceptions\DomainException;
 use App\Platform\Http\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -14,6 +13,7 @@ use Modules\Storage\Application\Destinations\RegisterDestination;
 use Modules\Storage\Application\Destinations\VerifyDestination;
 use Modules\Storage\Domain\Models\Destination;
 use Modules\Storage\Domain\Models\StoredFile;
+use Modules\Storage\Presentation\Http\Concerns\ResolvesFileActor;
 
 /**
  * Administrer les magasins.
@@ -22,6 +22,8 @@ use Modules\Storage\Domain\Models\StoredFile;
  */
 final class DestinationController
 {
+    use ResolvesFileActor;
+
     public function __construct(
         private readonly RegisterDestination $register,
         private readonly VerifyDestination $verifier,
@@ -29,7 +31,7 @@ final class DestinationController
 
     public function index(Request $request): JsonResponse
     {
-        $organizationId = app(RequestContext::class)->organizationId();
+        $organizationId = $this->callerOrganizationId($request, self::DESTINATIONS);
 
         $destinations = Destination::query()
             ->where('environment', app()->environment())
@@ -62,7 +64,7 @@ final class DestinationController
             config: $validated['config'],
             credentials: $validated['credentials'] ?? [],
             environment: $validated['environment'],
-            organizationId: app(RequestContext::class)->organizationId(),
+            organizationId: $this->callerOrganizationId($request, self::DESTINATIONS),
         );
 
         // `201` même si l'épreuve a échoué : la destination **existe**, elle ne
@@ -71,9 +73,9 @@ final class DestinationController
         return ApiResponse::created($this->present($destination));
     }
 
-    public function verify(string $destinationId): JsonResponse
+    public function verify(Request $request, string $destinationId): JsonResponse
     {
-        $destination = $this->find($destinationId);
+        $destination = $this->find($request, $destinationId);
 
         $this->verifier->handle($destination);
 
@@ -84,7 +86,7 @@ final class DestinationController
     {
         $validated = $request->validate(['credentials' => ['required', 'array']]);
 
-        $destination = $this->find($destinationId);
+        $destination = $this->find($request, $destinationId);
         $anciens = $destination->credentials;
 
         $destination->forceFill(['credentials' => $validated['credentials']])->save();
@@ -112,7 +114,7 @@ final class DestinationController
             'status' => ['required', 'string', 'in:active,read_only,disabled'],
         ]);
 
-        $destination = $this->find($destinationId);
+        $destination = $this->find($request, $destinationId);
 
         /*
          * On ne rend pas `active` une destination qui n'a jamais rien prouvé :
@@ -130,9 +132,9 @@ final class DestinationController
         return ApiResponse::success($this->present($destination));
     }
 
-    private function find(string $id): Destination
+    private function find(Request $request, string $id): Destination
     {
-        $organizationId = app(RequestContext::class)->organizationId();
+        $organizationId = $this->callerOrganizationId($request, self::DESTINATIONS);
         $destination = Destination::query()->find($id);
 
         if ($destination === null) {

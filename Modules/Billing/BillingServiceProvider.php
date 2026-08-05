@@ -8,6 +8,7 @@ use App\Platform\Contracts\BillingContract;
 use App\Platform\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Billing\Infrastructure\Console\AdvanceLifecycleCommand;
+use Modules\Billing\Infrastructure\Console\InvoicePdfCommand;
 use Modules\Billing\Infrastructure\Contracts\BillingGateway;
 
 final class BillingServiceProvider extends ModuleServiceProvider
@@ -38,7 +39,7 @@ final class BillingServiceProvider extends ModuleServiceProvider
         parent::boot();
 
         if ($this->app->runningInConsole()) {
-            $this->commands([AdvanceLifecycleCommand::class]);
+            $this->commands([AdvanceLifecycleCommand::class, InvoicePdfCommand::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
@@ -46,6 +47,21 @@ final class BillingServiceProvider extends ModuleServiceProvider
             // l'organisation n'ouvre ses portes, pas au milieu de sa journée.
             $schedule->command(AdvanceLifecycleCommand::class)
                 ->dailyAt('02:30')
+                ->withoutOverlapping()
+                ->onOneServer()
+                ->runInBackground();
+
+            /*
+             * Le rattrapage des documents manquants.
+             *
+             * C'est **la** voie de reprise : la tâche de mise en page avale ses
+             * échecs pour ne jamais empêcher une facture d'exister, donc rien
+             * d'autre ne repasse derrière elle.
+             *
+             * Après le cycle de vie, qui peut lui-même émettre des factures.
+             */
+            $schedule->command(InvoicePdfCommand::class)
+                ->dailyAt('03:15')
                 ->withoutOverlapping()
                 ->onOneServer()
                 ->runInBackground();

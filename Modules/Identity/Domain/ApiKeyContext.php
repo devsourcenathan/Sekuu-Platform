@@ -25,4 +25,22 @@ final readonly class ApiKeyContext
     {
         return $this->key->allowsSubjectType($subjectType);
     }
+
+    /**
+     * @return list<string>
+     */
+    public function subjectTypes(): array
+    {
+        return array_values((array) ($this->key->subject_types ?? []));
+    }
+
+    /**
+     * Combien de jours cette cle peut-elle rendre un fichier indestructible sur
+     * nos destinations ? Zero a l'emission : la cle habilite, elle n'herite de
+     * rien.
+     */
+    public function maxRetentionDays(): int
+    {
+        return (int) ($this->key->max_retention_days ?? 0);
+    }
 }

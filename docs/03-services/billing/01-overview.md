@@ -373,9 +373,13 @@ Propre à Billing :
   faut-il qu'une crontab appelle Laravel toutes les minutes en production. Sur
   un modèle prépayé, sans cela, aucun rappel d'échéance ne part et aucun
   abonnement échu ne passe en grâce.
-* **Storage**, pour les PDF de facture. En son absence,
-  `GET /invoices/{id}/download` renvoie `503` — franchement, plutôt qu'un PDF
-  généré à la volée dont personne ne garantit qu'il sera identique demain.
+* ~~**Storage**, pour les PDF de facture.~~ **Fait.** Billing met le document
+  en page à l'émission et le confie à Storage, avec dix ans de rétention ;
+  `GET /invoices/{id}/download` rend un `302` vers une URL signée de courte
+  durée. Le document est **figé** : régénéré à la demande, il suivrait le code
+  du jour, et la facture de janvier téléchargée en décembre ne serait plus
+  celle qui a été envoyée —
+  [ADR-0013](../../04-decisions/adr-0013-invoice-pdf-frozen.md).
 * **Un compte bancaire** pour le reversement et le rapprochement des virements.
 * **Le taux de TVA validé** par un comptable camerounais. 19,25 % est appliqué
   et figé sur chaque facture émise ; se tromper obligerait à annuler et rééditer

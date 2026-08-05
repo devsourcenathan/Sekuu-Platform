@@ -22,6 +22,7 @@ final class ApiKey extends Model
         'key_hash',
         'scopes',
         'subject_types',
+        'max_retention_days',
         'created_by',
         'expires_at',
     ];
@@ -34,6 +35,7 @@ final class ApiKey extends Model
         return [
             'scopes' => 'array',
             'subject_types' => 'array',
+            'max_retention_days' => 'integer',
             'last_used_at' => 'datetime',
             'expires_at' => 'datetime',
             'revoked_at' => 'datetime',

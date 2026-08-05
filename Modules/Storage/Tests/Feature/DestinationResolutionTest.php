@@ -321,6 +321,76 @@ final class DestinationResolutionTest extends TestCase
         $this->assertStringNotContainsString('s3cr3t', (string) $destination->fresh()->credentialFingerprint());
     }
 
+    /**
+     * Sans magasin, la plateforme ne peut rien stocker — et doit le dire.
+     *
+     * C'est le premier geste d'une mise en service, et il n'a pas de route :
+     * une destination de la plateforme porte les identifiants de nos comptes et
+     * sert toutes les organisations. L'exposer reviendrait a confier
+     * l'infrastructure de tout le monde a qui detient un jeton d'administration.
+     */
+    public function test_the_platform_default_is_posed_by_hand_and_probed(): void
+    {
+        $this->artisan('storage:destination')->expectsOutputToContain('Aucun magasin')->assertSuccessful();
+
+        $this->artisan('storage:destination', [
+            'slug' => 'principal',
+            '--driver' => 'local',
+            '--root' => storage_path('framework/testing/principal'),
+            '--default' => true,
+        ])->assertSuccessful();
+
+        $destination = Destination::query()->where('slug', 'principal')->firstOrFail();
+
+        $this->assertSame(Destination::ACTIVE, $destination->status);
+        $this->assertTrue($destination->is_default);
+        $this->assertNotNull($destination->verified_at);
+        $this->assertTrue($destination->belongsToPlatform());
+
+        // Et il sert immediatement : c'est la seule preuve qui compte.
+        $this->assertSame($destination->id, $this->declare()->file->destination_id);
+    }
+
+    /**
+     * Un magasin qu'on retire du service cesse d'accepter des ecritures, et
+     * continue de servir ce qu'il porte.
+     */
+    public function test_the_command_retires_a_store_without_cutting_reads(): void
+    {
+        $this->destination('sortant', isDefault: true);
+
+        $this->artisan('storage:destination', ['slug' => 'sortant', '--status' => 'read_only'])
+            ->assertSuccessful();
+
+        $destination = Destination::query()->where('slug', 'sortant')->firstOrFail();
+
+        $this->assertTrue($destination->allowsReads());
+        $this->assertFalse($destination->acceptsWrites());
+    }
+
+    /**
+     * Une epreuve ratee n'efface pas la ligne : la corriger vaut mieux que la
+     * recreer, et une tentative laisserait sinon un compartiment a moitie
+     * configure dont personne ne garde trace.
+     */
+    public function test_a_failed_probe_leaves_the_row_and_says_why(): void
+    {
+        $obstacle = storage_path('framework/testing/obstacle-cli');
+        @mkdir(dirname($obstacle), 0777, true);
+        file_put_contents($obstacle, 'pas un répertoire');
+
+        $this->artisan('storage:destination', [
+            'slug' => 'casse',
+            '--driver' => 'local',
+            '--root' => $obstacle.'/dedans',
+        ])->assertFailed();
+
+        $destination = Destination::query()->where('slug', 'casse')->firstOrFail();
+
+        $this->assertSame(Destination::UNVERIFIED, $destination->status);
+        $this->assertNotNull($destination->verification_reason);
+    }
+
     private function declare(): DeclaredFile
     {
         return app(DeclareFile::class)->handle(

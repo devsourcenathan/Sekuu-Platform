@@ -4,14 +4,19 @@ declare(strict_types=1);
 
 namespace Modules\Billing\Presentation\Http\Controllers;
 
+use App\Platform\Contracts\FileActor;
 use App\Platform\Exceptions\DomainException;
 use App\Platform\Http\ApiResponse;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Modules\Billing\Application\Invoicing\RenderInvoicePdf;
 use Modules\Billing\Domain\Models\Invoice;
 use Modules\Billing\Domain\Models\InvoiceLine;
 use Modules\Billing\Presentation\Http\Controllers\Concerns\EngagesTheOrganization;
+use Modules\Storage\Application\Files\IssueReadUrl;
+use Modules\Storage\Domain\Models\StoredFile;
 
 /**
  * Factures.
@@ -63,20 +68,60 @@ final class InvoiceController
     }
 
     /**
-     * Le PDF appartient à Storage, qui n'existe pas encore.
+     * Une redirection vers une URL signée, jamais les octets.
      *
-     * `503` franc plutôt qu'un PDF généré à la volée dont personne ne garantit
-     * qu'il sera identique demain — pour un document légal, c'est un problème.
+     * `302` garde la règle posée par l'ADR-0012 : les octets ne traversent pas
+     * la plateforme. Le navigateur suit la redirection sans le savoir et
+     * télécharge depuis le magasin. Un client d'API qui préfère l'URL brute a
+     * `GET /files/{id}/url`.
+     *
+     * Le PDF est celui qui a été produit à l'émission, et jamais un rendu du
+     * jour — voir ADR-0013.
      */
-    public function download(Request $request, string $invoiceId): JsonResponse
-    {
-        $this->organizationId();
+    public function download(
+        Request $request,
+        IssueReadUrl $urls,
+        RenderInvoicePdf $renderer,
+        string $invoiceId,
+    ): RedirectResponse {
+        $organizationId = $this->organizationId();
 
-        throw new DomainException(
-            'SERVICE_UNAVAILABLE',
-            __('billing::messages.invoice_pdf_unavailable'),
-            503,
-        );
+        $invoice = Invoice::query()
+            ->where('organization_id', $organizationId)
+            ->where('id', $invoiceId)
+            ->first();
+
+        if ($invoice === null) {
+            throw DomainException::notFound('INVOICE_NOT_FOUND', __('billing::messages.invoice_not_found'));
+        }
+
+        /*
+         * Rattrapage synchrone si la file a échoué, ou si la facture est
+         * antérieure à l'arrivée du module de stockage.
+         *
+         * Ce n'est pas une génération à la demande : le résultat est **attaché
+         * et figé**, et la prochaine visite servira ce fichier-là. Le document
+         * ne sera simplement pas identique à ce que le client a vu à l'époque —
+         * il n'y avait rien à voir.
+         */
+        $fileId = $invoice->pdf_file_id ?? $renderer->handle($invoice);
+
+        if ($fileId === null) {
+            throw DomainException::conflict(
+                'INVOICE_NOT_ISSUED',
+                __('billing::messages.invoice_pdf_unavailable'),
+            );
+        }
+
+        $file = StoredFile::query()->with('destination')->find($fileId);
+
+        if ($file === null) {
+            throw DomainException::notFound('FILE_NOT_FOUND', __('billing::messages.invoice_pdf_unavailable'));
+        }
+
+        $issued = $urls->handle($file, FileActor::user($this->userId(), $organizationId), $request->ip());
+
+        return new RedirectResponse($issued->url);
     }
 
     private function applyFilters(Request $request, Builder $query): void

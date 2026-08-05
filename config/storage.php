@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Modules\Billing\Application\Invoicing\InvoiceFiles;
 use Modules\Storage\Infrastructure\Drivers\LocalDriver;
 use Modules\Storage\Infrastructure\Drivers\S3Driver;
 
@@ -112,7 +113,7 @@ return [
     */
 
     'owners' => [
-        //
+        InvoiceFiles::TYPE => InvoiceFiles::class,
     ],
 
     /*

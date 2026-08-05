@@ -29,6 +29,7 @@ abstract class ModuleServiceProvider extends ServiceProvider
         $this->registerRoutes();
         $this->registerMigrations();
         $this->registerTranslations();
+        $this->registerViews();
     }
 
     protected function registerRoutes(): void
@@ -84,6 +85,22 @@ abstract class ModuleServiceProvider extends ServiceProvider
 
         if (is_dir($path)) {
             $this->loadTranslationsFrom($path, $this->moduleSlug());
+        }
+    }
+
+    /**
+     * Gabarits du module, sous son propre espace de noms — `billing::invoice`.
+     *
+     * Le préfixe évite qu'un gabarit d'un module en masque un autre portant le
+     * même nom, ce qui se produirait silencieusement et se verrait au mauvais
+     * endroit : dans un document déjà envoyé.
+     */
+    protected function registerViews(): void
+    {
+        $path = $this->modulePath().'/Resources/views';
+
+        if (is_dir($path)) {
+            $this->loadViewsFrom($path, $this->moduleSlug());
         }
     }
 

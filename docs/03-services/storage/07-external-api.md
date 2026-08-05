@@ -30,9 +30,12 @@ utilisateurs, ni ses rôles, ni ce qu'est un « élève inscrit ».
 
 Deux bornes tiennent l'ensemble, et il faut les deux :
 
-* **la clé d'API est scopée** — elle porte la liste des `owner_type` qu'elle
-  peut manipuler, et rien d'autre. Une clé de Learn ne touche pas un
-  `billing.invoice` ;
+* **la clé d'API est scopée** — trois droits distincts, `storage.write`,
+  `storage.read` et `storage.destinations`, et une liste blanche des
+  `owner_type` qu'elle peut manipuler. Une clé de Learn ne touche pas un
+  `billing.invoice`, et une clé qui dépose des fichiers n'enregistre pas de
+  magasin : ce sont deux dangers différents, et un seul droit pour les deux
+  serait le plus large des deux ;
 * **les fichiers d'une clé sont cloisonnés** — un `file_id` d'un produit est
   invisible pour un autre, y compris en devinant l'identifiant.
 
@@ -101,10 +104,14 @@ découvrir au premier téléversement d'un client coûte un incident.
 
 Le produit paie sa facture cloud ; lui opposer notre quota n'aurait pas de sens.
 
-Storage enregistre ses fichiers, sait les compter, et les rapporte —
-`GET /storage/usage` répond, destination par destination. Mais il ne refuse
+Storage enregistre ses fichiers et les compte, destination par destination —
+c'est la raison d'être de la clé composée de `storage_usage`. Mais il ne refuse
 rien : les seules bornes sont celles de son fournisseur, et elles remontent
 telles quelles en `STORAGE_DESTINATION_UNAVAILABLE`, `503`.
+
+Aucune route ne publie encore ce décompte. Il est en base, exact, et sortira le
+jour où un produit en aura l'usage — pas avant : un endpoint qu'on écrit sans
+appelant est un endpoint qu'on n'éprouve pas.
 
 ## 2.3 Les identifiants qu'un tiers nous confie
 
@@ -132,7 +139,7 @@ Authorization: Bearer <clé d'API>
   "mime_type": "video/mp4",
   "size": 184320000,
   "destination": "acme-videos",
-  "retain_until": null
+  "retain_days": null
 }
 ```
 
@@ -144,11 +151,11 @@ La suite est identique au chemin interne : `PUT` vers l'URL rendue, puis
 `POST /files/{id}/confirm`. La déclaration ne fait jamais foi ; Storage
 interroge le magasin.
 
-## 3.1 `retain_until` est porté par la clé, et nul par défaut
+## 3.1 `retain_days` est plafonné par la clé, et nul par défaut
 
 Sur **nos** destinations, un produit externe ne peut poser aucune rétention tant
-qu'on ne la lui a pas accordée. La clé d'API porte un plafond — `max_retention`
-— qui vaut zéro à l'émission.
+qu'on ne la lui a pas accordée. La clé d'API porte un plafond —
+`max_retention_days` — qui vaut zéro à l'émission.
 
 C'est la mécanique de la liste blanche de `subject_type` côté Payments : la clé
 **habilite**, elle n'hérite de rien. Un produit qui a besoin de conserver dix

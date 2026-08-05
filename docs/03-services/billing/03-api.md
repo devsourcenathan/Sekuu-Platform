@@ -251,7 +251,11 @@ Filtres : `filter[status]`, `filter[period]`. Tri par `issued_at` décroissant p
 
 Le crédit apparaît comme **une ligne**, pas comme une soustraction silencieuse. Un client doit pouvoir vérifier son total à la main.
 
-`GET /invoices/{id}/download` renverra `302` vers une URL signée de Storage. Tant que Storage n'existe pas, la route renvoie `503` / `SERVICE_UNAVAILABLE` — franchement, plutôt qu'un PDF généré à la volée dont personne ne garantit qu'il sera identique demain.
+`GET /invoices/{id}/download` rend un `302` vers une URL signée de Storage, de courte durée. Les octets ne traversent pas la plateforme.
+
+Le PDF servi est celui qui a été produit à l'émission, jamais un rendu du jour : une facture régénérée suivrait le code d'aujourd'hui, et la divergence n'apparaîtrait qu'en comparant deux exemplaires du même document — lors d'un contrôle. Voir [ADR-0013](../../04-decisions/adr-0013-invoice-pdf-frozen.md).
+
+Une facture émise avant l'arrivée de Storage est mise en page au premier téléchargement, puis figée comme les autres.
 
 ---
 

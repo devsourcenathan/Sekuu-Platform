@@ -4965,6 +4965,438 @@
           ]
         }
       ]
+    },
+    {
+      "name": "15 - Storage",
+      "description": "Garder des octets, et controler qui peut les reprendre.\n\n**Aucune route ne rend d'octet.** La plateforme delivre des URL signees vers l'hote du magasin ; les octets ne la traversent jamais.\n\nLe parcours est en trois temps : declarer, ecrire soi-meme sur `upload_url`, confirmer. Le deuxieme temps ne part pas vers `{{base_url}}` — c'est tout l'interet.\n\nLes magasins sont des **donnees** : plusieurs comptes par fournisseur, et un produit peut apporter le sien.",
+      "item": [
+        {
+          "name": "Fichiers",
+          "item": [
+            {
+              "name": "Declarer un fichier",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/files",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "files"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "Rend un identifiant et une **autorisation d'ecriture**. Aucun octet n'a encore bouge.\n\n`mime_type` et `size` servent a signer une autorisation etroite et a refuser tot ce qui sera de toute facon refuse. Ils **ne font pas foi** : la confirmation interroge le magasin et ecrase ces valeurs.\n\nSuivre `upload_method`, `upload_url` et `upload_headers` sans les interpreter. Un client qui suppose `PUT` casse le jour ou le magasin change, sans que rien ne l'ait prevenu.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"owner_type\": \"billing.invoice\",\n  \"owner_id\": \"{{invoice_id}}\",\n  \"name\": \"piece-jointe.pdf\",\n  \"mime_type\": \"application/pdf\",\n  \"size\": 12345\n}"
+                }
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const d = pm.response.json().data;",
+                      "if (d && d.id) pm.environment.set('file_id', d.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Confirmer",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/files/{{file_id}}/confirm",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "files",
+                    "{{file_id}}",
+                    "confirm"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "Le magasin est interroge, et ce qu'il repond **ecrase** ce qui avait ete declare.\n\nTrois issues. L'objet est la et conforme : le fichier devient `ready`. L'objet est absent : `UPLOAD_INCOMPLETE`, et le fichier **reste** `pending` — c'est une incertitude, pas un refus, et l'URL reste valable. L'objet est la mais non conforme : il est efface et le fichier passe `deleted`, parce qu'il s'agit cette fois d'un refus constate.\n\nEntre les deux appels, ecrire les octets soi-meme : `PUT` sur `upload_url`, avec les en-tetes rendus. Postman ne peut pas le faire seul — la requete part vers un autre hote."
+              },
+              "response": []
+            },
+            {
+              "name": "Metadonnees",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/files/{{file_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "files",
+                    "{{file_id}}"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "Ni `path`, ni `destination_id`. La cle de l'objet porte l'identifiant d'organisation : la rendre publierait la structure du compartiment et inviterait a deviner celle du voisin."
+              },
+              "response": []
+            },
+            {
+              "name": "URL de lecture",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/files/{{file_id}}/url",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "files",
+                    "{{file_id}}",
+                    "url"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "De courte duree, vers l'hote du magasin — jamais vers `sekuu.com`.\n\n**Ne pas conserver l'URL** : sa duree n'est pas un contrat. La redemander au moment de servir. Une URL signee dans un courriel sera morte a l'ouverture, ou pire, vivante et transferable.\n\nUn refus de lecture rend `FILE_NOT_FOUND`, jamais `403` : distinguer « inexistant » de « pas a vous » transformerait la route en oracle."
+              },
+              "response": []
+            },
+            {
+              "name": "Fichiers d'un objet",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/files?owner_type=billing.invoice&owner_id={{invoice_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "files"
+                  ],
+                  "query": [
+                    {
+                      "key": "owner_type",
+                      "value": "billing.invoice"
+                    },
+                    {
+                      "key": "owner_id",
+                      "value": "{{invoice_id}}"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "`owner_type` et `owner_id` sont **requis**. Sans eux la question deviendrait « tous les fichiers de mon organisation », et Storage ne peut pas y repondre : il ignore les roles."
+              },
+              "response": []
+            },
+            {
+              "name": "Supprimer",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/files/{{file_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "files",
+                    "{{file_id}}"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "Suppression **logique** : le quota est rendu tout de suite, les octets partent au balayage suivant.\n\nUn fichier sous retention est refuse — `FILE_RETAINED`, `409`. Aucun parametre ne passe outre, aucune permission ne l'emporte. Le PDF d'une facture repond donc `409` pendant dix ans."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Magasins",
+          "item": [
+            {
+              "name": "Mes magasins",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/storage/destinations",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "storage",
+                    "destinations"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{storage_api_key}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "Les destinations de la plateforme servent tout le monde ; celle d'un tiers ne sert que lui."
+              },
+              "response": []
+            },
+            {
+              "name": "Enregistrer un magasin",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/storage/destinations",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "storage",
+                    "destinations"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{storage_api_key}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "L'epreuve est **immediate** : ecrire un objet temoin, le relire, l'effacer. Tant qu'elle n'a pas reussi, la destination est `unverified` et n'est choisie par personne.\n\nDes identifiants faux decouverts ici coutent deux minutes ; decouverts au premier televersement d'un client, un incident.\n\nLes identifiants doivent etre **restreints au seul compartiment declare**. Ils ne sont jamais rendus, pas meme a qui les depose : la lecture rend une empreinte.\n\n`preset` couvre `aws`, `r2`, `b2`, `scaleway`, `minio` — de la donnee. Ajouter un service compatible S3 ne demande pas de code ; ajouter une famille nouvelle demande une classe.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"slug\": \"acme-videos\",\n  \"preset\": \"r2\",\n  \"config\": {\n    \"account_id\": \"...\",\n    \"bucket\": \"acme-sekuu-videos\",\n    \"prefix\": \"prod/\"\n  },\n  \"credentials\": {\n    \"key\": \"...\",\n    \"secret\": \"...\"\n  },\n  \"environment\": \"production\"\n}"
+                }
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const d = pm.response.json().data;",
+                      "if (d && d.id) pm.environment.set('destination_id', d.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Rejouer l'epreuve",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/storage/destinations/{{destination_id}}/verify",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "storage",
+                    "destinations",
+                    "{{destination_id}}",
+                    "verify"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{storage_api_key}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "Rejouee d'office chaque jour. Une cle revoquee chez le fournisseur fait basculer la destination en `unverified`, et l'evenement `storage.destination.unverified` est publie — avant qu'un client ne le decouvre."
+              },
+              "response": []
+            },
+            {
+              "name": "Rotation des identifiants",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/storage/destinations/{{destination_id}}/credentials",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "storage",
+                    "destinations",
+                    "{{destination_id}}",
+                    "credentials"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{storage_api_key}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "L'epreuve tranche **avant** que les anciens identifiants ne soient abandonnes : une rotation ratee ne doit pas couper le service.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"credentials\": {\n    \"key\": \"...\",\n    \"secret\": \"...\"\n  }\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Retirer du service",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/storage/destinations/{{destination_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "storage",
+                    "destinations",
+                    "{{destination_id}}"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{storage_api_key}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "Il n'existe **pas** de suppression : une destination qui porte des fichiers ne se supprime pas — la ligne disparue, la base serait la seule a savoir ou les octets etaient.\n\n`read_only` est l'etat qui compte : on cesse d'y ecrire, on continue d'y lire. Les fichiers deja poses y sont, et le resteront.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"read_only\"\n}"
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
     }
   ]
 }

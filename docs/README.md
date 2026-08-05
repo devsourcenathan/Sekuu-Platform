@@ -20,7 +20,7 @@ Sekuu Platform est le socle technique commun de l'écosystème Sekuu : une plate
 | Faire encaisser un **service externe** | [Payments — API externe](03-services/payments/07-external-api.md) |
 | **Rendre** l'argent | [Payments — remboursements](03-services/payments/08-refunds.md) |
 | Attacher un **fichier** à un objet | [Storage — intégrer un module](03-services/storage/05-integration.md) |
-| Ajouter un **magasin** — compte S3, R2, Drive | [Storage — destinations](03-services/storage/06-destinations.md) |
+| Ajouter un **magasin** — compte S3, R2, Drive | [Storage — destinations](03-services/storage/06-destinations.md) — puis `storage:destination` |
 | Faire stocker un **service externe** | [Storage — API externe](03-services/storage/07-external-api.md) |
 | Comprendre un choix d'architecture | [Décisions (ADR)](#04-decisions--décisions-darchitecture) |
 | **Mettre en production** | [Mise en service](06-operations/01-go-live.md) |
@@ -66,7 +66,7 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | Verify | À spécifier | — |
 | **Payments** | **Implémenté** — Notch Pay, Tranzak | [vision](03-services/payments/01-overview.md) · [modèle de données](03-services/payments/02-data-model.md) · [API](03-services/payments/03-api.md) · [événements](03-services/payments/04-events.md) · [agrégateurs](03-services/payments/05-providers.md) · [intégrer un module](03-services/payments/06-integration.md) · [**service externe**](03-services/payments/07-external-api.md) · [remboursements](03-services/payments/08-refunds.md) · [contrat OpenAPI](../Modules/Payments/openapi.yaml) |
 | **Billing** | **Implémenté** — abonnements prépayés | [vision](03-services/billing/01-overview.md) · [modèle de données](03-services/billing/02-data-model.md) · [API](03-services/billing/03-api.md) · [événements](03-services/billing/04-events.md) |
-| **Storage** | **Spécifié**, non implémenté | [vision](03-services/storage/01-overview.md) · [modèle de données](03-services/storage/02-data-model.md) · [API](03-services/storage/03-api.md) · [événements](03-services/storage/04-events.md) · [intégrer un module](03-services/storage/05-integration.md) · [**destinations**](03-services/storage/06-destinations.md) · [service externe](03-services/storage/07-external-api.md) |
+| **Storage** | **Implémenté** — téléversement direct, destinations multiples, PDF de facture | [vision](03-services/storage/01-overview.md) · [modèle de données](03-services/storage/02-data-model.md) · [API](03-services/storage/03-api.md) · [événements](03-services/storage/04-events.md) · [intégrer un module](03-services/storage/05-integration.md) · [**destinations**](03-services/storage/06-destinations.md) · [service externe](03-services/storage/07-external-api.md) |
 | AI | Esquissé dans [architecture.md](01-overview/architecture.md) | — |
 | Search | À spécifier | — |
 | Analytics | À spécifier | — |

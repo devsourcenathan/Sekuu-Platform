@@ -26,7 +26,7 @@ final class Invoice extends Model
         'organization_id', 'subscription_id', 'number', 'status', 'currency',
         'subtotal', 'tax_rate', 'tax_amount', 'credit_applied', 'total',
         'amount_paid', 'period_start', 'period_end', 'issued_at', 'due_at',
-        'paid_at', 'voided_at', 'billing_details',
+        'paid_at', 'voided_at', 'billing_details', 'pdf_file_id', 'pdf_rendered_at',
     ];
 
     protected function casts(): array
@@ -45,6 +45,7 @@ final class Invoice extends Model
             'due_at' => 'immutable_datetime',
             'paid_at' => 'immutable_datetime',
             'voided_at' => 'immutable_datetime',
+            'pdf_rendered_at' => 'immutable_datetime',
         ];
     }
 

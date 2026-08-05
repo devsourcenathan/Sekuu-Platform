@@ -10,13 +10,12 @@
 | | |
 | --- | --- |
 | Application | Monolithe modulaire Laravel 13, PHP 8.3, PostgreSQL 18 |
-| Modules livrés | **Identity** · **Notify** (email, SMS, interne) · **Payments** (Notch Pay, Tranzak, API externe, remboursements) · **Billing** |
-| Modules spécifiés, non implémentés | **Storage** |
+| Modules livrés | **Identity** · **Notify** (email, SMS, interne) · **Payments** (Notch Pay, Tranzak, API externe, remboursements) · **Billing** · **Storage** |
 | Modules non démarrés | Verify, AI, Search, Analytics |
 | Déploiement | **En ligne** — Render + Neon, `platform.sekuu.com` |
-| Endpoints | 87 sous `/api/v1` + `/.well-known/jwks.json` |
-| Migrations | 32 |
-| Tests | 510, sur PostgreSQL |
+| Endpoints | 98 sous `/api/v1` + `/.well-known/jwks.json` |
+| Migrations | 35 |
+| Tests | 554, sur PostgreSQL |
 | Contrats | `Modules/*/openapi.yaml`, vérifiés par test |
 | Collection de test | `postman/` |
 
@@ -115,7 +114,9 @@ Le consommateur ne touche jamais les lignes `source = 'manual'` : une activation
 
 **Ce qui a changé ailleurs** — la table `products` d'Identity n'était seedée nulle part ; elle l'est désormais (6 produits). Sans elle, aucun plan n'avait rien à ouvrir.
 
-**Non implémenté** — Tara (aucune documentation publique), PDF de facture (appartient à Storage, renvoie `503`), facturation à l'usage.
+**Non implémenté** — Tara (aucune documentation publique), facturation à l'usage.
+
+**PDF de facture** — produit à l'émission, figé, conservé dix ans, et servi par une redirection vers une URL signée. Le `503` d'origine a disparu. La mise en page appartient à Billing, la conservation à Storage : confondre les deux aurait fait entrer les règles fiscales camerounaises dans un module de fichiers ([ADR-0013](04-decisions/adr-0013-invoice-pdf-frozen.md)).
 
 **Branché sur Notify** — huit événements produisent de vrais messages : activation, renouvellement, rappels d'échéance, entrée en grâce, suspension, facture émise, facture réglée, paiement échoué. Tous transactionnels ; trois portent aussi un SMS, aux seuls moments où une action du client est attendue.
 
@@ -181,11 +182,33 @@ La ligne `refund` du registre n'est écrite qu'au décaissement constaté — un
 
 **Non implémenté également** — encaisser pour le compte d'un tiers. `payee_organization_id` existe et laisse la porte ouverte, mais rien derrière n'est construit : pas de compte de destination, pas de type `payout`, pas d'état de reversement. Un produit externe encaisse donc pour le compte de la plateforme, et le reversement se fait hors système.
 
+## 2.6 Module Storage
+
+**Il ignore ce qu'il garde.** Un fichier porte un `owner_type` et un `owner_id` qu'il n'interprète jamais — la même architecture que Payments, et pour la même raison : le PDF d'une facture et la vidéo d'un cours empruntent le même chemin sans que l'un sache que l'autre existe.
+
+L'invariant de Payments s'y transpose : « seul le propriétaire de l'objet nomme son prix » devient **seul le propriétaire de l'objet dit qui peut le lire**. Storage ne connaît ni les rôles ni les workspaces ; il demande, par le contrat `FileOwner`.
+
+**Les octets ne traversent jamais l'API** ([ADR-0012](04-decisions/adr-0012-direct-upload.md)). Le client obtient une URL signée et écrit directement dans le magasin : déclarer, écrire, confirmer. Une vidéo de 200 Mo tuerait le conteneur Render, le proxy coupe de toute façon à 100 Mo, et le disque du conteneur est éphémère — un fichier écrit dedans disparaîtrait au déploiement suivant, **sans erreur**.
+
+**La déclaration ne fait jamais foi.** À la confirmation, le magasin est interrogé et ce qu'il répond écrase ce que le client avait annoncé. C'est la règle des callbacks de paiement, transposée : sans elle, le contrôle de type et le quota borneraient une déclaration, pas un fichier.
+
+**Le magasin est une donnée** ([ADR-0014](04-decisions/adr-0014-storage-destinations.md)). Plusieurs comptes par fournisseur, un client peut apporter le sien, et la résolution se fige sur la ligne du fichier — changer une règle n'affecte que les fichiers à venir. Ajouter un compte ou un service compatible S3 ne demande pas de code ; ajouter une famille nouvelle demande une classe de cinq méthodes, et [le document le dit franchement](03-services/storage/06-destinations.md).
+
+**Rien n'est public, et rien n'est permanent.** Les URL de lecture durent dix minutes et pointent vers l'hôte du magasin, jamais vers `sekuu.com` — ce qui neutralise le vecteur principal d'un service de fichiers. Tout ce qui n'est ni image ni PDF est servi en pièce jointe.
+
+**Une destination non éprouvée ne sert jamais.** À l'enregistrement puis chaque nuit : écrire un objet témoin, le relire, l'effacer. Une clé révoquée chez le fournisseur bascule la destination en `unverified` et publie un événement — avant qu'un client ne le découvre.
+
+**PDF de facture** — le cas qui a motivé le module. Produit par Billing à l'émission, confié à Storage avec dix ans de rétention, servi par un `302`. **Figé** : régénéré à la demande, il suivrait le code du jour, et la divergence n'apparaîtrait qu'en comparant deux exemplaires du même document ([ADR-0013](04-decisions/adr-0013-invoice-pdf-frozen.md)).
+
+**Non implémenté, et écrit plutôt qu'à moitié fait** — vignettes, transcodage, analyse antivirale, migration d'une destination à une autre. C'est l'enseignement du canal SMS de Notify : du code qu'on ne peut pas exécuter n'est pas une avance, c'est une dette qui se croit livrée.
+
+**Un défaut trouvé en implémentant.** La mise en page du PDF est confiée à une file, et j'avais laissé son échec remonter jusqu'à l'appelant : sur une file synchrone — le cas en test, et possible en production — un magasin mal configuré empêchait de **facturer**. La tâche avale donc ses échecs, et la reprise est portée par `billing:invoice-pdf`, ordonnancée chaque nuit. Le défaut serait resté invisible tant qu'un magasin répond.
+
 ---
 
 # 3. Décisions structurantes
 
-Les quatre ADR de [`04-decisions/`](04-decisions/) portent les décisions d'architecture. En complément, voici les arbitrages pris pendant l'implémentation.
+Les quatorze ADR de [`04-decisions/`](04-decisions/) portent les décisions d'architecture. En complément, voici les arbitrages pris pendant l'implémentation.
 
 ## 3.1 Frontières entre domaines
 
@@ -251,6 +274,16 @@ Les tests ne couvrent pas seulement le chemin nominal ; ils verrouillent les pro
 **Règle de bascule** — table de vérité **exhaustive** itérant sur `AttemptStatus::cases()` : un état ajouté demain sans décision explicite fait échouer le test. C'est l'endroit où une régression coûte de l'argent réel à un tiers.
 
 **Indépendance de Payments** — aucun fichier de `Modules/Payments`, code de test compris, ne nomme Billing. Le chemin de paiement s'éprouve donc entièrement sur un objet payable factice ; ce qui reste chez Billing est ce qui n'a de sens que pour une facture.
+
+**Le cycle complet d'un fichier, contre un vrai magasin** — déclarer, écrire, confirmer, lire, supprimer, sans compte externe ni réseau. Le pilote local émet de vraies URL signées : c'est ce qui manquait au canal SMS de Notify, intégralement écrit et jamais exécuté.
+
+**La déclaration n'engage rien** — un client qui annonce 5 octets et en écrit 200 voit sa confirmation refusée, et l'objet effacé. Le test l'exécute réellement, il ne le simule pas.
+
+**Le repli de destination n'existe que déclaré** — sept cas de résolution, dont celui qui vérifie qu'une destination nommée mais tombée **échoue** au lieu de se rabattre sur le défaut. C'est l'endroit où une régression produirait une facture de trafic sortant que personne ne verrait venir.
+
+**Un fichier ne déménage jamais** — changer une règle de placement laisse les fichiers existants là où ils sont. Sans ce test, rebrancher une organisation rendrait illisibles tous ses fichiers antérieurs, d'un coup et sans erreur.
+
+**La rétention l'emporte sur tout le monde** — le PDF d'une facture répond `409` à toute suppression pendant dix ans, quel que soit l'appelant.
 
 ---
 
@@ -367,9 +400,6 @@ Les trois premiers sont désormais verrouillés par des tests.
 Par ordre décroissant de valeur :
 
 * **Le premier paiement réel**, fait à la main sur un petit montant. C'est la seule vérification qui prouve que la chaîne entière fonctionne : les deux agrégateurs ont déjà démenti deux hypothèses chacun lors de leur intégration, et aucun bac à sable ne prouve la production.
-* **Storage** — [spécifié](03-services/storage/01-overview.md), à implémenter. Le PDF de facture en dépend, mais pas seulement de lui : Storage garde des octets, il n'en produit aucun. Billing doit mettre en page le document, [ADR-0013](04-decisions/adr-0013-invoice-pdf-frozen.md). Une facture non téléchargeable est un problème légal, pas un confort.
-
-  Le magasin y est une **donnée** et non une configuration : plusieurs comptes par fournisseur, un produit peut apporter le sien, et l'API externe suit le modèle de Payments — [ADR-0014](04-decisions/adr-0014-storage-destinations.md). Ajouter un compte ou un service compatible S3 ne demande pas de code ; ajouter une famille nouvelle demande une classe de cinq méthodes, et [le document le dit franchement](03-services/storage/06-destinations.md).
 * **La documentation Tara**, à réclamer directement — elle n'est pas publique. Deux agrégateurs suffisent à supprimer le point de défaillance unique ; le troisième améliore.
 
 Puis Verify.

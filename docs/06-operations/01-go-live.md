@@ -203,7 +203,39 @@ client.
 
 ---
 
-# 5. La liste
+# 5. Le magasin par défaut
+
+Sans lui, **aucun fichier ne peut être déposé** — et aucune facture n'a de PDF.
+
+```bash
+php artisan storage:destination principal --preset=r2 --bucket=… --account-id=… --default
+```
+
+La commande éprouve les identifiants sur-le-champ : écrire un objet témoin, le
+relire, l'effacer. Un magasin qui n'a pas réussi cette épreuve reste
+`unverified` et ne sert personne — des identifiants faux découverts ici coûtent
+deux minutes, découverts au premier téléversement d'un client, un incident.
+
+Sans `--key` ni `--secret`, ils sont demandés sans écho. Les passer en argument
+les inscrirait dans l'historique du shell, où ils resteraient bien après la
+fermeture du terminal.
+
+`php artisan storage:destination` sans argument liste ce qui existe, et
+`storage:verify` rejoue l'épreuve — ce que l'ordonnanceur fait de toute façon
+chaque nuit à 4 h.
+
+## 5.1 Pourquoi il n'y a pas de route pour cela
+
+Une destination de la plateforme porte les identifiants de **nos** comptes cloud
+et sert toutes les organisations. L'exposer à une route reviendrait à confier
+cette infrastructure à qui détient un jeton d'administration.
+
+L'API n'administre que les destinations d'un client, et vérifie qu'il en est
+propriétaire. C'est la même logique que `payments:endpoint`.
+
+---
+
+# 6. La liste
 
 | | Fait ? |
 | --- | --- |
@@ -220,10 +252,12 @@ client.
 | `.env` chiffré ou en gestionnaire, `chmod 600` | |
 | CI verte sur `main` | |
 | Un endpoint de livraison par produit externe (`payments:endpoint`) | |
+| **Magasin par défaut posé et éprouvé** (`storage:destination`) | |
+| `billing:invoice-pdf` — aucune facture émise sans document | |
 
 ---
 
-# 6. Peut-on valider la production depuis un poste local ?
+# 7. Peut-on valider la production depuis un poste local ?
 
 La question se pose forcément avant un premier déploiement. Elle recouvre deux
 choses qu'il faut séparer.
@@ -237,7 +271,7 @@ Cela supposerait d'enregistrer une URL de tunnel dans le tableau de bord de
 remettre l'URL réelle enverrait les callbacks de vrais clients dans le vide —
 des gens débités sans service, et personne pour le signaler.
 
-## 6.1 Et `APP_ENV=production` en local ?
+## 7.1 Et `APP_ENV=production` en local ?
 
 `CredentialGuard` l'accepterait. Trois effets n'ont pourtant rien à voir avec le
 paiement, et sont durables :
@@ -251,7 +285,7 @@ paiement, et sont durables :
 
 Le troisième est le vrai problème, et il ne se corrige pas après coup.
 
-## 6.2 Le compromis, si vous y tenez
+## 7.2 Le compromis, si vous y tenez
 
 Un vrai paiement peut être lancé depuis un poste local **sans toucher aux
 tableaux de bord** : le callback n'arrivera pas, et `payments:reconcile` le
@@ -263,7 +297,7 @@ callbacks, et cela laisse un encaissement réel dans une base jetable.
 
 ---
 
-# 7. Le premier paiement réel
+# 8. Le premier paiement réel
 
 **Faites-le vous-même, avec votre propre numéro, sur un petit montant.**
 
@@ -280,10 +314,7 @@ Puis vérifiez les trois faits, dans cet ordre :
 
 ---
 
-# 8. Ce qui reste en dette
-
-**Storage.** `GET /invoices/{id}/download` renvoie `503`. Une facture non
-téléchargeable est un problème légal, pas un confort.
+# 9. Ce qui reste en dette
 
 **Le décaissement automatique.** Un remboursement est constaté à la main —
 [08-refunds.md](../03-services/payments/08-refunds.md).

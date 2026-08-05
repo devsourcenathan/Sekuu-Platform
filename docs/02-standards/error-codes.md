@@ -267,6 +267,8 @@ oracle.
 | `FILE_NOT_READY` | 409 | Fichier déclaré, octets jamais constatés |
 | `FILE_RETAINED` | 409 | Conservation obligatoire non expirée |
 | `FILE_RETENTION_TOO_LONG` | 422 | Rétention demandée au-delà du plafond de la clé |
+| `FILE_POLICY_INCOHERENT` | 422 | Le propriétaire déclare un repli sans destination principale |
+| `STORAGE_DRIVER_UNKNOWN` | 422 | Pilote ou préréglage inconnu |
 | `STORAGE_DESTINATION_NOT_FOUND` | 404 | Magasin inexistant, ou hors de portée |
 | `STORAGE_DESTINATION_FORBIDDEN` | 403 | Magasin nommé, mais pas à cet appelant |
 | `STORAGE_DESTINATION_UNVERIFIED` | 409 | Magasin jamais éprouvé, ou retombé en échec |

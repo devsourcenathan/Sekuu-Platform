@@ -120,6 +120,16 @@ final class IssueInvoice
                 ])),
             ], $organizationId);
 
+            /*
+             * Le PDF est mis en page après la transaction.
+             *
+             * `afterCommit` importe ici : la tâche lit la facture en base, et
+             * un worker rapide la chercherait avant que la transaction ne soit
+             * visible. La chercher et ne pas la trouver produirait une facture
+             * définitivement sans document, sans qu'aucune erreur ne le dise.
+             */
+            RenderInvoicePdfJob::dispatch((string) $invoice->id)->afterCommit();
+
             return $invoice->fresh(['lines']);
         });
     }

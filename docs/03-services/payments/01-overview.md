@@ -8,7 +8,7 @@
 Ce document décrit **le rôle et les frontières** de Sekuu Payments.
 
 * **Pour brancher un module du monolithe : [06-integration.md](06-integration.md).**
-* **Pour brancher un service externe : [07-external-api.md](07-external-api.md)** — spécifié, non implémenté.
+* **Pour brancher un service externe : [07-external-api.md](07-external-api.md).**
 * Les tables font autorité dans [02-data-model.md](02-data-model.md).
 * L'API fait autorité dans [03-api.md](03-api.md), et le contrat OpenAPI par-dessus.
 * Les événements font autorité dans [04-events.md](04-events.md).

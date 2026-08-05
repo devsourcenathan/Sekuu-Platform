@@ -7,6 +7,7 @@ namespace Modules\Storage;
 use App\Platform\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Storage\Application\Files\OwnerRegistry;
+use Modules\Storage\Infrastructure\Console\ManageDestinationCommand;
 use Modules\Storage\Infrastructure\Console\SweepStorageCommand;
 use Modules\Storage\Infrastructure\Console\VerifyDestinationsCommand;
 use Modules\Storage\Infrastructure\Drivers\DriverRegistry;
@@ -54,6 +55,7 @@ final class StorageServiceProvider extends ModuleServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([
+                ManageDestinationCommand::class,
                 SweepStorageCommand::class,
                 VerifyDestinationsCommand::class,
             ]);
