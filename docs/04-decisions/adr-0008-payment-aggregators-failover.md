@@ -96,6 +96,7 @@ Il n'apparaît ni dans la requête, ni dans le catalogue. L'exposer figerait l'o
 * **Trois intégrations à écrire et à maintenir**, chacune avec son schéma de signature et son vocabulaire de statuts. L'économie par rapport au direct est plus faible qu'il n'y paraît — elle porte sur les démarches marchandes et la couverture opérateur, pas sur le volume de code.
 * Trois comptes marchands à obtenir, avec trois parcours administratifs.
 * Un intermédiaire de plus dans le chemin de l'argent, donc un délai de reversement et un risque de contrepartie supplémentaires.
+* **L'intermédiaire est visible du client.** Le nom affiché sur l'invite Mobile Money est celui du marchand de référence auprès de l'opérateur — donc l'agrégateur, pas Sekuu. Constaté en production : une invite Notch Pay s'annonce `MAPLERAD LIMITED`. Un client qui ne reconnaît pas ce nom refuse, valide sans comprendre, ou conteste plus tard. Ce n'était pas anticipé à la rédaction de cette décision.
 * **Le point de fragilité se déplace vers la traduction des statuts.** C'est le seul endroit du module où une approximation coûte de l'argent réel à un tiers.
 * La bascule est étroite par conception : beaucoup d'échecs ne basculeront pas, et c'est voulu. Elle protège contre l'indisponibilité d'un agrégateur, pas contre un paiement qui échoue.
 

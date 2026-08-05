@@ -118,6 +118,14 @@
     {
       "key": "refund_id",
       "value": ""
+    },
+    {
+      "key": "charge_amount",
+      "value": "15000"
+    },
+    {
+      "key": "refund_amount",
+      "value": "4000"
     }
   ],
   "item": [
@@ -4394,7 +4402,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"subject_type\": \"learn.enrollment\",\n  \"subject_id\": \"{{$guid}}\",\n  \"payer_type\": \"learn.learner\",\n  \"payer_id\": \"{{$guid}}\",\n  \"amount\": 15000,\n  \"currency\": \"XAF\",\n  \"description\": \"Sekuu Learn - Comptabilite pour PME\",\n  \"msisdn\": \"{{test_msisdn}}\"\n}"
+              "raw": "{\n  \"subject_type\": \"learn.enrollment\",\n  \"subject_id\": \"{{$guid}}\",\n  \"payer_type\": \"learn.learner\",\n  \"payer_id\": \"{{$guid}}\",\n  \"amount\": {{charge_amount}},\n  \"currency\": \"XAF\",\n  \"description\": \"Sekuu Learn - Comptabilite pour PME\",\n  \"msisdn\": \"{{test_msisdn}}\"\n}"
             },
             "description": "`202`, jamais `201` : ce qui est cree est une **intention**. Le client n'a pas encore valide quoi que ce soit sur son telephone.\n\n`amount` est un **entier**, dans l'unite la plus petite de la devise. Le franc CFA n'a pas de centime : 15 000 XAF s'ecrit `15000`, et la reponse porte `currency_exponent: 0` pour qu'aucun client n'ait a le deviner.\n\n`payer_type` ne peut jamais commencer par `identity.` : un produit externe ne peut pas se reclamer d'un compte de la plateforme.\n\nLe montant est **fige a la declaration**. Si le prix change avant que le client ne valide, le paiement aboutira quand meme a ce montant — le produit doit echouer bruyamment sur un ecart, pas l'ignorer."
           },
@@ -4499,7 +4507,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"subject_type\": \"learn.enrollment\",\n  \"subject_id\": \"{{$guid}}\",\n  \"payer_type\": \"identity.user\",\n  \"payer_id\": \"{{$guid}}\",\n  \"amount\": 15000,\n  \"currency\": \"XAF\",\n  \"description\": \"Tentative\",\n  \"msisdn\": \"{{test_msisdn}}\"\n}"
+              "raw": "{\n  \"subject_type\": \"learn.enrollment\",\n  \"subject_id\": \"{{$guid}}\",\n  \"payer_type\": \"identity.user\",\n  \"payer_id\": \"{{$guid}}\",\n  \"amount\": {{charge_amount}},\n  \"currency\": \"XAF\",\n  \"description\": \"Tentative\",\n  \"msisdn\": \"{{test_msisdn}}\"\n}"
             },
             "description": "Un produit externe ne peut pas faire porter un paiement par un utilisateur Sekuu qu'il n'authentifie pas : le paiement apparaitrait dans ceux d'une organisation qui ne l'a jamais demande."
           },
@@ -4745,7 +4753,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"amount\": 4000,\n  \"reason\": \"Deux modules sur cinq non dispenses\"\n}"
+              "raw": "{\n  \"amount\": {{refund_amount}},\n  \"reason\": \"Deux modules sur cinq non dispenses\"\n}"
             },
             "description": "Le plafond porte sur le **cumul** : plusieurs remboursements partiels ne peuvent pas depasser ensemble ce que le paiement a rapporte.\n\nUn remboursement en attente **immobilise deja** la somme. Ne compter que les decaissements constates laisserait decider deux fois le meme remboursement avant que le premier ne soit verse — et les deux partiraient."
           },

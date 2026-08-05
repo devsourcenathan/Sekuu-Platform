@@ -495,3 +495,26 @@ Un adaptateur qui ne répond pas à ces trois questions ne peut pas être mis en
 3. **Comment retrouver une transaction à partir de notre `merchant_reference` ?** Sans cette capacité, un appel expiré reste à jamais irrésolu.
 
 Ces trois points sont le premier sujet de tests de chaque adaptateur, avant le chemin nominal. C'est là, et nulle part ailleurs, qu'une erreur coûte de l'argent réel à un client.
+
+---
+
+# Le nom affiché au client
+
+`description` est transmis à l'agrégateur, mais **ce n'est pas le nom qui
+s'affiche sur l'invite Mobile Money**.
+
+Ce nom est celui du marchand de référence auprès de l'opérateur. En passant par
+un agrégateur, c'est le sien. Constaté en production : une invite Notch Pay
+s'annonce `MAPLERAD LIMITED`, l'infrastructure sur laquelle il s'appuie.
+
+Aucun paramètre du module n'agit dessus, et il n'y en aura pas : la question se
+règle chez l'agrégateur, ou pas du tout.
+
+**À demander aux deux :** peut-on, après validation KYB, provisionner un nom
+marchand propre apparaissant sur l'invite ? Certains agrégateurs le font, la
+documentation publique n'en parle pas.
+
+Si aucun ne le permet, la seule voie est un compte marchand **direct** chez MTN
+et Orange — ce que l'[ADR-0008](../../04-decisions/adr-0008-payment-aggregators-failover.md)
+a écarté, au prix de deux intégrations et de l'absence de repli. L'arbitrage se
+reprend avec du volume, pas avant.

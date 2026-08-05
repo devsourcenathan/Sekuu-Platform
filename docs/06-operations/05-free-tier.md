@@ -145,7 +145,31 @@ Retirez-la au passage au payant, et remettez `preDeployCommand`.
 
 ---
 
-# 5. Quand passer au payant
+# 5. Constater un décaissement sans shell
+
+L'offre gratuite n'a pas de shell, et `payments:refund` est un acte d'opérateur :
+un remboursement resterait indéfiniment `pending`.
+
+La commande peut être lancée **depuis un poste**, pointée sur la base de
+production :
+
+```powershell
+$env:DB_URL="<Internal Database URL>"; php artisan payments:refund
+$env:DB_URL="<...>"; php artisan payments:refund <id> --reference=<ref-du-transfert>
+```
+
+`CredentialGuard` ne s'y oppose pas, et ce n'est pas un oubli : il se déclenche
+à la résolution des **agrégateurs**, or `SettleRefund` ne dépend que du registre
+des objets payables. Aucun chemin ne mène à `charge()` — la commande ne peut pas
+débiter qui que ce soit.
+
+**Deux précautions.** Préfixer la commande plutôt que modifier son `.env` : la
+variable disparaît avec le terminal. Et ne rien lancer d'autre dans cette
+session — `migrate` ou `db:seed` toucheraient la production.
+
+---
+
+# 6. Quand passer au payant
 
 Trois seuils, et le premier suffit.
 

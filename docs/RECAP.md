@@ -12,9 +12,10 @@
 | Application | Monolithe modulaire Laravel 13, PHP 8.3, PostgreSQL 18 |
 | Modules livrés | **Identity** · **Notify** (email, SMS, interne) · **Payments** (Notch Pay, Tranzak, API externe, remboursements) · **Billing** |
 | Modules non démarrés | Verify, Storage, AI, Search, Analytics |
+| Déploiement | **En ligne** — Render + Neon, `platform.sekuu.com` |
 | Endpoints | 87 sous `/api/v1` + `/.well-known/jwks.json` |
 | Migrations | 32 |
-| Tests | 501, sur PostgreSQL |
+| Tests | 510, sur PostgreSQL |
 | Contrats | `Modules/*/openapi.yaml`, vérifiés par test |
 | Collection de test | `postman/` |
 
@@ -298,20 +299,67 @@ GET  /audit-logs                 →  trace des quatre étapes
 
 # 8. Ce qui reste
 
-## 8.1 Bloquant pour la production
+## 8.1 Déployé
 
-Tout ce qui suit est **de l'exploitation**, pas du code. La procédure complète
-est dans [06-operations/01-go-live.md](06-operations/01-go-live.md), et le
-déploiement lui-même dans [03-deployment.md](06-operations/03-deployment.md).
+La plateforme tourne sur **Render**, image Docker, base **Neon**, domaine
+`platform.sekuu.com`. Un seul conteneur porte nginx, php-fpm, le worker de files
+et l'ordonnanceur — l'offre gratuite de Render n'ayant pas de background worker.
 
-* **Les identifiants de production en place, et `APP_ENV=production` avec eux.** `CredentialGuard` échoue dès qu'un agrégateur est résolu si les deux ne s'accordent pas, dans les deux sens, et sans possibilité de contournement. `GET /payments/health` est la vérification d'avant-vol. Notch Pay ne distingue pas ses environnements par l'URL : seul le préfixe `test_` le fait.
-* **Les URL de callback** enregistrées dans les tableaux de bord Notch Pay et Tranzak, ainsi que `TRANZAK_AUTH_KEY` et `NOTCHPAY_WEBHOOK_HASH`. Sans ces secrets, aucun callback n'est accepté — la réconciliation rattrape, mais plus lentement.
-* **La mise en service du domaine expéditeur** — `sekuu.com` doit être vérifié chez Resend (DKIM, Return-Path, DMARC). Sans cela les messages partent par le mailer Laravel, qui ne rapporte aucun rebond : le service paraît fonctionner tout en accumulant une dette de délivrabilité invisible.
-* **Le worker Supervisor** (`deploy/sekuu-worker.conf`). Il porte les envois de Notify **et les webhooks sortants de Payments** : sans lui, un produit externe n'apprend jamais ses encaissements autrement qu'en sondant.
-* **La crontab** (`deploy/crontab`). Une ligne. Sans elle, aucun callback perdu n'est rattrapé et aucun rappel d'échéance ne part.
-* **Redis en production** — `compose.yaml` le fournit en développement. `database` fonctionne, au prix d'une latence et d'une charge en écriture qui ne tiennent pas sous volume.
-* **Le `.env` chiffré** (`php artisan env:encrypt`) ou en gestionnaire, et `chmod 600`.
-* **Les clés JWT passées par `IDENTITY_JWT_PRIVATE_KEY` / `IDENTITY_JWT_PUBLIC_KEY`**, jamais laissées dans `storage/` : un déploiement par releases les effacerait, une nouvelle paire serait générée, et tous les tokens en circulation deviendraient invalides d'un coup.
+`GET /api/v1/health` répond `database: ok`, `GET /api/v1/payments/health`
+répond `can_collect: true` avec Notch Pay et Tranzak en production.
+
+Procédures : [mise en service](06-operations/01-go-live.md) ·
+[déploiement](06-operations/03-deployment.md) ·
+[Render](06-operations/04-render.md) ·
+[offre gratuite](06-operations/05-free-tier.md)
+
+### Ce que le déploiement a appris
+
+Cinq défauts que ni les 510 tests ni une relecture n'auraient trouvés, tous du
+même genre — du code qui marche là où il a été écrit :
+
+* `tests/Unit` déclaré dans `phpunit.xml` mais absent d'un clone, Git ne
+  versionnant pas les répertoires vides. La suite entière échouait ;
+* un test de sous-domaine qui ne passait que sur une machine dont le `.env` ne
+  portait pas la clé — `refreshApplication()` relit `.env` et écrase les trois
+  sources que `env()` consulte ;
+* `payments` absent de `config/sekuu.php` depuis son extraction : son
+  sous-domaine aurait été ignoré **sans erreur** ;
+* la commande de démarrage de Render remplace la commande entière, pas le `CMD` ;
+* `HOME=/root` rendant impossible toute connexion PostgreSQL en TLS, avec un
+  message désignant un fichier de certificat inexistant.
+
+Les trois premiers sont désormais verrouillés par des tests.
+
+## 8.1.1 Ce qui reste avant un vrai client
+
+* **Les URL de callback** dans les tableaux de bord Notch Pay et Tranzak, avec
+  `TRANZAK_AUTH_KEY` et `NOTCHPAY_WEBHOOK_HASH`. Sans ces secrets, aucun
+  callback n'est accepté — la réconciliation rattrape, plus lentement.
+* ~~Le premier paiement réel~~ — **fait**, et le remboursement avec.
+
+  Le parcours complet a été exercé en production : invite reçue et validée,
+  issue constatée, charge à `paid`, puis un remboursement partiel décidé,
+  décaissé à la main et constaté avec la référence du transfert.
+
+  Le registre porte les trois lignes attendues — `charge +100`, `fee -3`,
+  `refund -40`. La commission est lue correctement par l'adaptateur, ce que le
+  bac à sable Tranzak avait mis en défaut ; le taux constaté est de **3 %**.
+
+  Reste connu : le nom affiché sur l'invite est celui de l'agrégateur, pas
+  celui de Sekuu — voir [ADR-0008](04-decisions/adr-0008-payment-aggregators-failover.md).
+* **Sortir de l'offre gratuite.** Le service dort après quinze minutes, et le
+  worker comme l'ordonnanceur dorment avec lui : un callback arrivant pendant le
+  sommeil est perdu, et le filet censé le rattraper dort aussi. Acceptable pour
+  valider, jamais pour encaisser l'argent d'un tiers —
+  [05-free-tier.md](06-operations/05-free-tier.md).
+* **Le domaine expéditeur** vérifié chez Resend (DKIM, Return-Path, DMARC).
+  Sans cela les messages partent par le mailer Laravel, qui ne rapporte aucun
+  rebond : le service paraît fonctionner tout en accumulant une dette de
+  délivrabilité invisible.
+* **`RUN_MIGRATIONS_ON_BOOT` à retirer** au passage au payant, au profit d'un
+  `preDeployCommand` : un échec de migration doit annuler un déploiement, pas se
+  découvrir en production.
 
 ## 8.2 Prochaines étapes
 

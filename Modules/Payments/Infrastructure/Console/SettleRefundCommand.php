@@ -40,7 +40,7 @@ final class SettleRefundCommand extends Command
         {--fail= : Constate un echec, avec son motif}
         {--cancel= : Annule avant tout decaissement, avec son motif}';
 
-    protected $description = 'Liste les remboursements en attente, et constate un décaissement.';
+    protected $description = 'Liste les remboursements en attente, et constate un décaissement déjà effectué à la main.';
 
     public function handle(SettleRefund $settle): int
     {
@@ -95,10 +95,17 @@ final class SettleRefundCommand extends Command
 
         $settle->succeeded($refund, $this->option('provider'), (string) $reference);
 
+        // « Constaté », jamais « rendu ». Cette commande n'envoie aucun argent :
+        // elle enregistre qu'un virement a eu lieu. Une formulation qui laisse
+        // croire au decaissement produit exactement la faute qu'on veut eviter —
+        // un registre qui dit qu'un argent est sorti alors qu'il est reste.
         $this->info(sprintf(
-            '%s rendus. Le registre porte la ligne, le produit est prévenu.',
+            'Décaissement de %s constaté, référence %s.',
             $refund->money()->format(),
+            (string) $reference,
         ));
+        $this->comment("Cette commande n'envoie pas d'argent : elle enregistre un virement déjà fait.");
+        $this->comment('Le registre porte désormais la ligne, et le produit est prévenu.');
 
         return self::SUCCESS;
     }
