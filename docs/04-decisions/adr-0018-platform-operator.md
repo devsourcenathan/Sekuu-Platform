@@ -53,11 +53,17 @@ l'octroyer à autrui. C'est ce qui empêche un `owner` de se promouvoir par
 | `platform.plans` | Lire et modifier le catalogue et ses limites |
 | `platform.organizations` | Lister les organisations, leur état, leur usage |
 | `platform.billing` | Consulter abonnements et factures d'un client |
-| `platform.infrastructure` | Magasins, comptes d'IA, agrégateurs — **état seulement** |
 | `platform.audit` | Lire le journal d'audit de la plateforme |
 | `platform.operators` | Octroyer des permissions — **jamais par l'API** |
 
-La dernière ligne est délibérément inerte : elle existe pour être refusée. Une
+Il n'y a **pas** de `platform.infrastructure`. L'état des magasins et des
+agrégateurs est déjà rendu par `GET /storage/health` et `GET /payments/health` —
+sans secret, et sans shell, ce qui était le besoin réel. Une route d'agrégation
+les dupliquerait et forcerait un module à en importer deux autres pour un
+confort. Une permission qui ne garde rien est pire qu'absente : quelqu'un la
+lira en base et croira qu'elle agit.
+
+La dernière ligne du tableau est délibérément inerte : elle existe pour être refusée. Une
 permission qui distribue des permissions transformerait le premier compte
 compromis en un nombre illimité de comptes compromis.
 

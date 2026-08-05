@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 return [
 
+    'organization_not_found' => "Cette organisation n'existe pas.",
+
     'payable_type_unknown' => "Ce type d'objet payable n'est pas enregistré : :type.",
     'nothing_due' => "Il n'y a rien à payer sur cet objet.",
     'plan_not_found' => "Ce plan n'existe pas.",

@@ -594,6 +594,81 @@ paths:
           description: Limite inconnue
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
 
+  /platform/organizations:
+    get:
+      tags: [Plateforme]
+      summary: Les organisations
+      description: |
+        Des métadonnées : nom, date de création, nombre de membres. Jamais le
+        contenu de ce qu'une organisation nous confie.
+
+        Habilitation `platform.organizations`. Distincte de `platform.billing` :
+        constater qu'un client existe n'est pas la même chose que voir ce qu'il
+        paie.
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Jusqu'à cent organisations
+        '403':
+          description: Non habilité
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /platform/organizations/{organization}:
+    get:
+      tags: [Plateforme]
+      summary: L'état d'une organisation
+      description: |
+        Rend `granted_limits` — **ce qui a été promis**, pas ce que le catalogue
+        dit aujourd'hui.
+
+        C'est la question qu'un support se pose réellement quand un client
+        demande pourquoi il est bloqué. « Le plan dit 50 » est une réponse
+        fausse depuis l'ADR-0019 ; « votre période vous accorde 20, et votre
+        renouvellement du 3 septembre vous en accordera 50 » est vérifiable.
+      parameters:
+        - name: organization
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: L'organisation, son abonnement, ses limites accordées
+        '403':
+          description: Non habilité
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '404':
+          description: Inconnue
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  /platform/organizations/{organization}/invoices:
+    get:
+      tags: [Plateforme]
+      summary: Les factures d'une organisation
+      description: |
+        Des montants et des états. **`has_pdf` dit qu'un document existe ; rien
+        ne permet de l'ouvrir.**
+
+        Un opérateur qui doit lire une facture en demande une copie au client.
+        Une plateforme capable d'ouvrir n'importe quel document est une
+        plateforme dont la promesse de confidentialité ne vaut que par sa
+        discipline.
+
+        Habilitation `platform.billing`, distincte de `platform.organizations`.
+      parameters:
+        - name: organization
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Jusqu'à cinquante factures
+        '403':
+          description: Non habilité
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
 components:
 
   securitySchemes:

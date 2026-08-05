@@ -413,9 +413,7 @@ s'adressent pas à une organisation mais à **Sekuu**.
 | `GET` | `/platform/organizations` | `platform.organizations` |
 | `GET` | `/platform/organizations/{id}` | `platform.organizations` |
 | `GET` | `/platform/organizations/{id}/usage` | `platform.organizations` |
-| `GET` | `/platform/organizations/{id}/subscription` | `platform.billing` |
 | `GET` | `/platform/organizations/{id}/invoices` | `platform.billing` |
-| `GET` | `/platform/infrastructure` | `platform.infrastructure` |
 | `GET` | `/platform/audit` | `platform.audit` |
 
 Réservées à un utilisateur inscrit dans `platform_operators`, avec la permission
@@ -427,9 +425,8 @@ Des permissions séparées plutôt qu'un drapeau : sans elles, donner à quelqu'
 le droit de corriger un quota lui donnerait aussi l'accès aux factures de tous
 les clients.
 
-`/platform/infrastructure` rend l'**état** des magasins, des comptes d'IA et des
-agrégateurs — jamais leurs identifiants. C'est ce qui permet de constater
-qu'un compte est tombé sans avoir de shell.
+L'état de l'infrastructure n'a pas de route ici : `GET /storage/health` et
+`GET /payments/health` le rendent déjà, sans secret et sans shell.
 
 Trois choses restent hors de portée, même là : le contenu d'un fichier, celui
 d'un prompt, celui d'une notification. **Un opérateur voit des métadonnées et

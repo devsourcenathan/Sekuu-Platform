@@ -26,9 +26,6 @@ final class PlatformOperator extends Model
     /** Consulter abonnements et factures d'un client. */
     public const BILLING = 'platform.billing';
 
-    /** État des magasins, comptes d'IA et agrégateurs — jamais leurs secrets. */
-    public const INFRASTRUCTURE = 'platform.infrastructure';
-
     public const AUDIT = 'platform.audit';
 
     /**
@@ -40,10 +37,23 @@ final class PlatformOperator extends Model
      */
     public const OPERATORS = 'platform.operators';
 
-    /** @var list<string> */
+    /**
+     * Il n'y a **pas** de `platform.infrastructure`.
+     *
+     * L'état des magasins et des agrégateurs est déjà rendu par
+     * `GET /storage/health` et `GET /payments/health` — sans secret, et sans
+     * shell, ce qui était le besoin réel. Une route d'agrégation les
+     * dupliquerait et forcerait un module à en importer deux autres pour un
+     * confort.
+     *
+     * Une permission qui ne garde rien est pire qu'absente : quelqu'un la lira
+     * en base et croira qu'elle agit.
+     *
+     * @var list<string>
+     */
     public const ALL = [
         self::PLANS, self::ORGANIZATIONS, self::BILLING,
-        self::INFRASTRUCTURE, self::AUDIT, self::OPERATORS,
+        self::AUDIT, self::OPERATORS,
     ];
 
     protected $fillable = ['user_id', 'permissions', 'granted_by', 'granted_at', 'revoked_at'];

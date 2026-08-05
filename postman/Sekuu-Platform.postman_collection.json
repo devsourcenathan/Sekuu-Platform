@@ -5434,6 +5434,186 @@
           ]
         }
       ]
+    },
+    {
+      "name": "16 - Plateforme (operateur)",
+      "description": "**Hors du perimetre client.** Ces routes ne s'adressent pas a une organisation mais a **Sekuu**.\n\n### Avant de commencer\n\nIl faut etre habilite, et l'habilitation ne s'obtient **jamais par une route** :\n\n```\nphp artisan identity:operator vous@exemple.com --grant=all\n```\n\nSans shell — l'offre gratuite de Render — une ligne dans `platform_operators` par l'editeur SQL.\n\nAucun role d'organisation n'y donne acces, pas meme `owner`. Une route protegee par `subscription.manage` laisserait un client s'accorder mille sieges.\n\n### Des permissions separees\n\n`platform.plans`, `platform.organizations`, `platform.billing`, `platform.audit`. Un drapeau unique lierait le droit de corriger un quota a celui de lire les factures de tous les clients — et ce lien ne se defait plus.\n\n### Tout est journalise\n\n**Les lectures comprises.** Consulter la facture d'un client, c'est acceder a une donnee qui ne nous appartient pas ; sans trace, la seule garantie offerte au client est notre parole. Une tentative refusee est tracee aussi.\n\n### Trois choses restent hors de portee\n\nLe contenu d'un fichier, celui d'un prompt, celui d'une notification. Un operateur voit des metadonnees et des montants, jamais ce que les clients nous confient.",
+      "item": [
+        {
+          "name": "Le catalogue",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/platform/plans",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "platform",
+                "plans"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Les plans **avec leurs limites** — ce que `GET /plans` ne rend pas.\n\nHabilitation `platform.plans`. Un `owner` d'organisation recoit `PLATFORM_ACCESS_DENIED` : personne n'agit au nom de Sekuu par un role d'organisation.\n\n**L'appel est journalise**, lecture comprise. Consulter le catalogue est anodin ; le principe ne l'est pas, et il s'applique uniformement a tout ce prefixe."
+          },
+          "response": []
+        },
+        {
+          "name": "Changer un quota",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/platform/plans/business",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "platform",
+                "plans",
+                "business"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "C'est ce qui rend un quota modifiable **sans deployer**.\n\n### La fusion\n\nLes cles envoyees sont mises a jour, les autres restent. Un remplacement ferait qu'envoyer une seule limite efface toutes les autres — un operateur corrigeant les credits d'IA viderait les sieges et le stockage, en une requete qui repond `200`.\n\nRetirer une limite demande de la nommer dans `remove` : fermer une ressource ne doit pas etre l'effet de bord d'autre chose.\n\n### L'asymetrie\n\n**Une hausse s'applique tout de suite, une baisse au renouvellement.** La plateforme peut etre plus genereuse que promis, jamais moins — sur un modele prepaye, reprendre en cours de periode ce qui a ete paye n'est pas un reglage.\n\nLa reponse le dit : `applied_now`, `applied_at_renewal`, `subscriptions_affected`.\n\n### Les cles\n\nListe **close** : `members`, `workspaces`, `storage_gb`, `sms_monthly`, `whatsapp_monthly`, `ai_credits_monthly`. Une cle inventee serait acceptee en base, lue par personne, et donnerait l'illusion d'une limite en place.\n\n`null` vaut **illimite**, jamais zero. En repartir vers un nombre, meme grand, est une baisse.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"limits\": {\n    \"ai_credits_monthly\": 5000\n  }\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Les organisations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/platform/organizations?q=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "platform",
+                "organizations"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": ""
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Des metadonnees : nom, date de creation. Jamais le contenu de ce qu'une organisation nous confie.\n\nHabilitation `platform.organizations` — **distincte** de `platform.billing`. Constater qu'un client existe n'est pas la meme chose que voir ce qu'il paie."
+          },
+          "response": []
+        },
+        {
+          "name": "L'etat d'une organisation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/platform/organizations/{{organization_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "platform",
+                "organizations",
+                "{{organization_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Rend `granted_limits` : **ce qui a ete promis**, pas ce que le catalogue dit aujourd'hui.\n\nC'est la question qu'un support se pose reellement quand un client demande pourquoi il est bloque. « Le plan dit 50 » est une reponse fausse ; « votre periode vous accorde 20, et votre renouvellement du 3 septembre vous en accordera 50 » est verifiable."
+          },
+          "response": []
+        },
+        {
+          "name": "Les factures d'une organisation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/platform/organizations/{{organization_id}}/invoices",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "platform",
+                "organizations",
+                "{{organization_id}}",
+                "invoices"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Des montants et des etats. **`has_pdf` dit qu'un document existe ; rien ne permet de l'ouvrir.**\n\nUn operateur qui doit lire une facture en demande une copie au client. Une plateforme capable d'ouvrir n'importe quel document est une plateforme dont la promesse de confidentialite ne vaut que par sa discipline.\n\nHabilitation `platform.billing`."
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Billing\Presentation\Http\Controllers\InvoiceController;
 use Modules\Billing\Presentation\Http\Controllers\InvoicePaymentController;
 use Modules\Billing\Presentation\Http\Controllers\PlanController;
+use Modules\Billing\Presentation\Http\Controllers\PlatformOrganizationController;
 use Modules\Billing\Presentation\Http\Controllers\PlatformPlanController;
 use Modules\Billing\Presentation\Http\Controllers\SubscriptionController;
 
@@ -89,5 +90,20 @@ Route::prefix('platform')->name('platform.')->group(function (): void {
     Route::middleware('platform:platform.plans')->group(function (): void {
         Route::get('plans', [PlatformPlanController::class, 'index'])->name('plans.index');
         Route::patch('plans/{plan}', [PlatformPlanController::class, 'update'])->name('plans.update');
+    });
+
+    Route::middleware('platform:platform.organizations')->group(function (): void {
+        Route::get('organizations', [PlatformOrganizationController::class, 'index'])->name('organizations.index');
+        Route::get('organizations/{organization}', [PlatformOrganizationController::class, 'show'])->name('organizations.show');
+    });
+
+    /*
+    | Les factures relèvent d'une permission **distincte** : consulter un
+    | montant qu'un client a payé n'est pas la même chose que constater son
+    | existence.
+    */
+    Route::middleware('platform:platform.billing')->group(function (): void {
+        Route::get('organizations/{organization}/invoices', [PlatformOrganizationController::class, 'invoices'])
+            ->name('organizations.invoices');
     });
 });

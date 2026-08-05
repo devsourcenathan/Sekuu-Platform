@@ -9,6 +9,7 @@ use App\Platform\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Billing\Infrastructure\Console\AdvanceLifecycleCommand;
 use Modules\Billing\Infrastructure\Console\InvoicePdfCommand;
+use Modules\Billing\Infrastructure\Console\RegrantLimitsCommand;
 use Modules\Billing\Infrastructure\Contracts\BillingGateway;
 
 final class BillingServiceProvider extends ModuleServiceProvider
@@ -39,7 +40,7 @@ final class BillingServiceProvider extends ModuleServiceProvider
         parent::boot();
 
         if ($this->app->runningInConsole()) {
-            $this->commands([AdvanceLifecycleCommand::class, InvoicePdfCommand::class]);
+            $this->commands([AdvanceLifecycleCommand::class, InvoicePdfCommand::class, RegrantLimitsCommand::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {

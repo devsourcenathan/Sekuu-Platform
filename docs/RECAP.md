@@ -13,11 +13,11 @@
 | Modules livrés | **Identity** · **Notify** (email, SMS, interne) · **Payments** (Notch Pay, Tranzak, API externe, remboursements) · **Billing** · **Storage** |
 | Modules non démarrés | Verify, AI, Search, Analytics |
 | Déploiement | **En ligne** — Render + Neon, `platform.sekuu.com` |
-| Endpoints | 98 sous `/api/v1` + `/.well-known/jwks.json` |
-| Migrations | 36 |
-| Tests | 559, sur PostgreSQL |
+| Endpoints | 104 sous `/api/v1` + `/.well-known/jwks.json` |
+| Migrations | 38 |
+| Tests | 582, sur PostgreSQL |
 | Contrats | `Modules/*/openapi.yaml`, vérifiés par test |
-| Collection de test | `postman/` |
+| Collection de test | `postman/` — 17 dossiers, 137 requêtes |
 
 ---
 
@@ -182,6 +182,24 @@ La ligne `refund` du registre n'est écrite qu'au décaissement constaté — un
 
 **Non implémenté également** — encaisser pour le compte d'un tiers. `payee_organization_id` existe et laisse la porte ouverte, mais rien derrière n'est construit : pas de compte de destination, pas de type `payout`, pas d'état de reversement. Un produit externe encaisse donc pour le compte de la plateforme, et le reversement se fait hors système.
 
+## 2.5bis Administrer la plateforme
+
+Jusqu'ici personne n'agissait au nom de **Sekuu** : tous les rôles sont portés par une organisation. Changer un quota supposait une migration, et le changement s'appliquait rétroactivement à tout le monde.
+
+**Un opérateur est marqué hors de l'application** — `identity:operator`, jamais une route, jamais un rôle d'organisation. Des permissions **séparées** plutôt qu'un drapeau : corriger un quota n'ouvre pas les factures de tous les clients. `platform.operators` existe pour être refusée.
+
+**Chaque appel est journalisé, lectures comprises.** Consulter la facture d'un client, c'est accéder à une donnée qui ne nous appartient pas ; sans trace, la seule garantie offerte au client est notre parole. Une tentative refusée est tracée aussi — c'est la première chose qu'on cherchera le jour d'un incident.
+
+**Trois choses restent hors de portée**, même pour un opérateur : le contenu d'un fichier, d'un prompt, d'une notification. Il constate qu'un document existe ; il ne l'ouvre pas.
+
+**Les limites accordées sont figées sur l'abonnement** ([ADR-0019](04-decisions/adr-0019-granted-limits.md)). Sans cela, baisser une limite le mardi rétrograderait le soir même un client ayant payé une année d'avance. D'où l'asymétrie : **une hausse s'applique tout de suite, une baisse au renouvellement** — la plateforme peut être plus généreuse que promis, jamais moins.
+
+**Un défaut trouvé en écrivant les tests.** `PATCH` remplaçait toute la table des limites : envoyer une seule clé effaçait les autres, en une requête qui répond `200`. Il fusionne désormais, et retirer une limite demande de la nommer — fermer une ressource ne doit pas être l'effet de bord d'autre chose.
+
+**Une dette datée** : il n'y a pas de second facteur. Un mot de passe sépare un attaquant du catalogue et de la liste des clients.
+
+---
+
 ## 2.6 Module Storage
 
 **Il ignore ce qu'il garde.** Un fichier porte un `owner_type` et un `owner_id` qu'il n'interprète jamais — la même architecture que Payments, et pour la même raison : le PDF d'une facture et la vidéo d'un cours empruntent le même chemin sans que l'un sache que l'autre existe.
@@ -300,6 +318,8 @@ Ils méritent d'être mentionnés parce qu'ils étaient invisibles à la lecture
 ---
 
 # 7. Utiliser l'API
+
+Le dossier **16 — Plateforme (opérateur)** est à part : ses routes ne s'adressent pas à une organisation mais à Sekuu, et exigent une habilitation posée par `identity:operator` — jamais par une route.
 
 ## 7.1 Démarrer
 

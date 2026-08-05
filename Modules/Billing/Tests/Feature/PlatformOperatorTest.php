@@ -215,6 +215,87 @@ final class PlatformOperatorTest extends TestCase
     }
 
     /**
+     * Consulter les organisations et consulter leurs factures sont deux
+     * permissions : constater qu'un client existe n'est pas la même chose que
+     * voir ce qu'il paie.
+     */
+    public function test_seeing_organizations_does_not_open_their_invoices(): void
+    {
+        $this->subscribe('business');
+        $this->withToken($this->ownerToken);
+        $this->makeOperator([PlatformOperator::ORGANIZATIONS]);
+
+        $this->getJson('/api/v1/platform/organizations')->assertOk();
+
+        $this->getJson("/api/v1/platform/organizations/{$this->organizationId}/invoices")
+            ->assertForbidden()
+            ->assertJsonPath('error.code', 'PLATFORM_ACCESS_DENIED');
+    }
+
+    /**
+     * La question qu'un support se pose vraiment : pourquoi ce client est-il
+     * bloqué ? La réponse est ce qui lui a été **promis**, pas ce que le
+     * catalogue dit aujourd'hui.
+     */
+    public function test_an_operator_sees_what_was_granted_not_the_catalogue(): void
+    {
+        $this->subscribe('business');
+        $this->withToken($this->ownerToken);
+        $this->makeOperator([PlatformOperator::ORGANIZATIONS, PlatformOperator::PLANS]);
+
+        $this->patchJson('/api/v1/platform/plans/business', ['limits' => ['storage_gb' => 1]])->assertOk();
+
+        $vue = $this->getJson("/api/v1/platform/organizations/{$this->organizationId}")
+            ->assertOk()
+            ->json('data');
+
+        // Le catalogue dit 1, le client garde ce qu'il a payé.
+        $this->assertNotSame(1, $vue['subscription']['granted_limits']['storage_gb']);
+        $this->assertNotNull($vue['subscription']['limits_granted_at']);
+    }
+
+    /**
+     * Un opérateur voit qu'un document existe. Il ne l'ouvre pas — c'est la
+     * frontière qui empêche la confidentialité de Storage de n'être qu'une
+     * discipline.
+     */
+    public function test_an_operator_sees_that_a_document_exists_never_its_content(): void
+    {
+        $this->subscribe('business');
+        $this->withToken($this->ownerToken);
+        $this->makeOperator([PlatformOperator::BILLING]);
+
+        $factures = $this->getJson("/api/v1/platform/organizations/{$this->organizationId}/invoices")
+            ->assertOk()
+            ->json('data');
+
+        $this->assertArrayHasKey('has_pdf', $factures[0]);
+        $this->assertArrayNotHasKey('pdf_file_id', $factures[0]);
+        $this->assertArrayNotHasKey('billing_details', $factures[0]);
+    }
+
+    /**
+     * Le rattrapage ne baisse rien par défaut : un outil qui reprendrait
+     * silencieusement ce qui a été promis passerait inaperçu.
+     */
+    public function test_the_catch_up_command_only_raises(): void
+    {
+        $this->subscribe('business');
+
+        $subscription = Subscription::query()->firstOrFail();
+        $subscription->forceFill(['granted_limits' => ['storage_gb' => 9_999]])->save();
+
+        $this->artisan('billing:regrant')->assertSuccessful();
+
+        $this->assertSame(9_999, $subscription->fresh()->granted_limits['storage_gb']);
+
+        // `--force` est la porte délibérée, et elle seule.
+        $this->artisan('billing:regrant', ['--force' => true])->assertSuccessful();
+
+        $this->assertNotSame(9_999, $subscription->fresh()->granted_limits['storage_gb']);
+    }
+
+    /**
      * @param  list<string>  $permissions
      */
     private function makeOperator(array $permissions): PlatformOperator
