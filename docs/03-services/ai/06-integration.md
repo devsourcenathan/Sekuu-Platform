@@ -106,11 +106,18 @@ fier.
 
 ## 5.1 Le piège à éviter
 
-La tentation, en ajoutant une tâche, est de la rendre générique — « un prompt
-libre, pour les cas particuliers ».
+Une tâche **libre** existe déjà — `prompt`, `prompt-fast`, `prompt-deep` — et
+elle est légitime : la plateforme y choisit toujours le modèle, borne l'entrée
+et la sortie, compte le coût.
 
-Ce serait `POST /ai/completions` déguisé, et tout l'ADR-0015 tomberait : coût
-imprévisible, sortie non validée, modèle figé par l'usage, et plus aucun moyen
-de changer de fournisseur sans casser quelqu'un.
+Le piège est ailleurs : **une tâche libre non bornée**. Sans `max_input_tokens`
+ni `max_output_tokens`, elle devient `POST /ai/completions` déguisé — coût
+imprévisible, et un produit qui envoie un livre entier facture un livre entier.
 
-Si un produit a besoin d'une tâche, elle mérite un nom.
+Le second piège est de s'en contenter. Un produit qui fait tout passer par
+`prompt` réécrit à chaque fois ses instructions, son format attendu et son
+analyseur de réponse. Le jour où le modèle change, ses instructions vieillissent
+en silence — alors qu'une tâche nommée aurait absorbé le changement.
+
+**Si un produit appelle `prompt` avec le même texte d'instructions trois fois,
+c'est une tâche.** Elle mérite un nom, un schéma, et un test.

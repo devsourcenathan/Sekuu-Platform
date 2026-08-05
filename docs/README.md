@@ -24,6 +24,7 @@ Sekuu Platform est le socle technique commun de l'écosystème Sekuu : une plate
 | Faire stocker un **service externe** | [Storage — API externe](03-services/storage/07-external-api.md) |
 | Faire appel à un **modèle de langage** | [AI — intégrer un module](03-services/ai/06-integration.md) |
 | Apporter sa **propre clé d'IA** | [AI — API externe](03-services/ai/07-external-api.md) |
+| Changer un **quota** sans déployer | [ADR-0018](04-decisions/adr-0018-platform-operator.md) · [ADR-0019](04-decisions/adr-0019-granted-limits.md) |
 | Comprendre un choix d'architecture | [Décisions (ADR)](#04-decisions--décisions-darchitecture) |
 | **Mettre en production** | [Mise en service](06-operations/01-go-live.md) |
 
@@ -94,6 +95,8 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | [ADR-0015](04-decisions/adr-0015-ai-task-not-model.md) | AI : l'appelant décrit une tâche, jamais un modèle |
 | [ADR-0016](04-decisions/adr-0016-ai-spend-and-privacy.md) | AI : ce que l'IA coûte, et ce qu'elle emporte |
 | [ADR-0017](04-decisions/adr-0017-ai-accounts.md) | AI : le compte est une donnée, et un produit peut apporter le sien |
+| [ADR-0018](04-decisions/adr-0018-platform-operator.md) | L'opérateur de plateforme, et ce qu'il peut changer |
+| [ADR-0019](04-decisions/adr-0019-granted-limits.md) | Ce qui est accordé est figé sur l'abonnement |
 
 ### 06-operations — Exploitation
 

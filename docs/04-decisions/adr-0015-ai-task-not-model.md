@@ -72,6 +72,37 @@ prime une facture imprévisible.
 | Demander un format de sortie déclaré par la tâche | Inventer un format |
 | Poser une clé d'idempotence | Contourner le quota ou le plafond |
 
+### Une tâche peut être libre
+
+`prompt` est une tâche du catalogue comme les autres : l'appelant envoie du
+texte, reçoit du texte.
+
+Cela ne contredit pas ce qui précède, et la nuance est le cœur de cette
+révision. **Ce que l'ADR refuse, c'est que l'appelant nomme le modèle** — pas
+qu'il écrive librement. Une tâche libre conserve chaque garantie :
+
+* la plateforme choisit le modèle, et peut en changer ;
+* la tâche borne l'entrée, la sortie et donc le coût ;
+* le quota, le plafond et le registre s'appliquent sans exception ;
+* la clé d'API doit porter `prompt` dans sa liste blanche.
+
+Ce qu'elle perd, en revanche, est réel : **aucun format de sortie n'est promis**,
+donc aucune validation. Un produit qui attend du JSON d'une tâche libre écrira
+son propre analyseur défensif — précisément ce que `extract` existe pour éviter.
+
+Trois variantes plutôt qu'une, parce que « libre » ne dit rien du compromis
+voulu :
+
+| Tâche | Modèle | Pour |
+| --- | --- | --- |
+| `prompt` | équilibré | Le cas courant |
+| `prompt-fast` | petit, rapide | Volume, latence |
+| `prompt-deep` | grand | Raisonnement, rédaction longue |
+
+Ce sont **trois noms de la plateforme**, pas trois modèles nommés par
+l'appelant. Le jour où le modèle derrière `prompt-deep` est retiré, personne ne
+change une ligne.
+
 ## Conséquences
 
 **Un produit avec un besoin exotique doit faire ajouter sa tâche.** C'est le

@@ -88,6 +88,17 @@ conservation.
 | `extract` | Tire des champs déclarés d'un texte, en JSON validé |
 | `classify` | Range une entrée dans une liste close d'étiquettes |
 | `quiz` | Produit des questions à partir d'un contenu pédagogique |
+| `prompt` | **Texte libre en entrée, texte libre en sortie** |
+| `prompt-fast` | Idem, sur un petit modèle — volume et latence |
+| `prompt-deep` | Idem, sur un grand modèle — raisonnement, rédaction longue |
+
+Les trois dernières sont **libres**, et ne contredisent pas le §1.1 : ce qui est
+refusé est que l'appelant nomme le **modèle**, pas qu'il écrive ce qu'il veut.
+Elles gardent le choix du modèle, les bornes de coût, le quota et le registre.
+
+Ce qu'elles perdent est réel : aucun format de sortie n'est promis, donc aucune
+validation. Un produit qui attend du JSON d'une tâche libre écrira l'analyseur
+défensif que `extract` existe pour lui épargner.
 
 Une tâche inconnue échoue durement — `AI_TASK_UNKNOWN`. Le repli silencieux vers
 un modèle générique rouvrirait la porte que l'ADR-0015 ferme, avec en prime une
@@ -116,6 +127,23 @@ compte sa propre ressource, comme Notify compte ses SMS et Storage ses octets.
 **Le plafond absolu de la plateforme**, indépendant de tout plan. C'est le
 garde-fou contre une boucle ou une clé fuitée : sans lui, une organisation au
 plan illimité n'aurait aucune borne.
+
+`ai_credits_monthly` se règle **sans toucher au code** : c'est une clé du
+`limits` d'un plan, modifiable par l'API d'opérateur
+([ADR-0018](../../04-decisions/adr-0018-platform-operator.md)), figée sur
+l'abonnement à chaque période
+([ADR-0019](../../04-decisions/adr-0019-granted-limits.md)). Une hausse
+s'applique tout de suite, une baisse au renouvellement.
+
+**Une organisation sans abonnement n'a aucun quota d'IA**, et c'est le point le
+plus dangereux du module. La règle de la plateforme est qu'un quota borne un
+usage *autorisé* — l'autorisation, elle, vient de l'activation du produit côté
+Identity. Sans abonnement, le produit n'est pas activé et l'appel est refusé en
+amont par `PRODUCT_NOT_ACTIVATED`.
+
+Si cette activation venait à manquer, il ne resterait que le plafond absolu. Ce
+n'est pas une redondance de confort : c'est le seul filet quand deux règles se
+font confiance mutuellement.
 
 Le quota est vérifié **avant** l'appel sur une estimation, puis le coût réel est
 constaté après. Une estimation ne peut pas être exacte — le nombre de jetons

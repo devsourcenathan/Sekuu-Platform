@@ -397,3 +397,70 @@ Les codes propres à l'encaissement — `PAYMENT_ALREADY_PENDING`,
 produits par Payments et catalogués
 [chez lui](../payments/03-api.md#6-codes-derreur). Ils remontent tels quels à
 travers `POST /payments`, qui est le point d'entrée mais pas l'auteur.
+
+
+---
+
+# Annexe — Les routes d'opérateur
+
+Hors du périmètre client, et hors de ce document par nature : elles ne
+s'adressent pas à une organisation mais à **Sekuu**.
+
+| Méthode | Route | Permission |
+| --- | --- | --- |
+| `GET` | `/platform/plans` | `platform.plans` |
+| `PATCH` | `/platform/plans/{key}` | `platform.plans` |
+| `GET` | `/platform/organizations` | `platform.organizations` |
+| `GET` | `/platform/organizations/{id}` | `platform.organizations` |
+| `GET` | `/platform/organizations/{id}/usage` | `platform.organizations` |
+| `GET` | `/platform/organizations/{id}/subscription` | `platform.billing` |
+| `GET` | `/platform/organizations/{id}/invoices` | `platform.billing` |
+| `GET` | `/platform/infrastructure` | `platform.infrastructure` |
+| `GET` | `/platform/audit` | `platform.audit` |
+
+Réservées à un utilisateur inscrit dans `platform_operators`, avec la permission
+correspondante. L'inscription **ne s'obtient que hors de l'application** —
+jamais par une route, jamais par une invitation, jamais par un rôle
+d'organisation ([ADR-0018](../../04-decisions/adr-0018-platform-operator.md)).
+
+Des permissions séparées plutôt qu'un drapeau : sans elles, donner à quelqu'un
+le droit de corriger un quota lui donnerait aussi l'accès aux factures de tous
+les clients.
+
+`/platform/infrastructure` rend l'**état** des magasins, des comptes d'IA et des
+agrégateurs — jamais leurs identifiants. C'est ce qui permet de constater
+qu'un compte est tombé sans avoir de shell.
+
+Trois choses restent hors de portée, même là : le contenu d'un fichier, celui
+d'un prompt, celui d'une notification. **Un opérateur voit des métadonnées et
+des montants, jamais ce que les clients nous confient.**
+
+Le préfixe `/platform/` est délibéré : il rend visible, dans une table de
+routage et dans les journaux, ce qui relève de l'exploitation — plutôt que de le
+cacher parmi les routes clientes derrière une condition.
+
+**Chaque appel** entre au journal d'audit — les lectures comprises, ce qui est
+inhabituel et délibéré. Un opérateur qui consulte la facture d'un client accède
+à une donnée qui ne lui appartient pas ; si cet accès ne laisse pas de trace, la
+seule garantie offerte au client est notre parole.
+
+Les écritures ajoutent l'avant et l'après : un opérateur qui double le quota
+d'un client ami ne doit pas pouvoir le faire sans trace.
+
+Un changement de limite ne s'applique pas de la même façon dans les deux sens —
+une hausse tout de suite, une baisse au renouvellement
+([ADR-0019](../../04-decisions/adr-0019-granted-limits.md)). La réponse le dit,
+plutôt que de laisser l'opérateur le déduire :
+
+```json
+{
+  "success": true,
+  "data": {
+    "key": "business",
+    "limits": { "storage_gb": 20, "ai_credits_monthly": 2000000 },
+    "applied_now": ["ai_credits_monthly"],
+    "applied_at_renewal": ["storage_gb"],
+    "subscriptions_affected": 14
+  }
+}
+```

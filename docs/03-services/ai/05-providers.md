@@ -246,6 +246,22 @@ facturé**, et le changer sans revue ni test serait le changer en silence.
         'retain_days' => null,
     ],
 
+    // Libre : l'appelant écrit ce qu'il veut, la plateforme choisit le modèle.
+    // Les bornes remplacent le schéma — c'est tout ce qui tient le coût.
+    'prompt' => [
+        'model' => 'claude-sonnet-4-6',
+        'fallback' => 'deepseek-chat',
+        'max_input_tokens' => 32_000,
+        'max_output_tokens' => 4_000,
+        'temperature' => 0.7,
+        'output' => 'text',
+        'synchronous' => false,
+        'accepts_history' => true,
+    ],
+
+    'prompt-fast' => ['extends' => 'prompt', 'model' => 'gemini-2.5-flash', 'max_output_tokens' => 1_000],
+    'prompt-deep' => ['extends' => 'prompt', 'model' => 'claude-sonnet-4-6', 'max_output_tokens' => 16_000],
+
     'extract' => [
         'model' => 'claude-sonnet-4-6',
         'fallback' => null,

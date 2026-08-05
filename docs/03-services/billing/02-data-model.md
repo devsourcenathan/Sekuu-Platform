@@ -108,6 +108,24 @@ Un plan **n'est jamais supprimé**, seulement archivé : des abonnements et des 
 
 **Les plans sont versionnés avec le code**, comme les templates de plateforme de Notify. Ils sont créés par migration ou seeder, pas par une API publique. Un tarif ne se change pas depuis un formulaire.
 
+### Les limites se changent sans déployer
+
+`limits` est une colonne `jsonb` : la donnée est déjà une donnée. Ce qui
+manquait était le moyen de l'écrire — l'API ne rendait les plans qu'en lecture,
+et les valeurs venaient d'une migration.
+
+Elles se modifient désormais par `PATCH /platform/plans/{key}`, réservé à un
+**opérateur de plateforme** ([ADR-0018](../../04-decisions/adr-0018-platform-operator.md)).
+Aucun rôle d'organisation n'y donne accès : une route protégée par
+`subscription.manage` laisserait un client s'accorder mille sièges.
+
+La frontière posée par cette décision vaut d'être retenue : **un nombre passe
+par l'API, un secret n'y passe jamais.** Les identifiants d'agrégateurs et les
+magasins restent en ligne de commande.
+
+Clés en usage : `members`, `workspaces`, `storage_gb`, `sms_monthly`,
+`ai_credits_monthly`.
+
 ## 3.2 Tarifs
 
 Un plan a plusieurs tarifs : mensuel, annuel, et à terme d'autres devises.
@@ -183,6 +201,26 @@ created_by           uuid         NULL   -- référence logique vers users
 * `current_period_end > current_period_start`.
 
 **Index** : `(status, current_period_end)` — c'est la requête de la tâche planifiée quotidienne.
+
+## 4.0 `granted_limits` — ce qui a été promis
+
+Colonne `jsonb`, **non nullable**, écrite à l'ouverture de chaque période.
+`BillingContract::limit()` la lit, et ne lit plus jamais le plan
+([ADR-0019](../../04-decisions/adr-0019-granted-limits.md)).
+
+Sans elle, baisser une limite du catalogue rétrograderait tous les abonnés le
+soir même — y compris ceux qui ont payé une année d'avance la semaine
+précédente. Sur un modèle prépayé, ce n'est pas un réglage, c'est une rupture de
+contrat.
+
+L'asymétrie est la décision : **une hausse est reportée immédiatement sur tous
+les abonnements actifs, une baisse attend le renouvellement.** La plateforme
+peut être plus généreuse que promis, jamais moins.
+
+Non nullable, et avec un objet vide par défaut, pour une raison précise : lire
+`null` sur une colonne vide et en conclure « illimité » serait le défaut le plus
+coûteux possible. Un abonnement sans copie est **non couvert**, et
+`billing:regrant` remplit ce qui manque.
 
 ## 4.1 `pending` fait partie des états vivants, et c'est un correctif
 
