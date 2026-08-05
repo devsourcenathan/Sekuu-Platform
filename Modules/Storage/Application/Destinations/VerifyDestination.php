@@ -39,6 +39,20 @@ final class VerifyDestination
     /** Écrit puis relu, et les octets ne correspondent pas. */
     public const PROBE_MISMATCH = 'probe_mismatch';
 
+    /**
+     * La faute vient de **nous**, pas du fournisseur.
+     *
+     * Une dépendance absente, un pilote mal écrit. Cette catégorie existe parce
+     * que son absence a coûté un déploiement : un adaptateur Flysystem manquant
+     * a été rangé dans `unreachable`, et le diagnostic est parti chercher du
+     * côté du réseau et des identifiants — c'est-à-dire partout sauf là où
+     * était le défaut.
+     *
+     * Un magasin injoignable se corrige dans un tableau de bord ; celui-ci se
+     * corrige dans le dépôt. Les confondre fait perdre des heures.
+     */
+    public const INTERNAL_ERROR = 'internal_error';
+
     public function __construct(private readonly DriverRegistry $drivers) {}
 
     public function handle(Destination $destination): bool
@@ -112,6 +126,15 @@ final class VerifyDestination
      */
     private function classify(Throwable $e): string
     {
+        /*
+         * Une `Error` n'est pas une erreur d'exploitation : c'est une classe
+         * absente, un type incompatible, un appel impossible. Aucun réglage de
+         * fournisseur n'y changera rien.
+         */
+        if ($e instanceof \Error) {
+            return self::INTERNAL_ERROR;
+        }
+
         $message = mb_strtolower($e->getMessage());
 
         return match (true) {

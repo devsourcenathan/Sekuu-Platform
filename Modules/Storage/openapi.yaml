@@ -90,7 +90,7 @@ paths:
                         verified_at: { type: [string, 'null'], format: date-time }
                         reason:
                           type: [string, 'null']
-                          enum: [credentials_rejected, bucket_missing, write_denied, unreachable, probe_mismatch, null]
+                          enum: [credentials_rejected, bucket_missing, write_denied, unreachable, probe_mismatch, internal_error, null]
 
   /files:
     post:
@@ -583,7 +583,7 @@ components:
         verified_at: { type: [string, 'null'], format: date-time }
         verification_reason:
           type: [string, 'null']
-          enum: [credentials_rejected, bucket_missing, write_denied, unreachable, probe_mismatch, null]
+          enum: [credentials_rejected, bucket_missing, write_denied, unreachable, probe_mismatch, internal_error, null]
           description: |
             Une raison d'un jeu fermé, jamais le message brut du fournisseur —
             une erreur S3 peut porter un identifiant de compte, un ARN, un nom

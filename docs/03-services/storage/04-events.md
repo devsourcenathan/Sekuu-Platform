@@ -141,6 +141,13 @@ C'est la même logique que le seuil à 80 % du quota : au moment où l'erreur es
 rendue, il est déjà trop tard pour l'éviter.
 
 `reason` prend un jeu fermé de valeurs — `credentials_rejected`,
-`bucket_missing`, `write_denied`, `unreachable`, `probe_mismatch` — pour qu'un
-consommateur puisse réagir différemment selon le cas. Les trois premières
-demandent une action humaine ; la quatrième se résout souvent seule.
+`bucket_missing`, `write_denied`, `unreachable`, `probe_mismatch`,
+`internal_error` — pour qu'un consommateur puisse réagir différemment selon le
+cas. Les trois premières demandent une action humaine ; `unreachable` se résout
+souvent seule.
+
+`internal_error` désigne une faute de **notre** côté — une dépendance absente,
+un pilote fautif. Elle mérite sa propre valeur parce que son absence a coûté un
+déploiement : rangée dans `unreachable`, elle a envoyé le diagnostic chercher du
+côté du réseau. Un magasin injoignable se corrige dans un tableau de bord ;
+celui-ci se corrige dans le dépôt.
