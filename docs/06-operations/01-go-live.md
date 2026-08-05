@@ -224,7 +224,26 @@ fermeture du terminal.
 `storage:verify` rejoue l'épreuve — ce que l'ordonnanceur fait de toute façon
 chaque nuit à 4 h.
 
-## 5.1 Pourquoi il n'y a pas de route pour cela
+## 5.1 Sans shell — offre gratuite de Render
+
+L'offre gratuite n'a ni `preDeployCommand` ni shell. Le magasin se déclare alors
+par variables d'environnement, et le conteneur le pose au démarrage :
+
+```dotenv
+STORAGE_DEFAULT_SLUG=r2-principal
+STORAGE_DEFAULT_PRESET=r2
+STORAGE_DEFAULT_BUCKET=…
+STORAGE_DEFAULT_ACCOUNT_ID=…
+STORAGE_DEFAULT_KEY=…
+STORAGE_DEFAULT_SECRET=…
+```
+
+Idempotent, et **un échec ne bloque pas le démarrage** : la ligne reste
+`unverified`, la plateforme continue de servir, et l'épreuve quotidienne la fera
+basculer d'elle-même une fois les identifiants corrects. Le détail est dans
+[05-free-tier.md](05-free-tier.md) §4.2.
+
+## 5.2 Pourquoi il n'y a pas de route pour cela
 
 Une destination de la plateforme porte les identifiants de **nos** comptes cloud
 et sert toutes les organisations. L'exposer à une route reviendrait à confier

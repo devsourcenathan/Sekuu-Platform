@@ -141,6 +141,55 @@ ensemble migreraient simultanément, sur des tables monétaires. Tant qu'il n'y 
 qu'un service gratuit, le cas ne peut pas se présenter — c'est la seule raison
 pour laquelle cette option est acceptable.
 
+## 4.2 Le magasin, faute de mieux aussi
+
+Même problème, même remède. Une destination de stockage est une **ligne en
+base** et se pose normalement avec `storage:destination` — ce que l'absence de
+shell interdit.
+
+```dotenv
+STORAGE_DEFAULT_SLUG=r2-principal
+STORAGE_DEFAULT_PRESET=r2
+STORAGE_DEFAULT_BUCKET=sekuu-prod-files
+STORAGE_DEFAULT_ACCOUNT_ID=…
+STORAGE_DEFAULT_KEY=…
+STORAGE_DEFAULT_SECRET=…
+```
+
+Au démarrage, le conteneur pose cette destination si elle n'existe pas encore,
+et l'éprouve : écrire un objet témoin, le relire, l'effacer. **Idempotent** — il
+redémarre à chaque déploiement, et à chaque réveil après sommeil.
+
+Il n'y aura **pas** de route pour cela, même en payant. Une destination de la
+plateforme porte les identifiants de nos comptes cloud et sert toutes les
+organisations ; l'exposer reviendrait à confier cette infrastructure à qui
+détient un jeton d'administration.
+
+### Un échec ne bloque jamais le démarrage
+
+Contrairement aux migrations. Un magasin injoignable laisse la ligne
+`unverified` : aucun fichier n'est déposable, mais l'authentification, les
+paiements et les notifications continuent — ils n'en dépendent pas.
+
+Et la reprise est automatique : **l'épreuve quotidienne de 4 h fait basculer la
+destination d'elle-même** le jour où les identifiants deviennent corrects, sans
+nouveau déploiement. Les journaux du démarrage le disent franchement :
+
+```
+[storage] magasin « r2-principal » posé mais NON ÉPREUVÉ — credentials_rejected.
+```
+
+### Le rattrapage des PDF n'a besoin de personne
+
+`billing:invoice-pdf` est ordonnancée chaque nuit à 3 h 15. Les factures émises
+avant l'arrivée du module — dont les vôtres — obtiennent leur document sans
+qu'aucune commande soit lancée à la main.
+
+C'est vrai **tant que le conteneur est éveillé à cette heure-là**. Sur l'offre
+gratuite il dort, et une visite quelconque suffit à le réveiller : le
+rattrapage se fera la nuit suivante. Un `GET /invoices/{id}/download` le
+provoque de toute façon sur-le-champ, pour cette facture-là.
+
 Retirez-la au passage au payant, et remettez `preDeployCommand`.
 
 ---

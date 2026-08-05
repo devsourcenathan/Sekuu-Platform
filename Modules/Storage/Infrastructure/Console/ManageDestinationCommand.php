@@ -41,12 +41,17 @@ final class ManageDestinationCommand extends Command
         {--key= : Identifiant, sinon demande sans echo}
         {--secret= : Secret, sinon demande sans echo}
         {--default : En faire le magasin par defaut de cet environnement}
-        {--status= : active, read_only ou disabled, sur un magasin existant}';
+        {--status= : active, read_only ou disabled, sur un magasin existant}
+        {--from-env : Pose le magasin par defaut decrit par STORAGE_DEFAULT_*}';
 
     protected $description = 'Liste les magasins de la plateforme, en pose un, ou en retire un du service.';
 
     public function handle(RegisterDestination $register): int
     {
+        if ($this->option('from-env')) {
+            return $this->fromEnvironment($register);
+        }
+
         $slug = $this->argument('slug');
 
         if ($slug === null) {
@@ -60,6 +65,85 @@ final class ManageDestinationCommand extends Command
         }
 
         return $this->create($register, (string) $slug);
+    }
+
+    /**
+     * Poser le magasin par défaut depuis l'environnement, au démarrage.
+     *
+     * ## Pourquoi cette voie existe
+     *
+     * L'offre gratuite de Render n'a **pas de shell**. Sans elle, il n'existe
+     * aucun moyen de créer la première destination : ni ligne de commande, ni
+     * route — et une route serait précisément ce que §5.1 de la mise en service
+     * refuse.
+     *
+     * C'est le même geste, exécuté par la seule interface dont dispose
+     * l'exploitant. Les identifiants passent par les variables d'environnement,
+     * là où reposent déjà ceux des agrégateurs de paiement.
+     *
+     * ## Elle ne fait jamais échouer un démarrage
+     *
+     * Un magasin injoignable ne doit pas empêcher la plateforme de répondre :
+     * les paiements, l'authentification et les notifications n'en dépendent
+     * pas. La ligne reste `unverified`, et **l'épreuve quotidienne devient la
+     * reprise** — la destination s'activera d'elle-même le jour où les
+     * identifiants seront corrigés, sans nouveau déploiement.
+     */
+    private function fromEnvironment(RegisterDestination $register): int
+    {
+        $slug = (string) env('STORAGE_DEFAULT_SLUG', '');
+
+        if ($slug === '') {
+            $this->line('[storage] aucun magasin déclaré dans l\'environnement.');
+
+            return self::SUCCESS;
+        }
+
+        // Idempotent : le conteneur redémarre à chaque déploiement, et à chaque
+        // réveil après sommeil.
+        if (Destination::query()->where('slug', $slug)->exists()) {
+            $this->line("[storage] magasin « {$slug} » déjà posé.");
+
+            return self::SUCCESS;
+        }
+
+        $config = array_filter([
+            'bucket' => env('STORAGE_DEFAULT_BUCKET'),
+            'region' => env('STORAGE_DEFAULT_REGION'),
+            'account_id' => env('STORAGE_DEFAULT_ACCOUNT_ID'),
+            'endpoint' => env('STORAGE_DEFAULT_ENDPOINT'),
+            'prefix' => env('STORAGE_DEFAULT_PREFIX'),
+            'root' => env('STORAGE_DEFAULT_ROOT'),
+        ], fn ($v): bool => $v !== null && $v !== '');
+
+        $key = (string) env('STORAGE_DEFAULT_KEY', '');
+
+        try {
+            $destination = $register->handle(
+                slug: $slug,
+                preset: env('STORAGE_DEFAULT_PRESET'),
+                driver: env('STORAGE_DEFAULT_DRIVER'),
+                config: $config,
+                credentials: $key === '' ? [] : ['key' => $key, 'secret' => (string) env('STORAGE_DEFAULT_SECRET', '')],
+                environment: app()->environment(),
+                isDefault: true,
+            );
+        } catch (DomainException $e) {
+            $this->error("[storage] magasin « {$slug} » non posé : {$e->getMessage()}");
+
+            return self::SUCCESS;
+        }
+
+        if ($destination->status === Destination::ACTIVE) {
+            $this->line("[storage] magasin « {$slug} » posé et éprouvé.");
+
+            return self::SUCCESS;
+        }
+
+        $this->error("[storage] magasin « {$slug} » posé mais NON ÉPREUVÉ — {$destination->verification_reason}.");
+        $this->line('[storage] aucun fichier ne sera déposé. L\'épreuve est rejouée chaque nuit.');
+
+        return self::SUCCESS;
     }
 
     private function list(): int

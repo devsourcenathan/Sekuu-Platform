@@ -42,6 +42,24 @@ if [ "${RUN_MIGRATIONS_ON_BOOT:-false}" = "true" ]; then
 fi
 
 # --------------------------------------------------------------------------
+# Le magasin par defaut
+# --------------------------------------------------------------------------
+# Meme raison que ci-dessus : sans shell, il n'existe aucun autre moyen de poser
+# la premiere destination. Et il n'y aura pas de route pour cela — une
+# destination de la plateforme porte les identifiants de nos comptes cloud et
+# sert toutes les organisations.
+#
+# Idempotent : ne fait rien si le magasin existe deja, ce qui est le cas a
+# chaque redemarrage et a chaque reveil apres sommeil.
+#
+# Ne fait **jamais** echouer le demarrage : un magasin injoignable ne doit pas
+# empecher la plateforme de repondre. La ligne reste `unverified`, et l'epreuve
+# quotidienne devient la reprise.
+if [ -n "${STORAGE_DEFAULT_SLUG:-}" ]; then
+    php artisan storage:destination --from-env || true
+fi
+
+# --------------------------------------------------------------------------
 # Caches compilés
 # --------------------------------------------------------------------------
 # Au **démarrage**, pas à la construction : les variables d'environnement de

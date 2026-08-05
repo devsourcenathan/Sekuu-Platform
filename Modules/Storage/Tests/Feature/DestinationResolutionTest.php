@@ -391,6 +391,64 @@ final class DestinationResolutionTest extends TestCase
         $this->assertNotNull($destination->verification_reason);
     }
 
+    /**
+     * Sans shell, l'environnement est la seule interface.
+     *
+     * L'offre gratuite de Render n'en offre pas : sans cette voie, il
+     * n'existerait aucun moyen de poser la premiere destination — ni commande,
+     * ni route, et une route est precisement ce que la conception refuse.
+     */
+    public function test_the_default_store_can_be_posed_from_the_environment(): void
+    {
+        putenv('STORAGE_DEFAULT_SLUG=depuis-env');
+        putenv('STORAGE_DEFAULT_DRIVER=local');
+        putenv('STORAGE_DEFAULT_ROOT='.storage_path('framework/testing/depuis-env'));
+
+        $this->artisan('storage:destination', ['--from-env' => true])->assertSuccessful();
+
+        $destination = Destination::query()->where('slug', 'depuis-env')->firstOrFail();
+
+        $this->assertSame(Destination::ACTIVE, $destination->status);
+        $this->assertTrue($destination->is_default);
+
+        // Idempotent : le conteneur redemarre a chaque deploiement, et a chaque
+        // reveil apres sommeil.
+        $this->artisan('storage:destination', ['--from-env' => true])->assertSuccessful();
+        $this->assertSame(1, Destination::query()->where('slug', 'depuis-env')->count());
+
+        putenv('STORAGE_DEFAULT_SLUG');
+        putenv('STORAGE_DEFAULT_DRIVER');
+        putenv('STORAGE_DEFAULT_ROOT');
+    }
+
+    /**
+     * Un magasin injoignable ne doit pas empecher la plateforme de demarrer :
+     * l'authentification, les paiements et les notifications n'en dependent
+     * pas. L'epreuve quotidienne devient la reprise.
+     */
+    public function test_a_broken_store_from_the_environment_never_blocks_boot(): void
+    {
+        $obstacle = storage_path('framework/testing/obstacle-env');
+        @mkdir(dirname($obstacle), 0777, true);
+        file_put_contents($obstacle, 'pas un répertoire');
+
+        putenv('STORAGE_DEFAULT_SLUG=casse-env');
+        putenv('STORAGE_DEFAULT_DRIVER=local');
+        putenv('STORAGE_DEFAULT_ROOT='.$obstacle.'/dedans');
+
+        // Sortie nulle malgre l'echec : le conteneur doit demarrer.
+        $this->artisan('storage:destination', ['--from-env' => true])->assertSuccessful();
+
+        $this->assertSame(
+            Destination::UNVERIFIED,
+            Destination::query()->where('slug', 'casse-env')->firstOrFail()->status,
+        );
+
+        putenv('STORAGE_DEFAULT_SLUG');
+        putenv('STORAGE_DEFAULT_DRIVER');
+        putenv('STORAGE_DEFAULT_ROOT');
+    }
+
     private function declare(): DeclaredFile
     {
         return app(DeclareFile::class)->handle(
