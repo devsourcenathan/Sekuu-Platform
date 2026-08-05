@@ -144,15 +144,28 @@ La suite est identique au chemin interne : `PUT` vers l'URL rendue, puis
 `POST /files/{id}/confirm`. La déclaration ne fait jamais foi ; Storage
 interroge le magasin.
 
-## 3.1 `retain_until` est plafonné
+## 3.1 `retain_until` est porté par la clé, et nul par défaut
 
-Un produit externe peut poser une rétention, jusqu'à une borne fixée par la clé.
+Sur **nos** destinations, un produit externe ne peut poser aucune rétention tant
+qu'on ne la lui a pas accordée. La clé d'API porte un plafond — `max_retention`
+— qui vaut zéro à l'émission.
 
-Sans plafond, un produit pourrait rendre indestructible tout ce qu'il dépose sur
-**nos** comptes — et nous laisser la facture d'un stockage que plus personne ne
-peut effacer. La rétention est une obligation, pas un droit de tirage.
+C'est la mécanique de la liste blanche de `subject_type` côté Payments : la clé
+**habilite**, elle n'hérite de rien. Un produit qui a besoin de conserver dix
+ans le demande, et on décide ; un produit qui n'a rien demandé ne peut pas
+figer nos octets.
 
-Sur sa propre destination, la borne n'existe pas : il ne s'engage que lui-même.
+Sans ce plafond, n'importe quel produit pourrait rendre indestructible tout ce
+qu'il dépose chez nous, et nous laisser la facture d'un stockage que plus
+personne ne peut effacer — y compris après son départ. La rétention est une
+obligation, pas un droit de tirage.
+
+Sur **sa propre** destination, aucun plafond : il n'engage que sa facture.
+
+Une rétention demandée au-delà du plafond rend `FILE_RETENTION_TOO_LONG`, `422`,
+et dit la borne. Jamais un rabotage silencieux à la valeur maximale : un produit
+qui croit avoir dix ans et en obtient un ne s'en apercevrait qu'au moment où le
+document manque.
 
 ---
 

@@ -137,10 +137,20 @@ déploiement. Surtout, un produit externe ne peut pas déposer une pull request
 pour enregistrer son compartiment.
 
 **Une bascule automatique vers une autre destination en cas de panne**, à
-l'image des agrégateurs de paiement. Elle n'a pas le même sens : un paiement
-retenté ailleurs atteint le même but, un fichier écrit ailleurs se retrouve
-**quelque part d'autre**, et il faut le savoir pour le relire. La bascule
-n'existe qu'au moment du choix, jamais après l'écriture.
+l'image des agrégateurs de paiement.
+
+Elle n'a pas le même sens : un paiement retenté ailleurs atteint le même but, un
+fichier écrit ailleurs se retrouve **quelque part d'autre**, avec un autre coût
+de trafic et parfois une autre juridiction. Un repli deviné par la plateforme
+produirait une facture qu'aucune décision n'a prise.
+
+Ce qui est retenu à la place : un repli **déclaré** par le module, d'un seul
+rang, journalisé. `FilePolicy::allow(destination: …, fallback: …)`. Sans
+`fallback`, l'échec est dur. C'est la même étroitesse que la règle de bascule
+d'[ADR-0008](adr-0008-payment-aggregators-failover.md), et pour la même raison :
+un repli commode finit par produire une conséquence que personne n'a choisie.
+
+La bascule n'existe qu'au moment du choix, jamais après l'écriture.
 
 **Une destination par fichier, choisie par le client.** Elle donnerait à
 l'appelant le droit de désigner où atterrissent des octets, ce qui est une

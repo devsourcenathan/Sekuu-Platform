@@ -52,7 +52,8 @@ final class LessonFiles implements FileOwner
         return FilePolicy::allow(
             mimeTypes: ['video/mp4', 'application/pdf'],
             maxBytes: 512 * 1024 * 1024,
-            destination: 'r2-videos',   // facultatif — voir §1.3
+            destination: 'r2-videos',   // facultatif — voir §1.2
+            fallback: 's3-archive',     // et le second choix, s'il y en a un
         );
     }
 }
@@ -81,8 +82,15 @@ gratuit ». Jamais pour un client particulier : cela appartient aux règles de
 placement, qui se changent sans déploiement.
 
 Un module qui nomme une destination accepte aussi son échec. Si elle est
-`read_only` ou tombée, la déclaration échoue et ne se rabat sur rien — c'est le
-prix de la garantie, et il est expliqué au même endroit.
+`read_only` ou tombée, la déclaration échoue — **sauf** s'il a écrit un
+`fallback`, auquel cas cette seconde destination est essayée, et elle seule.
+
+Sans `fallback`, aucun repli. C'est délibéré : un repli deviné par la plateforme
+enverrait des vidéos chez un fournisseur facturant le trafic sortant, et la
+facture arriverait un mois plus tard sans que personne ait rien vu. Le seul à
+pouvoir juger ce coût est celui qui a nommé la première destination.
+
+Le repli est journalisé en `warning`, avec les deux slugs.
 
 ## 1.3 `refuse()` n'est pas une exception
 

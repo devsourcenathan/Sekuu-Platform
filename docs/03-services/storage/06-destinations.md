@@ -233,15 +233,33 @@ Du plus précis au plus général, premier trouvé :
 | 4 | Destination par défaut de la plateforme | Le cas courant |
 
 Une destination nommée mais `unverified`, `read_only` ou hors environnement
-**échoue** — la résolution ne redescend pas d'un rang.
+**échoue** — la résolution ne redescend pas d'un rang toute seule.
 
-C'est le choix le plus discutable de ce document, et il est délibéré. Un module
-qui exige R2 pour ses vidéos a une raison, presque toujours économique ; un
-repli silencieux vers AWS produirait une facture de trafic sortant que personne
-ne verrait venir. Le repli n'est acceptable que là où il n'a aucune conséquence,
-et une destination n'est jamais dans ce cas.
+Un module qui exige R2 pour ses vidéos a une raison, presque toujours
+économique ; un repli silencieux vers AWS produirait une facture de trafic
+sortant que personne ne verrait venir, un mois plus tard.
 
-## 4.1 Ce qui est écrit sur le fichier
+## 4.1 Le repli est déclaré, jamais deviné
+
+Un module qui accepte un second choix l'écrit :
+
+```php
+FilePolicy::allow(destination: 'r2-videos', fallback: 's3-archive');
+```
+
+Sans `fallback`, l'échec est dur. Avec, la seconde destination est essayée — et
+elle seule : le repli n'a qu'un rang, il ne parcourt pas la liste.
+
+C'est la règle de bascule des agrégateurs de paiement, transposée. Elle y est
+délibérément étroite parce qu'un repli commode finit par produire une
+conséquence que personne n'a choisie. Ici la conséquence est une facture, et le
+seul à pouvoir la juger est celui qui a nommé la première destination.
+
+Le repli est **journalisé au niveau `warning`** et porte les deux slugs. Un
+repli silencieux serait un repli qu'on découvre en cherchant pourquoi les
+octets ne sont pas là où on les croyait.
+
+## 4.3 Ce qui est écrit sur le fichier
 
 `files.destination_id`, à la déclaration, définitivement.
 

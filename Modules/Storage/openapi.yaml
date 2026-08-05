@@ -1,0 +1,548 @@
+openapi: 3.1.0
+
+info:
+  title: Sekuu Storage API
+  version: '1.0'
+  description: |
+    Garder des octets, et contrôler qui peut les reprendre. **Rien d'autre.**
+
+    Ce module ne sait pas ce qu'il garde. Un fichier porte un `owner_type` et un
+    `owner_id` — `billing.invoice`, `learn.lesson` — qu'il transporte, indexe, et
+    remet à un résolveur sans jamais les interpréter.
+
+    **Aucune route ne rend d'octet.** La plateforme ne sert jamais un fichier
+    elle-même : elle délivre des URL signées de courte durée vers l'hôte du
+    magasin. C'est ce qui neutralise le vecteur principal d'un service de
+    fichiers — un HTML téléversé par un client et servi depuis notre domaine
+    s'exécuterait avec nos cookies.
+
+    Trois décisions gouvernent le reste :
+
+    - [ADR-0012](../../docs/04-decisions/adr-0012-direct-upload.md) — les octets
+      ne traversent jamais la plateforme. Déclarer, écrire, confirmer.
+    - [ADR-0013](../../docs/04-decisions/adr-0013-invoice-pdf-frozen.md) — un PDF
+      de facture est produit une fois et figé.
+    - [ADR-0014](../../docs/04-decisions/adr-0014-storage-destinations.md) — le
+      magasin est une donnée, pas une configuration.
+
+    **La déclaration ne fait jamais foi.** À la confirmation, le magasin est
+    interrogé — taille réelle, type réel — et ces valeurs écrasent ce qui avait
+    été annoncé. Sans cela, le contrôle de type et le quota borneraient une
+    déclaration, pas un fichier.
+
+servers:
+  - url: https://platform.sekuu.com/api/v1
+    description: |
+      Production. Un seul domaine sert tous les modules : leur separation
+      est logique, pas encore reseau.
+  - url: http://localhost:8000/api/v1
+    description: Local
+
+tags:
+  - name: Fichiers
+  - name: Magasins
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  /files:
+    post:
+      tags: [Fichiers]
+      summary: Déclarer un fichier
+      description: |
+        Rend un identifiant et une **autorisation d'écriture**. Aucun octet n'a
+        encore bougé.
+
+        `mime_type` et `size` servent à signer une autorisation étroite et à
+        refuser tôt ce qui sera de toute façon refusé. Ils ne font pas foi.
+
+        Suivre `upload_method`, `upload_url` et `upload_headers` sans les
+        interpréter : S3 signe un `PUT`, un autre magasin peut répondre
+        autrement. Un client qui suppose `PUT` casse le jour où le magasin
+        change, sans que rien ne l'ait prévenu.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [owner_type, owner_id, name, mime_type, size]
+              properties:
+                owner_type:
+                  type: string
+                  maxLength: 64
+                  example: learn.lesson
+                owner_id:
+                  type: string
+                  maxLength: 64
+                name:
+                  type: string
+                  maxLength: 255
+                  description: |
+                    Nom d'origine. Ne sert jamais à construire la clé de
+                    l'objet : seule son extension est reprise, assainie.
+                mime_type:
+                  type: string
+                  maxLength: 128
+                size:
+                  type: integer
+                  minimum: 1
+                destination:
+                  type: string
+                  maxLength: 64
+                  description: |
+                    Rarement utile : la résolution répond dans la quasi-totalité
+                    des cas. Une destination nommée mais indisponible **échoue**
+                    et ne se rabat sur rien, sauf repli déclaré par le
+                    propriétaire de l'objet.
+                retain_days:
+                  type: integer
+                  minimum: 1
+                  description: |
+                    Plafonné par la clé d'API, et ce plafond vaut zéro à
+                    l'émission. Jamais de rabotage silencieux : au-delà, la
+                    demande est refusée et la borne est dite.
+      responses:
+        '201':
+          description: Déclaré
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeclaredFile'
+        '403':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+
+    get:
+      tags: [Fichiers]
+      summary: Les fichiers d'un objet
+      description: |
+        `owner_type` et `owner_id` sont **requis**.
+
+        Sans eux la question deviendrait « tous les fichiers de mon
+        organisation », et il faudrait définir ce que voit un membre simple
+        d'une organisation qui en compte trois cents. Ce module ne peut pas
+        répondre : il ignore les rôles.
+      parameters:
+        - name: owner_type
+          in: query
+          required: true
+          schema: { type: string }
+        - name: owner_id
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/File'
+
+  /files/{file}/confirm:
+    post:
+      tags: [Fichiers]
+      summary: Constater les octets
+      description: |
+        Le magasin est interrogé, et ce qu'il répond écrase ce qui avait été
+        déclaré.
+
+        Trois issues. L'objet est là et conforme : le fichier devient `ready`.
+        L'objet est absent : `UPLOAD_INCOMPLETE`, et le fichier **reste**
+        `pending` — c'est une incertitude, pas un refus, et l'URL reste valable.
+        L'objet est là mais non conforme : il est effacé et le fichier passe
+        `deleted`, parce qu'il s'agit cette fois d'un refus constaté.
+
+        Idempotente : confirmer un fichier déjà prêt rend le même corps.
+      parameters:
+        - $ref: '#/components/parameters/File'
+      responses:
+        '200':
+          description: Constaté
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/File'
+        '404':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+
+  /files/{file}:
+    get:
+      tags: [Fichiers]
+      summary: Métadonnées d'un fichier
+      parameters:
+        - $ref: '#/components/parameters/File'
+      responses:
+        '200':
+          description: Le fichier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/File'
+        '404':
+          $ref: '#/components/responses/Error'
+
+    delete:
+      tags: [Fichiers]
+      summary: Supprimer
+      description: |
+        Suppression **logique** : le quota est rendu immédiatement, les octets
+        partent au balayage suivant. Une suppression accidentelle reste donc réparable
+        quelques jours.
+
+        Un fichier sous rétention est refusé — `FILE_RETAINED`, `409`. Aucun
+        paramètre ne passe outre, aucune permission ne l'emporte : une
+        obligation légale qu'un rôle suffit à contourner n'est pas une
+        obligation.
+      parameters:
+        - $ref: '#/components/parameters/File'
+      responses:
+        '204':
+          description: Supprimé
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+
+  /files/{file}/url:
+    get:
+      tags: [Fichiers]
+      summary: Une URL de lecture signée
+      description: |
+        De courte durée, vers l'hôte du magasin — jamais vers `sekuu.com`.
+
+        Ne pas conserver l'URL : sa durée n'est pas un contrat. La redemander au
+        moment de servir. Une URL signée dans un courriel sera morte à
+        l'ouverture, ou pire, vivante et transférable.
+
+        Un refus de lecture rend `FILE_NOT_FOUND`, jamais `403` : distinguer
+        « inexistant » de « pas à vous » transformerait la route en oracle.
+      parameters:
+        - $ref: '#/components/parameters/File'
+      responses:
+        '200':
+          description: L'URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string, format: uri }
+                  expires_at: { type: string, format: date-time }
+                  disposition:
+                    type: string
+                    enum: [inline, attachment]
+                    description: |
+                      Tout ce qui n'est ni image ni PDF est servi en pièce
+                      jointe : le navigateur télécharge, il n'interprète pas.
+                  name: { type: string }
+                  mime_type: { type: string }
+                  size: { type: integer }
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+
+  /storage/destinations:
+    get:
+      tags: [Magasins]
+      summary: Les magasins utilisables
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Destination'
+
+    post:
+      tags: [Magasins]
+      summary: Enregistrer un magasin, et l'éprouver
+      description: |
+        L'épreuve est immédiate : écrire un objet témoin, le relire, l'effacer.
+        Tant qu'elle n'a pas réussi, la destination est `unverified` et n'est
+        choisie par personne.
+
+        Des identifiants faux découverts ici coûtent deux minutes ; découverts
+        au premier téléversement d'un client, un incident.
+
+        Les identifiants doivent être **restreints au seul compartiment
+        déclaré**. Ils ne sont jamais rendus, pas même à qui les dépose : la
+        lecture rend une empreinte.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug, config, environment]
+              properties:
+                slug:
+                  type: string
+                  maxLength: 64
+                  pattern: '^[a-z0-9][a-z0-9-]*$'
+                preset:
+                  type: string
+                  description: |
+                    `aws`, `r2`, `b2`, `scaleway`, `minio`. De la donnée :
+                    ajouter un service compatible S3 ne demande pas de code.
+                driver:
+                  type: string
+                  description: Requis si aucun préréglage n'est donné.
+                config:
+                  type: object
+                  additionalProperties: true
+                credentials:
+                  type: object
+                  additionalProperties: true
+                  writeOnly: true
+                environment:
+                  type: string
+                  enum: [production, staging, testing, local]
+      responses:
+        '201':
+          description: |
+            Enregistré. `201` même si l'épreuve a échoué : la destination
+            existe, elle ne sert simplement pas encore. Rendre une erreur
+            obligerait à la recréer et laisserait une ligne orpheline à chaque
+            tentative.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Destination'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+
+  /storage/destinations/{destination}/verify:
+    post:
+      tags: [Magasins]
+      summary: Rejouer l'épreuve
+      description: |
+        Rejouée d'office chaque jour. Une clé révoquée chez le fournisseur fait
+        alors basculer la destination en `unverified`, et l'événement
+        `storage.destination.unverified` est publié — avant qu'un client ne le
+        découvre.
+      parameters:
+        - $ref: '#/components/parameters/Destination'
+      responses:
+        '200':
+          description: Le résultat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Destination'
+        '404':
+          $ref: '#/components/responses/Error'
+
+  /storage/destinations/{destination}/credentials:
+    put:
+      tags: [Magasins]
+      summary: Rotation des identifiants
+      description: |
+        L'épreuve tranche **avant** que les anciens identifiants ne soient
+        abandonnés : une rotation ratée ne doit pas couper le service.
+      parameters:
+        - $ref: '#/components/parameters/Destination'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [credentials]
+              properties:
+                credentials:
+                  type: object
+                  additionalProperties: true
+                  writeOnly: true
+      responses:
+        '200':
+          description: Remplacés
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Destination'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+
+  /storage/destinations/{destination}:
+    patch:
+      tags: [Magasins]
+      summary: Changer l'état d'un magasin
+      description: |
+        Il n'existe **pas** de suppression. Une destination qui porte des
+        fichiers ne se supprime pas : la ligne disparue, la base serait la seule
+        à savoir où les octets étaient.
+
+        `read_only` est l'état qui compte : on retire un magasin du service en
+        cessant d'y écrire, jamais en coupant la lecture. Les fichiers déjà
+        posés y sont, et le resteront.
+      parameters:
+        - $ref: '#/components/parameters/Destination'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [active, read_only, disabled]
+      responses:
+        '200':
+          description: Changé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Destination'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    File:
+      name: file
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Destination:
+      name: destination
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Error:
+      description: Erreur normalisée de la plateforme
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success: { type: boolean, example: false }
+              error:
+                type: object
+                properties:
+                  code: { type: string }
+                  message: { type: string }
+                  details: { type: object, additionalProperties: true }
+
+  schemas:
+
+    File:
+      type: object
+      description: |
+        Ni `path`, ni `destination_id`. La clé de l'objet porte l'identifiant
+        d'organisation : la rendre publierait la structure du compartiment et
+        inviterait à deviner celle du voisin.
+      properties:
+        id: { type: string, format: uuid }
+        owner_type: { type: string }
+        owner_id: { type: string }
+        name: { type: string }
+        mime_type:
+          type: [string, 'null']
+          description: Constaté à la confirmation, jamais déclaré.
+        size:
+          type: [integer, 'null']
+          description: Constatée à la confirmation, jamais déclarée.
+        checksum:
+          type: [string, 'null']
+          description: |
+            Absent chez certains magasins. Sert à vérifier une intégrité,
+            jamais à décider d'une issue — aucune règle n'en dépend.
+        status:
+          type: string
+          enum: [pending, ready, deleted]
+          description: |
+            `pending` ne veut pas dire « en cours » : ce module ne sait rien de
+            ce que le client fait de son URL. Il veut dire **on ne sait pas**.
+        retain_until: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+        confirmed_at: { type: [string, 'null'], format: date-time }
+
+    DeclaredFile:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [pending] }
+        upload_url: { type: string, format: uri }
+        upload_method:
+          type: string
+          description: |
+            Ce que le pilote du magasin répond. `proxy` signifie que les octets
+            transitent par la plateforme — mode dégradé, borné à 25 Mo par le
+            pilote lui-même.
+        upload_headers:
+          type: object
+          additionalProperties: { type: string }
+          description: |
+            Contraignants, pas indicatifs : la signature couvre le
+            `Content-Type`, et le magasin refuse ce qui n'y correspond pas.
+        direct_upload: { type: boolean }
+        expires_at: { type: string, format: date-time }
+
+    Destination:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        driver: { type: string }
+        preset: { type: [string, 'null'] }
+        config: { type: object, additionalProperties: true }
+        credential_fingerprint:
+          type: [string, 'null']
+          description: |
+            Quatre derniers caractères et un condensat court. Assez pour
+            reconnaître une clé, jamais assez pour s'en servir.
+        environment: { type: string }
+        status:
+          type: string
+          enum: [unverified, active, read_only, disabled]
+        is_default: { type: boolean }
+        verified_at: { type: [string, 'null'], format: date-time }
+        verification_reason:
+          type: [string, 'null']
+          enum: [credentials_rejected, bucket_missing, write_denied, unreachable, probe_mismatch, null]
+          description: |
+            Une raison d'un jeu fermé, jamais le message brut du fournisseur —
+            une erreur S3 peut porter un identifiant de compte, un ARN, un nom
+            de rôle.
+        files:
+          type: integer
+          description: Fichiers vivants. Tant qu'il y en a, le magasin ne peut pas disparaître.
