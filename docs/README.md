@@ -22,6 +22,8 @@ Sekuu Platform est le socle technique commun de l'écosystème Sekuu : une plate
 | Attacher un **fichier** à un objet | [Storage — intégrer un module](03-services/storage/05-integration.md) |
 | Ajouter un **magasin** — compte S3, R2, Drive | [Storage — destinations](03-services/storage/06-destinations.md) — puis `storage:destination` |
 | Faire stocker un **service externe** | [Storage — API externe](03-services/storage/07-external-api.md) |
+| Faire appel à un **modèle de langage** | [AI — intégrer un module](03-services/ai/06-integration.md) |
+| Apporter sa **propre clé d'IA** | [AI — API externe](03-services/ai/07-external-api.md) |
 | Comprendre un choix d'architecture | [Décisions (ADR)](#04-decisions--décisions-darchitecture) |
 | **Mettre en production** | [Mise en service](06-operations/01-go-live.md) |
 
@@ -67,7 +69,7 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | **Payments** | **Implémenté** — Notch Pay, Tranzak | [vision](03-services/payments/01-overview.md) · [modèle de données](03-services/payments/02-data-model.md) · [API](03-services/payments/03-api.md) · [événements](03-services/payments/04-events.md) · [agrégateurs](03-services/payments/05-providers.md) · [intégrer un module](03-services/payments/06-integration.md) · [**service externe**](03-services/payments/07-external-api.md) · [remboursements](03-services/payments/08-refunds.md) · [contrat OpenAPI](../Modules/Payments/openapi.yaml) |
 | **Billing** | **Implémenté** — abonnements prépayés | [vision](03-services/billing/01-overview.md) · [modèle de données](03-services/billing/02-data-model.md) · [API](03-services/billing/03-api.md) · [événements](03-services/billing/04-events.md) |
 | **Storage** | **Implémenté** — téléversement direct, destinations multiples, PDF de facture | [vision](03-services/storage/01-overview.md) · [modèle de données](03-services/storage/02-data-model.md) · [API](03-services/storage/03-api.md) · [événements](03-services/storage/04-events.md) · [intégrer un module](03-services/storage/05-integration.md) · [**destinations**](03-services/storage/06-destinations.md) · [service externe](03-services/storage/07-external-api.md) |
-| AI | Esquissé dans [architecture.md](01-overview/architecture.md) | — |
+| **AI** | **Spécifié**, non implémenté | [vision](03-services/ai/01-overview.md) · [modèle de données](03-services/ai/02-data-model.md) · [API](03-services/ai/03-api.md) · [événements](03-services/ai/04-events.md) · [**fournisseurs et comptes**](03-services/ai/05-providers.md) · [intégrer un module](03-services/ai/06-integration.md) · [service externe](03-services/ai/07-external-api.md) |
 | Search | À spécifier | — |
 | Analytics | À spécifier | — |
 
@@ -89,6 +91,9 @@ Ces documents sont **normatifs**. Aucun module ne peut y déroger.
 | [ADR-0012](04-decisions/adr-0012-direct-upload.md) | Storage : les octets ne traversent jamais la plateforme |
 | [ADR-0013](04-decisions/adr-0013-invoice-pdf-frozen.md) | Le PDF de facture est produit une fois et figé |
 | [ADR-0014](04-decisions/adr-0014-storage-destinations.md) | Storage : le magasin est une donnée, pas une configuration |
+| [ADR-0015](04-decisions/adr-0015-ai-task-not-model.md) | AI : l'appelant décrit une tâche, jamais un modèle |
+| [ADR-0016](04-decisions/adr-0016-ai-spend-and-privacy.md) | AI : ce que l'IA coûte, et ce qu'elle emporte |
+| [ADR-0017](04-decisions/adr-0017-ai-accounts.md) | AI : le compte est une donnée, et un produit peut apporter le sien |
 
 ### 06-operations — Exploitation
 

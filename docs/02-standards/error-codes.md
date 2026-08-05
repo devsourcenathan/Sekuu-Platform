@@ -289,9 +289,19 @@ fichier, donc il en connaît déjà l'existence. Il n'y a rien à lui apprendre.
 | `MODEL_NOT_AVAILABLE` | 422 | Modèle demandé indisponible |
 | `CONTEXT_LENGTH_EXCEEDED` | 422 | Entrée trop longue pour le modèle |
 | `CONTENT_FLAGGED` | 422 | Contenu rejeté par la modération |
+| `AI_TASK_UNKNOWN` | 422 | Tâche absente du catalogue de la plateforme |
 | `AI_QUOTA_EXCEEDED` | 429 | Crédits IA de l'organisation épuisés |
+| `AI_SPEND_CAP_REACHED` | 429 | Plafond absolu de la plateforme atteint |
+| `AI_ACCOUNT_FORBIDDEN` | 403 | Compte d'IA nommé, mais pas à cet appelant |
+| `AI_ACCOUNT_UNVERIFIED` | 409 | Compte jamais éprouvé, ou retombé en échec |
+| `AI_ACCOUNT_CAP_REACHED` | 429 | Plafond propre au compte atteint |
 | `AI_PROVIDER_ERROR` | 503 | Le fournisseur d'IA est en échec |
 | `AI_PROVIDER_TIMEOUT` | 503 | Le fournisseur d'IA n'a pas répondu à temps |
+
+`AI_SPEND_CAP_REACHED` est distinct d'`AI_QUOTA_EXCEEDED`, et la distinction
+compte : le premier dit « la plateforme s'est protégée », le second « votre plan
+est épuisé ». Le premier n'est pas la faute du client, et l'inviter à passer au
+plan supérieur serait mensonger.
 
 ## 4.8 Search
 
