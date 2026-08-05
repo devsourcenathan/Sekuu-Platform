@@ -245,7 +245,8 @@
                   "pm.collectionVariables.set('access_token', d.access_token);",
                   "pm.collectionVariables.set('refresh_token', d.refresh_token);",
                   "if (d.email_verification_token) pm.collectionVariables.set('verification_token', d.email_verification_token);",
-                  "pm.test('Le mot de passe n\\'est jamais renvoye', () => pm.expect(pm.response.text()).to.not.include(pm.variables.get('password')));"
+                  "pm.test('Le mot de passe n\\'est jamais renvoye', () => pm.expect(pm.response.text()).to.not.include(pm.variables.get('password')));",
+                  "if (d && d.user && d.user.id) pm.environment.set('user_id', d.user.id);"
                 ]
               }
             }
@@ -290,7 +291,8 @@
                   "pm.test('Connecte', () => pm.response.to.have.status(200));",
                   "const d = pm.response.json().data;",
                   "pm.collectionVariables.set('access_token', d.access_token);",
-                  "pm.collectionVariables.set('refresh_token', d.refresh_token);"
+                  "pm.collectionVariables.set('refresh_token', d.refresh_token);",
+                  "if (d && d.user && d.user.id) pm.environment.set('user_id', d.user.id);"
                 ]
               }
             }
@@ -410,7 +412,9 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Profil renvoye', () => pm.response.to.have.status(200));",
-                  "pm.test('Contexte present', () => pm.expect(pm.response.json().data).to.have.property('context'));"
+                  "pm.test('Contexte present', () => pm.expect(pm.response.json().data).to.have.property('context'));",
+                  "const d = pm.response.json().data;",
+                  "if (d && d.user && d.user.id) pm.environment.set('user_id', d.user.id);"
                 ]
               }
             }
@@ -4968,13 +4972,13 @@
     },
     {
       "name": "15 - Storage",
-      "description": "Garder des octets, et controler qui peut les reprendre.\n\n**Aucune route ne rend d'octet.** La plateforme delivre des URL signees vers l'hote du magasin ; les octets ne la traversent jamais.\n\nLe parcours est en trois temps : declarer, ecrire soi-meme sur `upload_url`, confirmer. Le deuxieme temps ne part pas vers `{{base_url}}` — c'est tout l'interet.\n\nLes magasins sont des **donnees** : plusieurs comptes par fournisseur, et un produit peut apporter le sien.",
+      "description": "Garder des octets, et controler qui peut les reprendre.\n\n**Aucune route ne rend d'octet.** La plateforme delivre des URL signees vers l'hote du magasin ; les octets ne la traversent jamais.\n\n### Avant de commencer\n\nUn magasin doit exister, et il se pose **en ligne de commande** — pas ici :\n\n```\nphp artisan storage:destination local --driver=local --root=storage/app/magasin --default\n```\n\nIl n'y a pas de route pour cela : une destination de la plateforme porte les identifiants de nos comptes cloud et sert toutes les organisations. L'exposer reviendrait a confier cette infrastructure a qui detient un jeton d'administration. Le dossier **Magasins** n'administre que les destinations d'un client.\n\n### Le parcours\n\n1. **Declarer** — POST /files, rend une URL d'ecriture\n2. **Ecrire** — PUT vers cette URL, avec un vrai fichier dans l'onglet Body\n3. **Confirmer** — POST /files/{id}/confirm, le magasin tranche\n4. **Lire** — GET /files/{id}/url, une URL signee de dix minutes\n\nLa deuxieme etape ne part pas vers `{{base_url}}`. C'est tout l'interet.",
       "item": [
         {
           "name": "Fichiers",
           "item": [
             {
-              "name": "Declarer un fichier",
+              "name": "Declarer une photo de profil",
               "request": {
                 "method": "POST",
                 "header": [
@@ -5004,10 +5008,10 @@
                     }
                   ]
                 },
-                "description": "Rend un identifiant et une **autorisation d'ecriture**. Aucun octet n'a encore bouge.\n\n`mime_type` et `size` servent a signer une autorisation etroite et a refuser tot ce qui sera de toute facon refuse. Ils **ne font pas foi** : la confirmation interroge le magasin et ecrase ces valeurs.\n\nSuivre `upload_method`, `upload_url` et `upload_headers` sans les interpreter. Un client qui suppose `PUT` casse le jour ou le magasin change, sans que rien ne l'ait prevenu.",
+                "description": "Rend un identifiant et une **autorisation d'ecriture**. Aucun octet n'a encore bouge.\n\n`size` doit correspondre a la taille reelle du fichier que vous allez envoyer — sinon la confirmation le constatera et refusera.\n\n`identity.avatar` est le seul type qu'une **personne** peut deposer aujourd'hui. `billing.invoice` n'accepte que la plateforme : un document depose par un client sur sa propre facture serait indiscernable de celui que nous avons emis, et porterait la meme retention de dix ans.\n\nSuivre `upload_method`, `upload_url` et `upload_headers` sans les interpreter. Un client qui suppose `PUT` casse le jour ou le magasin change, sans que rien ne l'ait prevenu.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"owner_type\": \"billing.invoice\",\n  \"owner_id\": \"{{invoice_id}}\",\n  \"name\": \"piece-jointe.pdf\",\n  \"mime_type\": \"application/pdf\",\n  \"size\": 12345\n}"
+                  "raw": "{\n  \"owner_type\": \"identity.avatar\",\n  \"owner_id\": \"{{user_id}}\",\n  \"name\": \"photo.png\",\n  \"mime_type\": \"image/png\",\n  \"size\": 12345\n}"
                 }
               },
               "response": [],
@@ -5018,11 +5022,44 @@
                     "type": "text/javascript",
                     "exec": [
                       "const d = pm.response.json().data;",
-                      "if (d && d.id) pm.environment.set('file_id', d.id);"
+                      "pm.environment.set('file_id', d.id);",
+                      "pm.environment.set('upload_url', d.upload_url);",
+                      "",
+                      "// L'etape suivante ne part pas vers {{base_url}} : c'est tout l'interet.",
+                      "console.log('Ecrire les octets : ' + d.upload_method + ' ' + d.upload_url);"
                     ]
                   }
                 }
               ]
+            },
+            {
+              "name": "Ecrire les octets (vers le magasin)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "image/png"
+                  }
+                ],
+                "url": {
+                  "raw": "{{upload_url}}",
+                  "host": [
+                    "{{upload_url}}"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "file",
+                  "file": {
+                    "src": ""
+                  }
+                },
+                "description": "**Cette requete ne part pas vers `{{base_url}}`.** Elle va droit au magasin, avec l'URL signee rendue a l'etape precedente.\n\nC'est la decision de fond du module : les octets ne traversent jamais la plateforme. Une video de 200 Mo tuerait le conteneur, le proxy coupe de toute facon a 100 Mo, et le disque du conteneur est ephemere — un fichier ecrit dedans disparaitrait au deploiement suivant, **sans erreur**.\n\nDans l'onglet **Body**, choisir `binary` et selectionner un fichier. Le `Content-Type` doit etre celui declare : la signature le couvre, et le magasin refuse ce qui n'y correspond pas.\n\nAucune authentification : l'URL **est** la capacite, valable pour un objet et quinze minutes."
+              },
+              "response": []
             },
             {
               "name": "Confirmer",
@@ -5052,7 +5089,7 @@
                     }
                   ]
                 },
-                "description": "Le magasin est interroge, et ce qu'il repond **ecrase** ce qui avait ete declare.\n\nTrois issues. L'objet est la et conforme : le fichier devient `ready`. L'objet est absent : `UPLOAD_INCOMPLETE`, et le fichier **reste** `pending` — c'est une incertitude, pas un refus, et l'URL reste valable. L'objet est la mais non conforme : il est efface et le fichier passe `deleted`, parce qu'il s'agit cette fois d'un refus constate.\n\nEntre les deux appels, ecrire les octets soi-meme : `PUT` sur `upload_url`, avec les en-tetes rendus. Postman ne peut pas le faire seul — la requete part vers un autre hote."
+                "description": "Le magasin est interroge, et ce qu'il repond **ecrase** ce qui avait ete declare.\n\nTrois issues. L'objet est la et conforme : le fichier devient `ready`, et la photo devient celle du profil. L'objet est absent : `UPLOAD_INCOMPLETE`, et le fichier **reste** `pending` — c'est une incertitude, pas un refus, et l'URL reste valable. L'objet est la mais non conforme : il est efface et le fichier passe `deleted`.\n\nEssayez de declarer `image/png` puis d'envoyer un fichier texte : la confirmation le verra."
               },
               "response": []
             },
@@ -5125,7 +5162,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{base_url}}/api/v1/files?owner_type=billing.invoice&owner_id={{invoice_id}}",
+                  "raw": "{{base_url}}/api/v1/files?owner_type=identity.avatar&owner_id={{user_id}}",
                   "host": [
                     "{{base_url}}"
                   ],
@@ -5137,11 +5174,11 @@
                   "query": [
                     {
                       "key": "owner_type",
-                      "value": "billing.invoice"
+                      "value": "identity.avatar"
                     },
                     {
                       "key": "owner_id",
-                      "value": "{{invoice_id}}"
+                      "value": "{{user_id}}"
                     }
                   ]
                 },

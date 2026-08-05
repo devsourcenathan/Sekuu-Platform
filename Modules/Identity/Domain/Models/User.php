@@ -32,6 +32,7 @@ final class User extends Model implements AuthenticatableContract
         'email',
         'phone',
         'avatar_url',
+        'avatar_file_id',
         'language',
         'timezone',
     ];

@@ -14,8 +14,8 @@
 | Modules non démarrés | Verify, AI, Search, Analytics |
 | Déploiement | **En ligne** — Render + Neon, `platform.sekuu.com` |
 | Endpoints | 98 sous `/api/v1` + `/.well-known/jwks.json` |
-| Migrations | 35 |
-| Tests | 554, sur PostgreSQL |
+| Migrations | 36 |
+| Tests | 559, sur PostgreSQL |
 | Contrats | `Modules/*/openapi.yaml`, vérifiés par test |
 | Collection de test | `postman/` |
 
@@ -197,6 +197,8 @@ L'invariant de Payments s'y transpose : « seul le propriétaire de l'objet nomm
 **Rien n'est public, et rien n'est permanent.** Les URL de lecture durent dix minutes et pointent vers l'hôte du magasin, jamais vers `sekuu.com` — ce qui neutralise le vecteur principal d'un service de fichiers. Tout ce qui n'est ni image ni PDF est servi en pièce jointe.
 
 **Une destination non éprouvée ne sert jamais.** À l'enregistrement puis chaque nuit : écrire un objet témoin, le relire, l'effacer. Une clé révoquée chez le fournisseur bascule la destination en `unverified` et publie un événement — avant qu'un client ne le découvre.
+
+**Photo de profil** — le premier fichier **déposé par une personne**, et donc le premier usage réel du chemin en trois temps. On ne dépose que sur son propre profil : changer le visage de quelqu'un d'autre n'est pas une opération d'administration, c'est une usurpation. Lisible par ses collègues, et par eux seuls. Le SVG est délibérément absent de la liste des types — un avatar est la seule chose que la plateforme rende **en ligne**, et un SVG est un document qui peut porter du script.
 
 **PDF de facture** — le cas qui a motivé le module. Produit par Billing à l'émission, confié à Storage avec dix ans de rétention, servi par un `302`. **Figé** : régénéré à la demande, il suivrait le code du jour, et la divergence n'apparaîtrait qu'en comparant deux exemplaires du même document ([ADR-0013](04-decisions/adr-0013-invoice-pdf-frozen.md)).
 
