@@ -46,21 +46,37 @@ final class OpenApiContractTest extends TestCase
         return $modules;
     }
 
+    /**
+     * La règle porte sur ce qui **expose des routes**, pas sur l'existence d'un
+     * répertoire.
+     *
+     * Un module en cours de construction — contrats, modèles, pilotes, sans
+     * encore de couche HTTP — n'a rien à documenter. Exiger un contrat de lui
+     * pousserait à en écrire un décrivant des routes inexistantes, que le test
+     * de parité rejetterait ensuite comme fantômes.
+     *
+     * Ce que la règle attrape reste entier : le jour où ce module ajoute un
+     * `Routes/api_v1.php`, il lui faut un contrat.
+     */
     public function test_every_module_ships_a_contract(): void
     {
         $withContract = array_keys(self::modules());
-        $allModules = array_map(
-            static fn (string $path) => strtolower(basename($path)),
-            glob(self::projectPath('Modules/*'), GLOB_ONLYDIR) ?: [],
-        );
+
+        $withRoutes = [];
+
+        foreach (glob(self::projectPath('Modules/*'), GLOB_ONLYDIR) ?: [] as $path) {
+            if (is_dir($path.'/Routes')) {
+                $withRoutes[] = strtolower(basename($path));
+            }
+        }
 
         sort($withContract);
-        sort($allModules);
+        sort($withRoutes);
 
         $this->assertSame(
-            $allModules,
+            $withRoutes,
             $withContract,
-            'Chaque module exposant une API doit fournir un openapi.yaml.',
+            'Chaque module exposant des routes doit fournir un openapi.yaml.',
         );
     }
 

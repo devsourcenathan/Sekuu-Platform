@@ -5,6 +5,7 @@ use Modules\Billing\BillingServiceProvider;
 use Modules\Identity\IdentityServiceProvider;
 use Modules\Notify\NotifyServiceProvider;
 use Modules\Payments\PaymentsServiceProvider;
+use Modules\AI\AiServiceProvider;
 use Modules\Storage\StorageServiceProvider;
 
 return [
@@ -18,6 +19,9 @@ return [
     // confie le PDF de ses factures et s'enregistre dans son registre de
     // propriétaires. Storage ne connaît Billing que par configuration.
     StorageServiceProvider::class,
+
+    // AI ne dépend d'aucun module, et aucun ne dépend encore de lui.
+    AiServiceProvider::class,
 
     // Payments avant Billing : Billing enregistre un objet payable dans le
     // registre de Payments, qui doit donc exister. L'inverse n'est pas vrai —
