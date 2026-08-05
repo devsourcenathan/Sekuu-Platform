@@ -47,6 +47,51 @@ security:
 
 paths:
 
+  /storage/health:
+    get:
+      tags: [Magasins]
+      security: []
+      summary: Les magasins, et lesquels servent
+      description: |
+        La vérification d'avant-vol du module. `can_store` répond à la seule
+        question qui compte : un fichier peut-il être déposé ?
+
+        Publique, comme la santé des agrégateurs de paiement. Sur une
+        installation sans accès shell, c'est le seul moyen de constater qu'une
+        destination est tombée — le journal du démarrage passe, puis disparaît.
+
+        Elle ne dit ni le compartiment, ni le point d'accès, ni le message brut
+        du fournisseur : une erreur S3 peut porter un identifiant de compte, un
+        ARN, un nom de rôle. Seulement une **raison** d'un jeu fermé, qui suffit
+        à agir.
+      responses:
+        '200':
+          description: L'état des magasins
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  can_store: { type: boolean }
+                  destinations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        slug: { type: string }
+                        driver: { type: string }
+                        status:
+                          type: string
+                          enum: [unverified, active, read_only, disabled]
+                        is_default: { type: boolean }
+                        owned_by:
+                          type: string
+                          enum: [platform, tenant]
+                        verified_at: { type: [string, 'null'], format: date-time }
+                        reason:
+                          type: [string, 'null']
+                          enum: [credentials_rejected, bucket_missing, write_denied, unreachable, probe_mismatch, null]
+
   /files:
     post:
       tags: [Fichiers]

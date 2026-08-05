@@ -141,7 +141,26 @@ final class ManageDestinationCommand extends Command
         }
 
         $this->error("[storage] magasin « {$slug} » posé mais NON ÉPREUVÉ — {$destination->verification_reason}.");
-        $this->line('[storage] aucun fichier ne sera déposé. L\'épreuve est rejouée chaque nuit.');
+
+        /*
+         * Le message brut du fournisseur, ici et nulle part ailleurs.
+         *
+         * Il est tenu hors des événements et des réponses d'API — une erreur S3
+         * peut porter un identifiant de compte, un ARN, un nom de rôle. Mais le
+         * journal de démarrage n'est lisible que par l'exploitant, qui est
+         * précisément le propriétaire de ce compte.
+         *
+         * Sans cette ligne, le diagnostic ne vit qu'en base, c'est-à-dire hors
+         * de portée sur une offre sans shell — la seule où ce chemin sert.
+         */
+        foreach (preg_split('/\R/', (string) $destination->verification_error) ?: [] as $ligne) {
+            if (trim($ligne) !== '') {
+                $this->line('[storage]   '.mb_substr(trim($ligne), 0, 300));
+            }
+        }
+
+        $this->line('[storage] aucun fichier ne sera déposé. L\'épreuve est rejouée chaque nuit,');
+        $this->line('[storage] et la destination s\'activera d\'elle-même une fois corrigée.');
 
         return self::SUCCESS;
     }

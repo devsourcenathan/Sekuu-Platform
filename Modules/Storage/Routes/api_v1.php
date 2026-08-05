@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Modules\Storage\Presentation\Http\Controllers\DestinationController;
 use Modules\Storage\Presentation\Http\Controllers\FileController;
+use Modules\Storage\Presentation\Http\Controllers\HealthController;
 
 /*
 |--------------------------------------------------------------------------
@@ -33,6 +34,16 @@ use Modules\Storage\Presentation\Http\Controllers\FileController;
 | L'authentification et le scope sont donc résolus dans le contrôleur, par
 | `ResolvesFileActor`, qui rend `401` en l'absence des deux.
 */
+/*
+| Les magasins, et lesquels servent.
+|
+| Publique, comme `payments/health` : sur une offre sans shell, c'est le seul
+| moyen de savoir qu'une destination est tombée avant qu'un client ne le
+| découvre. Elle ne dit ni le compartiment, ni le point d'accès, ni le message
+| brut du fournisseur.
+*/
+Route::get('storage/health', HealthController::class)->name('health');
+
 Route::post('files', [FileController::class, 'store'])->name('files.store');
 Route::post('files/{file}/confirm', [FileController::class, 'confirm'])->name('files.confirm');
 Route::get('files', [FileController::class, 'index'])->name('files.index');
