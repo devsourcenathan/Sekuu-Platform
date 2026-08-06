@@ -10,8 +10,10 @@ use Modules\AI\Application\Models\ModelDefinition;
 use Modules\AI\Application\Models\ModelRegistry;
 use Modules\AI\Application\Tasks\TaskDefinition;
 use Modules\AI\Application\Tasks\TaskRegistry;
+use Modules\AI\Infrastructure\Console\ListModelsCommand;
 use Modules\AI\Infrastructure\Console\ManageAccountCommand;
 use Modules\AI\Infrastructure\Console\ManageEndpointCommand;
+use Modules\AI\Infrastructure\Console\SweepAiCommand;
 use Modules\AI\Infrastructure\Console\VerifyAccountsCommand;
 use Modules\AI\Infrastructure\Drivers\DriverRegistry;
 
@@ -73,8 +75,10 @@ final class AiServiceProvider extends ModuleServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([
+                ListModelsCommand::class,
                 ManageAccountCommand::class,
                 ManageEndpointCommand::class,
+                SweepAiCommand::class,
                 VerifyAccountsCommand::class,
             ]);
         }
@@ -95,6 +99,22 @@ final class AiServiceProvider extends ModuleServiceProvider
              */
             $schedule->command(VerifyAccountsCommand::class)
                 ->dailyAt('04:30')
+                ->withoutOverlapping()
+                ->onOneServer();
+
+            /*
+             * Toutes les heures, et pas chaque nuit.
+             *
+             * Une génération abandonnée laisse un appelant à sonder une ligne
+             * qui ne bougera plus. Attendre le lendemain pour le lui dire, alors
+             * qu'un travailleur est mort il y a dix minutes, est une journée
+             * pendant laquelle il croit qu'on travaille pour lui.
+             *
+             * L'effacement des contenus expirés voyage avec, et ne coûte rien de
+             * plus : c'est une suppression indexée.
+             */
+            $schedule->command(SweepAiCommand::class)
+                ->hourly()
                 ->withoutOverlapping()
                 ->onOneServer();
         });

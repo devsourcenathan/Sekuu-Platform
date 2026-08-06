@@ -334,4 +334,14 @@ return [
     */
     'delivery_timeout' => 10,
 
+    /*
+    | Au-delà, une génération encore `queued` ou `running` est considérée comme
+    | abandonnée : aucun travailleur ne la reprendra.
+    |
+    | Largement au-dessus du délai de requête (120 s) et de ce qu'une file
+    | chargée peut faire attendre. Trop court conclurait des générations en
+    | cours ; trop long laisse un appelant sonder dans le vide.
+    */
+    'abandoned_after_minutes' => 60,
+
 ];
