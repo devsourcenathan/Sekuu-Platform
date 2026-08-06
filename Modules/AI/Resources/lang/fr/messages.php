@@ -19,6 +19,7 @@ return [
     'environment_mismatch' => 'Un compte déclaré « :declared » ne peut pas être posé depuis « :running ».',
     'rotation_rejected' => "La nouvelle clé n'a pas réussi l'épreuve. L'ancienne reste en service.",
 
+    'generation_not_found' => "Cette génération n'existe pas.",
     'account_not_found' => "Ce compte n'existe pas.",
     'account_forbidden' => "Ce compte n'est pas le vôtre.",
     'account_unverified' => "Le compte « :slug » n'a pas réussi l'épreuve.",

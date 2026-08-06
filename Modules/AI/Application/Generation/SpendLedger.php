@@ -38,7 +38,13 @@ final class SpendLedger
 {
     public const QUOTA_KEY = 'ai_credits_monthly';
 
-    public function __construct(private readonly BillingContract $billing) {}
+    /** 80 % puis 100 % : prévenir, puis constater. */
+    private const THRESHOLDS = [0.8, 1.0];
+
+    public function __construct(
+        private readonly BillingContract $billing,
+        private readonly AnnounceOutcome $announce,
+    ) {}
 
     /**
      * Les trois bornes, avant l'appel.
@@ -166,6 +172,7 @@ final class SpendLedger
 
         $column = $account->belongsToPlatform() ? 'cost_micros' : 'cost_micros_byo';
         $period = $this->period();
+        $before = $this->spentThisMonth($organizationId);
 
         /*
          * Deux temps, et pas un `upsert` porteur de valeur.
@@ -196,6 +203,57 @@ final class SpendLedger
                 'generations' => DB::raw('generations + 1'),
                 'updated_at' => now(),
             ]);
+
+        $this->announceThreshold($organizationId, $account, $before);
+    }
+
+    /**
+     * Annoncer un seuil **au moment où il est franchi**, et une seule fois.
+     *
+     * ## Pourquoi comparer un avant et un après
+     *
+     * Annoncer « au-delà de 80 % » produirait un message à chaque génération
+     * jusqu'à la fin du mois. Le produit apprendrait à les ignorer, et ignorerait
+     * aussi celui des 100 %.
+     *
+     * Le franchissement, lui, n'arrive qu'une fois par seuil et par mois : la
+     * comparaison porte sur la dépense d'avant et celle d'après, pas sur un
+     * état.
+     *
+     * ## Seulement sur nos comptes
+     *
+     * Ce qu'un client dépense sur sa propre clé ne consomme pas ses crédits.
+     * Lui annoncer un seuil qu'il n'approche pas serait une fausse alerte, et
+     * une fausse alerte coûte la crédibilité des vraies.
+     */
+    private function announceThreshold(string $organizationId, AiAccount $account, int $before): void
+    {
+        if (! $account->belongsToPlatform()) {
+            return;
+        }
+
+        $limit = $this->billing->limit($organizationId, self::QUOTA_KEY);
+
+        if (! $limit->covered || $limit->isUnlimited() || (int) $limit->value <= 0) {
+            return;
+        }
+
+        $credits = (int) $limit->value;
+        $after = $this->spentThisMonth($organizationId);
+
+        foreach (self::THRESHOLDS as $threshold) {
+            $mark = (int) ceil($credits * $threshold);
+
+            if ($before < $mark && $after >= $mark) {
+                $this->announce->handle($organizationId, AnnounceOutcome::THRESHOLD, [
+                    'period' => $this->period(),
+                    'threshold' => $threshold,
+                    'credits' => $credits,
+                    'used' => $after,
+                    'remaining' => max(0, $credits - $after),
+                ]);
+            }
+        }
     }
 
     /**

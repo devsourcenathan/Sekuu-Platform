@@ -11,6 +11,7 @@ use Modules\AI\Application\Models\ModelRegistry;
 use Modules\AI\Application\Tasks\TaskDefinition;
 use Modules\AI\Application\Tasks\TaskRegistry;
 use Modules\AI\Infrastructure\Console\ManageAccountCommand;
+use Modules\AI\Infrastructure\Console\ManageEndpointCommand;
 use Modules\AI\Infrastructure\Console\VerifyAccountsCommand;
 use Modules\AI\Infrastructure\Drivers\DriverRegistry;
 
@@ -73,6 +74,7 @@ final class AiServiceProvider extends ModuleServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 ManageAccountCommand::class,
+                ManageEndpointCommand::class,
                 VerifyAccountsCommand::class,
             ]);
         }

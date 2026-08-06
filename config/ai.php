@@ -328,4 +328,10 @@ return [
     */
     'output_window_hours' => 24,
 
+    /*
+    | Délai d'une livraison sortante. Court : un produit lent ne doit pas
+    | occuper un travailleur, et la file réessaiera.
+    */
+    'delivery_timeout' => 10,
+
 ];

@@ -49,9 +49,90 @@ final class RunTask
         private readonly DriverRegistry $drivers,
         private readonly SpendLedger $ledger,
         private readonly ComposePrompt $prompts,
+        private readonly AnnounceOutcome $announce,
     ) {}
 
     public function handle(TaskRequest $request): AiGeneration
+    {
+        $earlier = $this->alreadyRun($request);
+
+        if ($earlier !== null) {
+            return $earlier;
+        }
+
+        [$task, $prompt, $accounts] = $this->prepare($request);
+
+        $generation = $this->open($task, $request, $prompt, AiGeneration::RUNNING);
+
+        return $this->attempt($generation, $task, $request, $prompt, $accounts);
+    }
+
+    /**
+     * Ouvrir la demande, et rendre la main.
+     *
+     * ## Toutes les gardes sont passées **ici**, pas dans le travailleur
+     *
+     * Un quota épuisé, une tâche hors périmètre ou une entrée trop longue
+     * doivent être dites à l'appelant pendant qu'il écoute. Les découvrir dans
+     * la file lui rendrait un `202` suivi d'un échec qu'il n'apprendra que par
+     * un sondage — c'est-à-dire une erreur de sa requête déguisée en panne de la
+     * nôtre.
+     *
+     * Ce qui reste au travailleur est le seul geste qui prend du temps :
+     * l'appel au fournisseur.
+     */
+    public function queue(TaskRequest $request): AiGeneration
+    {
+        $earlier = $this->alreadyRun($request);
+
+        if ($earlier !== null) {
+            return $earlier;
+        }
+
+        [$task, $prompt] = $this->prepare($request);
+
+        $generation = $this->open($task, $request, $prompt, AiGeneration::QUEUED);
+
+        // `afterCommit` : sans lui, un travailleur peut lire la ligne avant que
+        // la transaction ne soit validée, et ne rien trouver.
+        RunTaskJob::dispatch((string) $generation->id, $request)->afterCommit();
+
+        return $generation;
+    }
+
+    /**
+     * Reprendre une demande enfilée.
+     *
+     * Les comptes sont **résolus à nouveau**, et c'est délibéré : entre
+     * l'ouverture et l'exécution, une clé a pu être révoquée ou un compte mis en
+     * pause. Partir sur la liste d'il y a dix minutes enverrait la génération
+     * chez un fournisseur dont on sait déjà qu'il ne répond plus.
+     */
+    public function resume(string $generationId, TaskRequest $request): void
+    {
+        $generation = AiGeneration::query()->find($generationId);
+
+        // Annulée entre-temps, ou déjà reprise par un autre travailleur.
+        if ($generation === null || $generation->status !== AiGeneration::QUEUED) {
+            return;
+        }
+
+        [$task, $prompt, $accounts] = $this->prepare($request);
+
+        $generation->forceFill([
+            'status' => AiGeneration::RUNNING,
+            'started_at' => now(),
+        ])->save();
+
+        $this->attempt($generation, $task, $request, $prompt, $accounts);
+    }
+
+    /**
+     * Ce qui se vérifie avant tout appel, et dans cet ordre.
+     *
+     * @return array{0: TaskDefinition, 1: string, 2: list<AiAccount>}
+     */
+    private function prepare(TaskRequest $request): array
     {
         $task = $this->tasks->get($request->task);
 
@@ -63,12 +144,6 @@ final class RunTask
         }
 
         $prompt = $this->prompts->handle($request->inputs);
-
-        $earlier = $this->alreadyRun($request);
-
-        if ($earlier !== null) {
-            return $earlier;
-        }
 
         $accounts = $this->accounts->handle($task->name, $request->actor, $request->account);
 
@@ -90,9 +165,7 @@ final class RunTask
         $this->ledger->assertMayRun($accounts[0], $request->actor->organizationId);
         $this->assertInputFits($task, $prompt);
 
-        $generation = $this->open($task, $request, $prompt);
-
-        return $this->attempt($generation, $task, $request, $prompt, $accounts);
+        return [$task, $prompt, $accounts];
     }
 
     /**
@@ -147,12 +220,12 @@ final class RunTask
      * meurt entre l'envoi et la réponse — sans quoi une génération payée chez le
      * fournisseur n'existerait nulle part chez nous.
      */
-    private function open(TaskDefinition $task, TaskRequest $request, string $prompt): AiGeneration
+    private function open(TaskDefinition $task, TaskRequest $request, string $prompt, string $status): AiGeneration
     {
         $attributes = [
             'organization_id' => $request->actor->organizationId,
             'task' => $task->name,
-            'status' => AiGeneration::RUNNING,
+            'status' => $status,
 
             /*
              * L'empreinte, jamais l'entrée.
@@ -166,7 +239,10 @@ final class RunTask
             'requested_by' => $request->actor->id,
             'requested_via' => $request->actor->type,
             'idempotency_key' => $request->idempotencyKey,
-            'started_at' => now(),
+
+            // Une demande enfilée n'a pas commencé : l'horodater ici rendrait
+            // toute mesure de latence dépendante de la profondeur de la file.
+            'started_at' => $status === AiGeneration::QUEUED ? null : now(),
         ];
 
         try {
@@ -386,12 +462,23 @@ final class RunTask
             'verification_error' => mb_substr($e->getMessage(), 0, 2000),
         ])->save();
 
-        Event::dispatch(new DomainEvent('ai.account.unverified', [
+        Event::dispatch(new DomainEvent(AnnounceOutcome::ACCOUNT_UNVERIFIED, [
             'account_id' => (string) $account->id,
             'slug' => (string) $account->slug,
             'reason' => $reason,
             'since' => now()->toIso8601String(),
         ]));
+
+        /*
+         * Livré **au propriétaire du compte**, donc à personne si c'est le
+         * nôtre : une clé de la plateforme qui tombe est notre affaire, pas
+         * celle d'un client.
+         */
+        $this->announce->handle($account->owner_organization_id, AnnounceOutcome::ACCOUNT_UNVERIFIED, [
+            'account' => (string) $account->slug,
+            'reason' => $reason,
+            'since' => now()->toIso8601ZuluString(),
+        ]);
     }
 
     private function succeed(
@@ -428,13 +515,33 @@ final class RunTask
         $this->ledger->record($generation->organization_id, $account, $cost);
         $this->retain($generation, $task, $prompt, $result->output);
 
-        Event::dispatch(new DomainEvent('ai.generation.succeeded', [
+        Event::dispatch(new DomainEvent(AnnounceOutcome::SUCCEEDED, [
             'generation_id' => (string) $generation->id,
             'organization_id' => $generation->organization_id,
             'task' => $task->name,
             'model' => $model->id,
             'cost_micros' => $cost,
         ]));
+
+        /*
+         * La charge utile ne porte **ni le prompt ni la sortie**.
+         *
+         * Un webhook part vers une URL déclarée par le produit, en clair sur le
+         * réseau public. Y mettre le contenu reviendrait à publier ce que
+         * l'ADR-0016 refuse de stocker. Le produit apprend qu'une sortie
+         * l'attend, et vient la chercher authentifié.
+         */
+        $this->announce->handle($generation->organization_id, AnnounceOutcome::SUCCEEDED, [
+            'generation_id' => (string) $generation->id,
+            'task' => $task->name,
+            'status' => AiGeneration::SUCCEEDED,
+            'usage' => [
+                'input_tokens' => $result->inputTokens,
+                'output_tokens' => $result->outputTokens,
+                'cost_micros' => $cost,
+                'estimated' => $account->costIsEstimated(),
+            ],
+        ], (string) $generation->id);
 
         return $generation->refresh();
     }
@@ -482,13 +589,24 @@ final class RunTask
             $this->ledger->record($generation->organization_id, $account, $cost);
         }
 
-        Event::dispatch(new DomainEvent('ai.generation.failed', [
+        Event::dispatch(new DomainEvent(AnnounceOutcome::FAILED, [
             'generation_id' => (string) $generation->id,
             'organization_id' => $generation->organization_id,
             'task' => (string) $generation->task,
             'failure_code' => $e->errorCode,
             'attempts' => $attempts,
         ]));
+
+        $this->announce->handle($generation->organization_id, AnnounceOutcome::FAILED, [
+            'generation_id' => (string) $generation->id,
+            'task' => (string) $generation->task,
+            'status' => AiGeneration::FAILED,
+            'failure_code' => $e->errorCode,
+
+            // Le message brut du fournisseur reste en base : il peut porter un
+            // identifiant d'organisation ou un nom de déploiement.
+            'attempts' => $attempts,
+        ], (string) $generation->id);
 
         return $generation->refresh();
     }

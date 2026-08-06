@@ -19,6 +19,7 @@ return [
     'environment_mismatch' => 'An account declared ":declared" cannot be registered from ":running".',
     'rotation_rejected' => 'The new key failed the probe. The previous one stays in service.',
 
+    'generation_not_found' => 'This generation does not exist.',
     'account_not_found' => 'This account does not exist.',
     'account_forbidden' => 'This account is not yours.',
     'account_unverified' => 'The account ":slug" has not passed the probe.',
