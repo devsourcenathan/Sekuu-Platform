@@ -360,6 +360,18 @@ Ils méritent d'être mentionnés parce qu'ils étaient invisibles à la lecture
 
 ---
 
+# 6bis. Construire un produit sur la plateforme
+
+Un produit **maison** — DealerOS, Sekuu Stock, ClinicFlow — n'a pas de table `users`. Il vérifie un jeton Sekuu hors ligne contre le JWKS public, lit `org` pour cloisonner ses données, et son contrôle d'abonnement tient en une ligne : `products` contient-il son slug ?
+
+Le guide est [`identity/04-integrer-un-produit.md`](03-services/identity/04-integrer-un-produit.md). Deux points y sont dits franchement plutôt que tus :
+
+**Il n'existe pas de « Se connecter avec Sekuu ».** L'interface d'un produit appelle `/auth/login` et voit donc le mot de passe. Acceptable entre produits du même éditeur, jamais au-delà — c'est ce que le flux délégué existe pour éviter, et l'[analyse](05-analyses/identity-comme-fournisseur.md) dit ce qu'il coûterait.
+
+**La révocation a quinze minutes de retard**, soit la durée de vie du jeton. C'est le prix d'une vérification hors ligne, et allonger le jeton allongerait la fenêtre d'exposition.
+
+---
+
 # 7. Utiliser l'API
 
 Le dossier **16 — Plateforme (opérateur)** est à part : ses routes ne s'adressent pas à une organisation mais à Sekuu, et exigent une habilitation posée par `identity:operator` — jamais par une route.
