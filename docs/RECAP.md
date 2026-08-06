@@ -432,18 +432,29 @@ Les trois premiers sont désormais verrouillés par des tests.
 
 ## 8.1.1 Ce qui reste avant un vrai client
 
-* **Faire pointer les callbacks sur la production.** Le code est fait et
-  **éprouvé contre les deux agrégateurs** (§2.4) — mais à travers un tunnel
-  public, donc vers une machine de développement. Ce qui reste est la
-  configuration : l'URL `https://platform.sekuu.com/api/v1/payments/webhooks/{provider}`
-  dans les deux tableaux de bord, et `NOTCHPAY_WEBHOOK_HASH` / `TRANZAK_AUTH_KEY`
-  dans l'environnement Render.
+* ~~Faire pointer les callbacks sur la production~~ — **fait.** Les deux
+  tableaux de bord pointent sur
+  `https://platform.sekuu.com/api/v1/payments/webhooks/{provider}`, et
+  `NOTCHPAY_WEBHOOK_HASH` / `TRANZAK_AUTH_KEY` sont posés sur Render.
 
-  Sans le secret, la vérification **refuse par défaut** — une variable oubliée ne
-  fait pas une porte ouverte. Mais le refus est silencieux du point de vue de
-  l'exploitant : rien ne distingue « secret absent » de « callback jamais
-  déclaré », et dans les deux cas c'est la réconciliation qui rattrape, plus
-  lentement. Voir la dette ci-dessous.
+  L'épreuve de §2.4 s'était faite à travers un tunnel public, donc vers une
+  machine de développement : c'est la configuration de production qui manquait,
+  pas le code.
+
+  **Ce qui se vérifie, et où.** `provider_events` garde chaque callback reçu avec
+  son `signature_valid` et son `received_at`. Une ligne de SQL dit donc si les
+  callbacks arrivent réellement, et s'ils sont acceptés :
+
+  ```sql
+  select provider, count(*) as recus,
+         count(*) filter (where signature_valid) as acceptes,
+         max(received_at) as dernier
+  from provider_events group by provider;
+  ```
+
+  Zéro ligne pour un fournisseur signifie qu'aucun callback n'est jamais arrivé.
+  Des lignes avec `signature_valid` à faux signifient que le secret ne
+  correspond pas — deux causes que rien d'autre ne distingue.
 * ~~Le premier paiement réel~~ — **fait**, et le remboursement avec.
 
   Le parcours complet a été exercé en production : invite reçue et validée,
@@ -491,12 +502,12 @@ Le canal WhatsApp reste le plus attendu au Cameroun ; il suppose un compte Busin
 
 ## 8.3 Dette identifiée
 
-* `payments/health` dit `can_collect` — les clés d'API sont là — mais rien sur
-  les **secrets de callback**. Storage et AI ont appris à publier ce qu'ils
-  savent faire ; Payments n'a pas encore rattrapé, et c'est précisément le
-  module où l'ignorance coûte le plus. Sur une offre sans shell, il n'existe
-  aujourd'hui aucun moyen de savoir si les callbacks seront acceptés avant qu'un
-  vrai paiement ne le démontre.
+* `payments/health` dit `can_collect` — les clés d'API sont là — mais rien des
+  callbacks. La preuve existe dans `provider_events` ; elle demande un accès à la
+  base, que l'offre gratuite ne donne pas. Publier `last_callback_at` par
+  fournisseur dirait la seule chose qui compte : **les callbacks arrivent-ils
+  encore ?** — ce qu'un contrôle de configuration ne dirait pas, un secret posé
+  n'étant pas un secret juste.
 * Aucun endpoint de listing des rôles globaux — la collection Postman doit lire l'identifiant en base.
 * `GET /users` et `PATCH /users/{id}` sont spécifiés mais pas implémentés.
 * Pas de MFA ni de passkeys — prévus au modèle, non développés.
