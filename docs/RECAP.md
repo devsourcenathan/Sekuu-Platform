@@ -432,9 +432,18 @@ Les trois premiers sont désormais verrouillés par des tests.
 
 ## 8.1.1 Ce qui reste avant un vrai client
 
-* **Les URL de callback** dans les tableaux de bord Notch Pay et Tranzak, avec
-  `TRANZAK_AUTH_KEY` et `NOTCHPAY_WEBHOOK_HASH`. Sans ces secrets, aucun
-  callback n'est accepté — la réconciliation rattrape, plus lentement.
+* **Faire pointer les callbacks sur la production.** Le code est fait et
+  **éprouvé contre les deux agrégateurs** (§2.4) — mais à travers un tunnel
+  public, donc vers une machine de développement. Ce qui reste est la
+  configuration : l'URL `https://platform.sekuu.com/api/v1/payments/webhooks/{provider}`
+  dans les deux tableaux de bord, et `NOTCHPAY_WEBHOOK_HASH` / `TRANZAK_AUTH_KEY`
+  dans l'environnement Render.
+
+  Sans le secret, la vérification **refuse par défaut** — une variable oubliée ne
+  fait pas une porte ouverte. Mais le refus est silencieux du point de vue de
+  l'exploitant : rien ne distingue « secret absent » de « callback jamais
+  déclaré », et dans les deux cas c'est la réconciliation qui rattrape, plus
+  lentement. Voir la dette ci-dessous.
 * ~~Le premier paiement réel~~ — **fait**, et le remboursement avec.
 
   Le parcours complet a été exercé en production : invite reçue et validée,
@@ -482,6 +491,12 @@ Le canal WhatsApp reste le plus attendu au Cameroun ; il suppose un compte Busin
 
 ## 8.3 Dette identifiée
 
+* `payments/health` dit `can_collect` — les clés d'API sont là — mais rien sur
+  les **secrets de callback**. Storage et AI ont appris à publier ce qu'ils
+  savent faire ; Payments n'a pas encore rattrapé, et c'est précisément le
+  module où l'ignorance coûte le plus. Sur une offre sans shell, il n'existe
+  aujourd'hui aucun moyen de savoir si les callbacks seront acceptés avant qu'un
+  vrai paiement ne le démontre.
 * Aucun endpoint de listing des rôles globaux — la collection Postman doit lire l'identifiant en base.
 * `GET /users` et `PATCH /users/{id}` sont spécifiés mais pas implémentés.
 * Pas de MFA ni de passkeys — prévus au modèle, non développés.
