@@ -29,5 +29,7 @@ return [
     'spend_cap_reached' => "La plateforme a atteint son plafond de dépense. Ce n'est pas votre faute.",
     'context_too_long' => "L'entrée dépasse ce que cette tâche accepte (:max jetons).",
     'provider_error' => "Aucun fournisseur n'a pu répondre.",
+    'output_invalid' => "Le modèle n'a pas rendu la forme attendue, deux fois de suite.",
+    'content_refused' => 'Le fournisseur a refusé cette demande.',
 
 ];

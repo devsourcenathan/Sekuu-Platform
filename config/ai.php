@@ -293,11 +293,21 @@ return [
     | Il ne remplace pas le quota du plan, et le quota ne le remplace pas — même
     | coexistence que `ChannelQuota` et `SpendGuard` côté Notify.
     |
-    | En millionièmes d'unité. 25 000 XAF ≈ 25 000 000 000.
+    | ## L'unité est le millionième de **dollar**
+    |
+    | Les fournisseurs publient leurs tarifs en dollars par million de jetons, et
+    | c'est en dollars qu'ils facturent. Convertir en francs à l'écriture
+    | figerait un taux de change dans un registre scellé, et le total d'un mois
+    | mêlerait des taux différents selon le jour de l'appel.
+    |
+    | La conversion en XAF appartiendra à Billing le jour où une facturation à
+    | l'usage sera décidée — avec un taux daté, qui est une décision commerciale.
+    |
+    | 100 000 000 = 100 $ par mois, toutes organisations confondues.
     |
     */
 
-    'spend_cap_micros' => (int) env('AI_SPEND_CAP_MICROS', 25_000_000_000),
+    'spend_cap_micros' => (int) env('AI_SPEND_CAP_MICROS', 100_000_000),
 
     /*
     |--------------------------------------------------------------------------
@@ -308,5 +318,14 @@ return [
     'request_timeout' => 120,
     'sync_deadline' => 25,
     'probe_daily' => true,
+
+    /*
+    | Combien de temps une sortie **non conservée** reste lisible.
+    |
+    | Assez pour qu'un sondage la trouve et qu'une clé d'idempotence rejouée la
+    | rende ; pas assez pour constituer un registre. Elle est de toute façon
+    | effacée à la première lecture.
+    */
+    'output_window_hours' => 24,
 
 ];

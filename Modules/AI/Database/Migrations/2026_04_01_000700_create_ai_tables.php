@@ -88,9 +88,17 @@ return new class extends Migration
             $table->integer('input_tokens')->nullable();
             $table->integer('output_tokens')->nullable();
 
-            // En millionièmes d'unité : un appel coûte des fractions de franc,
-            // et le franc CFA n'a pas de subdivision. `null` = prix inconnu,
-            // distinct de zéro.
+            /*
+             * En millionièmes de **dollar** — la monnaie dans laquelle les
+             * fournisseurs publient leurs tarifs et facturent.
+             *
+             * Convertir en francs ici figerait un taux de change dans un
+             * registre scellé, et le total d'un mois mêlerait autant de taux que
+             * de jours. La conversion appartient à Billing, avec un taux daté.
+             *
+             * `null` = prix inconnu, distinct de zéro : un modèle auto-hébergé
+             * ne coûte pas par jeton mais par heure de machine.
+             */
             $table->bigInteger('cost_micros')->nullable();
 
             // Vrai sur le compte d'un tiers : notre calcul suit les prix

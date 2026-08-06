@@ -29,5 +29,7 @@ return [
     'spend_cap_reached' => 'The platform reached its spending cap. This is not your fault.',
     'context_too_long' => 'The input exceeds what this task accepts (:max tokens).',
     'provider_error' => 'No provider was able to answer.',
+    'output_invalid' => 'The model did not return the expected shape, twice in a row.',
+    'content_refused' => 'The provider refused this request.',
 
 ];

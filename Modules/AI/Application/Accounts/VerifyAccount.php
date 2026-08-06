@@ -41,6 +41,17 @@ final class VerifyAccount
     public const MODEL_UNAVAILABLE = 'model_unavailable';
 
     /**
+     * Un compte parfaitement valide dont le crédit chez le fournisseur est
+     * épuisé.
+     *
+     * Ni une erreur d'identifiants, ni une panne — et la confusion enverrait
+     * régénérer une clé qui n'a rien de cassé. Contrairement à un débit trop
+     * rapide, celui-ci sort le compte du service : il ne servira plus tant que
+     * personne n'aura payé.
+     */
+    public const QUOTA_EXHAUSTED = 'quota_exhausted';
+
+    /**
      * Le fournisseur a répondu, et il a dit « pas maintenant ».
      *
      * Ce n'est **pas** un échec du compte, et c'est toute la différence avec les
@@ -147,6 +158,7 @@ final class VerifyAccount
                 'AI_CREDENTIALS_REJECTED' => self::CREDENTIALS_REJECTED,
                 'AI_MODEL_UNAVAILABLE' => self::MODEL_UNAVAILABLE,
                 'AI_RATE_LIMITED' => self::RATE_LIMITED,
+                'AI_CREDIT_EXHAUSTED' => self::QUOTA_EXHAUSTED,
                 default => self::UNREACHABLE,
             };
         }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Infrastructure\Drivers;
 
 use App\Platform\Exceptions\DomainException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Modules\AI\Domain\Models\AiAccount;
 
@@ -57,7 +58,11 @@ final class OpenAiDriver implements AiDriver
             $corps['response_format'] = ['type' => 'json_object'];
         }
 
-        $reponse = $this->client($account)->post('/chat/completions', $corps);
+        try {
+            $reponse = $this->client($account)->post('/chat/completions', $corps);
+        } catch (ConnectionException $e) {
+            throw ProviderFailure::from($e);
+        }
 
         if ($reponse->failed()) {
             throw $this->failure($reponse->status(), (string) $reponse->body());
@@ -152,8 +157,27 @@ final class OpenAiDriver implements AiDriver
 
         return match (true) {
             in_array($status, [401, 403], true) => new DomainException('AI_CREDENTIALS_REJECTED', $message, 503),
+
+            /*
+             * Le crédit est épuisé — à distinguer d'un simple débit trop
+             * rapide, qui porte souvent le même statut. L'un se résout en
+             * quelques secondes, l'autre demande une carte bancaire.
+             */
+            $status === 402, ProviderFailure::looksLikeExhaustedCredit($message) => new DomainException('AI_CREDIT_EXHAUSTED', $message, 503),
+
             $status === 429 => new DomainException('AI_RATE_LIMITED', $message, 503),
             $status === 404 => new DomainException('AI_MODEL_UNAVAILABLE', $message, 503),
+
+            /*
+             * Un refus de modération.
+             *
+             * Il ne se réessaie **nulle part** : contourné en changeant de
+             * fournisseur, ce serait un contournement réussi — et personne n'en
+             * veut, ni nous, ni le fournisseur, ni le client le jour où cela se
+             * sait.
+             */
+            $status === 400 && ProviderFailure::looksLikeModeration($message) => new DomainException('CONTENT_FLAGGED', $message, 422),
+
             default => new DomainException('AI_PROVIDER_ERROR', $message, 503),
         };
     }

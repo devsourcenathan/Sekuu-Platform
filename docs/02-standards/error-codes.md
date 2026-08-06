@@ -298,6 +298,20 @@ fichier, donc il en connaît déjà l'existence. Il n'y a rien à lui apprendre.
 | `AI_ACCOUNT_CAP_REACHED` | 429 | Plafond propre au compte atteint |
 | `AI_PROVIDER_ERROR` | 503 | Le fournisseur d'IA est en échec |
 | `AI_PROVIDER_TIMEOUT` | 503 | Le fournisseur d'IA n'a pas répondu à temps |
+| `AI_PROVIDER_UNREACHABLE` | 503 | Aucune connexion établie — DNS, refus, certificat |
+| `AI_TASK_OUT_OF_SCOPE` | 403 | Tâche connue, mais hors de la liste blanche de la clé |
+| `AI_OUTPUT_INVALID` | 502 | Sortie hors schéma, deux fois de suite |
+| `AI_CREDENTIALS_REJECTED` | 503 | Clé refusée par le fournisseur |
+| `AI_CREDIT_EXHAUSTED` | 503 | Crédit du compte épuisé **chez le fournisseur** |
+| `AI_RATE_LIMITED` | 503 | Débit refusé par le fournisseur |
+| `AI_ACCOUNT_NOT_FOUND` | 404 | Compte nommé inexistant |
+| `AI_DRIVER_UNKNOWN` | 422 | Pilote ou préréglage inconnu |
+
+`AI_CREDIT_EXHAUSTED` est distinct d'`AI_RATE_LIMITED` alors que les
+fournisseurs rendent souvent le même statut pour les deux. Les confondre fait
+réessayer indéfiniment chez un compte à sec, et envoie régénérer une clé qui n'a
+rien de cassé : l'un se résout en quelques secondes, l'autre demande une carte
+bancaire.
 
 `AI_SPEND_CAP_REACHED` est distinct d'`AI_QUOTA_EXCEEDED`, et la distinction
 compte : le premier dit « la plateforme s'est protégée », le second « votre plan

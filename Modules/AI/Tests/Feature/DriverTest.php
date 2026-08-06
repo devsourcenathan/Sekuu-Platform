@@ -6,10 +6,12 @@ namespace Modules\AI\Tests\Feature;
 
 use App\Platform\Exceptions\DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Modules\AI\Domain\Models\AiAccount;
 use Modules\AI\Infrastructure\Drivers\DriverRegistry;
 use Modules\AI\Infrastructure\Drivers\GenerationRequest;
+use Modules\AI\Infrastructure\Drivers\ProviderFailure;
 use Tests\TestCase;
 
 /**
@@ -199,6 +201,39 @@ final class DriverTest extends TestCase
             } catch (DomainException $e) {
                 $this->assertSame($attendu, $e->errorCode, "Statut {$statut}");
             }
+        }
+    }
+
+    /**
+     * **La distinction dont dépend toute la règle de bascule.**
+     *
+     * Laravel lève la même `ConnectionException` pour deux faits opposés : le
+     * serveur n'a jamais répondu, ou le délai a expiré en attendant sa réponse.
+     * Dans le premier cas rien n'est facturé et on peut aller ailleurs ; dans le
+     * second les jetons sont consommés, et réessayer paie deux fois.
+     *
+     * Le doute penche vers « c'est arrivé » : se tromper dans ce sens coûte une
+     * génération, dans l'autre il coûte de l'argent et rend une réponse
+     * différente de celle qui arrivait.
+     */
+    public function test_a_transport_failure_says_whether_the_request_arrived(): void
+    {
+        $cas = [
+            'cURL error 6: Could not resolve host: api.exemple.cm' => 'AI_PROVIDER_UNREACHABLE',
+            'cURL error 7: Failed to connect to api.exemple.cm port 443' => 'AI_PROVIDER_UNREACHABLE',
+            'cURL error 35: SSL connect error' => 'AI_PROVIDER_UNREACHABLE',
+
+            // Le délai, et tout ce qu'on ne sait pas lire.
+            'cURL error 28: Operation timed out after 120000 milliseconds' => 'AI_PROVIDER_TIMEOUT',
+            'quelque chose que personne n\'a prévu' => 'AI_PROVIDER_TIMEOUT',
+        ];
+
+        foreach ($cas as $message => $attendu) {
+            $this->assertSame(
+                $attendu,
+                ProviderFailure::from(new ConnectionException($message))->errorCode,
+                $message,
+            );
         }
     }
 
