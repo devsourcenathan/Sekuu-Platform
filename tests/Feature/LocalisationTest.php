@@ -6,6 +6,7 @@ namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Lang;
 use Modules\Identity\Domain\Models\User;
 use Tests\TestCase;
 
@@ -165,6 +166,47 @@ final class LocalisationTest extends TestCase
         }
 
         $this->assertSame([], $missing, "Traductions incomplètes :\n".implode("\n", $missing));
+    }
+
+    /**
+     * **Toute clé citée dans le code doit exister.**
+     *
+     * ## Le défaut que ce test attrape, et qui existait vraiment
+     *
+     * Le test précédent compare les langues entre elles : deux fichiers
+     * cohérents mais tous deux incomplets le satisfont. Deux clés d'AI —
+     * `already_started` et `activate_unverified` — étaient citées par un
+     * contrôleur et absentes des deux langues.
+     *
+     * Rien ne l'a signalé, parce que Laravel rend la clé brute quand la
+     * traduction manque, et que le test d'API n'assertait que le code d'erreur.
+     * Un client aurait reçu `ai::messages.already_started` en guise de phrase.
+     */
+    public function test_every_key_the_code_cites_actually_exists(): void
+    {
+        $missing = [];
+
+        foreach (File::allFiles(base_path('Modules')) as $file) {
+            if ($file->getExtension() !== 'php' || str_contains($file->getPathname(), 'Tests')) {
+                continue;
+            }
+
+            preg_match_all("/__\('([a-z]+)::messages\.([a-z0-9_]+)'/", $file->getContents(), $matches, PREG_SET_ORDER);
+
+            foreach ($matches as [, $namespace, $key]) {
+                if (! Lang::has("{$namespace}::messages.{$key}", 'fr')) {
+                    $missing[] = $file->getRelativePathname()." : {$namespace}::messages.{$key}";
+                }
+            }
+        }
+
+        $this->assertSame(
+            [],
+            array_values(array_unique($missing)),
+            'Clés citées par le code mais absentes des traductions :
+'.implode('
+', array_unique($missing)),
+        );
     }
 
     /**

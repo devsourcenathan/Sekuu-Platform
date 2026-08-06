@@ -20,6 +20,8 @@ return [
     'rotation_rejected' => 'The new key failed the probe. The previous one stays in service.',
 
     'generation_not_found' => 'This generation does not exist.',
+    'already_started' => 'This generation can no longer be cancelled: the request has left, and the tokens will be billed.',
+    'activate_unverified' => 'This account has never passed the probe: it cannot be activated.',
     'account_not_found' => 'This account does not exist.',
     'account_forbidden' => 'This account is not yours.',
     'account_unverified' => 'The account ":slug" has not passed the probe.',

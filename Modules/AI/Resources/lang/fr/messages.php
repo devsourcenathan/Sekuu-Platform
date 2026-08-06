@@ -20,6 +20,8 @@ return [
     'rotation_rejected' => "La nouvelle clé n'a pas réussi l'épreuve. L'ancienne reste en service.",
 
     'generation_not_found' => "Cette génération n'existe pas.",
+    'already_started' => "Cette génération n'est plus annulable : la requête est partie, et les jetons seront facturés.",
+    'activate_unverified' => "Ce compte n'a jamais réussi l'épreuve : il ne peut pas être activé.",
     'account_not_found' => "Ce compte n'existe pas.",
     'account_forbidden' => "Ce compte n'est pas le vôtre.",
     'account_unverified' => "Le compte « :slug » n'a pas réussi l'épreuve.",

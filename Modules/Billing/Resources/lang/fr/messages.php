@@ -10,6 +10,7 @@ return [
     'nothing_due' => "Il n'y a rien à payer sur cet objet.",
     'plan_not_found' => "Ce plan n'existe pas.",
     'plan_archived' => "Ce plan n'est plus proposé.",
+    'plan_limit_unknown' => 'Limites inconnues du catalogue : :keys.',
     'price_not_available' => 'Aucun tarif disponible pour ce plan dans cette devise.',
     'already_on_plan' => "L'organisation est déjà sur ce plan.",
 

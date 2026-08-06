@@ -6,6 +6,7 @@ namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Modules\Identity\Application\ApiKeys\IssueApiKey;
 use Tests\TestCase;
 
 /**
@@ -138,6 +139,53 @@ final class ArchitectureTest extends TestCase
      * Vide tant que `Modules/Payments` n'existe pas — c'est voulu : la règle
      * doit être en place **avant** le premier fichier, pas après.
      */
+    /**
+     * **Tout scope qu'un module oppose à un appelant doit être émissible.**
+     *
+     * ## Le défaut que ce test attrape, et qui existait vraiment
+     *
+     * Storage définissait `storage.write`, `storage.read` et
+     * `storage.destinations` dans son contrôleur, les documentait, et les
+     * exigeait à chaque appel. Aucun des trois ne figurait dans
+     * `IssueApiKey::SCOPES` : la liste y est fermée, donc **aucune clé de
+     * Storage n'était émissible par l'API**.
+     *
+     * Rien ne l'a signalé, parce que les tests de Storage écrivent leurs clés
+     * directement en base — ils vérifiaient donc le contrôleur en contournant
+     * précisément la voie qui était cassée. C'est la même forme que le pilote S3
+     * jamais instancié : un chemin éprouvé, et le vrai chemin à côté.
+     *
+     * Le contrôle porte sur les constantes des traits `Resolves*Actor`, qui sont
+     * l'endroit unique où chaque module déclare ses scopes.
+     */
+    public function test_every_scope_a_module_demands_can_actually_be_issued(): void
+    {
+        $declared = [];
+
+        foreach (glob(base_path('Modules/*/Presentation/Http/Concerns/Resolves*Actor.php')) ?: [] as $file) {
+            preg_match_all(
+                "/const\s+[A-Z_]+\s*=\s*'([a-z]+\.[a-z_]+)'/",
+                (string) file_get_contents($file),
+                $matches,
+            );
+
+            foreach ($matches[1] as $scope) {
+                $declared[$scope] = basename($file);
+            }
+        }
+
+        $this->assertNotSame([], $declared, 'Aucun scope trouvé : le motif de recherche a dû dériver.');
+
+        $unissuable = array_diff_key($declared, array_flip(IssueApiKey::SCOPES));
+
+        $this->assertSame(
+            [],
+            $unissuable,
+            'Scopes exigés par un contrôleur mais absents de IssueApiKey::SCOPES : '
+            .implode(', ', array_keys($unissuable)),
+        );
+    }
+
     public function test_payments_never_references_billing(): void
     {
         $this->assertSame(

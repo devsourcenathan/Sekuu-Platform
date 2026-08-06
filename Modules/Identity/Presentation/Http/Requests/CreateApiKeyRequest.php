@@ -31,6 +31,11 @@ final class CreateApiKeyRequest extends FormRequest
             // de domaine : une seule convention pour toute la plateforme.
             'subject_types' => ['sometimes', 'array'],
             'subject_types.*' => ['string', 'max:40', 'regex:/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/'],
+
+            // Les tâches d'IA que `ai.run` autorise. Le catalogue dit ce qui
+            // existe ; cette liste dit ce que ce produit-là peut demander.
+            'ai_tasks' => ['sometimes', 'array'],
+            'ai_tasks.*' => ['string', 'max:64'],
         ];
     }
 }

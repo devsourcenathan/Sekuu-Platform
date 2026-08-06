@@ -296,6 +296,8 @@ fichier, donc il en connaît déjà l'existence. Il n'y a rien à lui apprendre.
 | `AI_ACCOUNT_FORBIDDEN` | 403 | Compte d'IA nommé, mais pas à cet appelant |
 | `AI_ACCOUNT_UNVERIFIED` | 409 | Compte jamais éprouvé, ou retombé en échec |
 | `AI_ACCOUNT_CAP_REACHED` | 429 | Plafond propre au compte atteint |
+| `AI_ACCOUNT_IN_USE` | 409 | Le nom court demandé est déjà pris |
+| `AI_ALREADY_STARTED` | 409 | Annulation demandée après le départ de la requête |
 | `AI_PROVIDER_ERROR` | 503 | Le fournisseur d'IA est en échec |
 | `AI_PROVIDER_TIMEOUT` | 503 | Le fournisseur d'IA n'a pas répondu à temps |
 | `AI_PROVIDER_UNREACHABLE` | 503 | Aucune connexion établie — DNS, refus, certificat |

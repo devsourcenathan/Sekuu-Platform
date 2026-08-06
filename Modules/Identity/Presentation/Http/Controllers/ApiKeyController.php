@@ -48,6 +48,7 @@ final class ApiKeyController
             creator: $context->user,
             expiresAt: $request->input('expires_at'),
             subjectTypes: $request->array('subject_types'),
+            aiTasks: $request->array('ai_tasks'),
         );
 
         $audit->record(
@@ -59,6 +60,7 @@ final class ApiKeyController
                 'name' => $issued->key->name,
                 'scopes' => $issued->key->scopes,
                 'subject_types' => $issued->key->subject_types,
+                'ai_tasks' => $issued->key->ai_tasks,
             ],
         );
 

@@ -24,6 +24,27 @@ final class IssueApiKey
         'payments.charge',
         'payments.read',
         'payments.refund',
+
+        /*
+         * Storage. Trois droits distincts : déposer, lire, et enregistrer ses
+         * propres magasins. Une clé habilitée à déposer ne doit pas pouvoir
+         * enregistrer un magasin — ce sont deux dangers différents, et un seul
+         * droit pour les deux serait le plus large des deux.
+         *
+         * Ils manquaient à cette liste, et le défaut ne se voyait pas : les
+         * tests de Storage écrivent leurs clés directement en base. Aucune clé
+         * de Storage n'était donc émissible par l'API. Voir le test
+         * d'architecture qui empêche désormais qu'un scope existe côté
+         * contrôleur sans exister ici.
+         */
+        'storage.write',
+        'storage.read',
+        'storage.destinations',
+
+        // AI. Même découpage, même raison.
+        'ai.run',
+        'ai.read',
+        'ai.accounts',
     ];
 
     /**
@@ -39,6 +60,22 @@ final class IssueApiKey
         'payments.charge',
         'payments.read',
         'payments.refund',
+        'storage.write',
+        'storage.read',
+    ];
+
+    /**
+     * Scopes qui n'ont aucun sens sans une liste de tâches.
+     *
+     * `ai.run` autorise à **dépenser**. Le porter sans dire sur quelles tâches
+     * reviendrait à pouvoir lancer la plus chère du catalogue en boucle — et une
+     * tâche ajoutée demain habiliterait rétroactivement toutes les clés
+     * existantes.
+     *
+     * @var list<string>
+     */
+    public const SCOPES_REQUIRING_AI_TASKS = [
+        'ai.run',
     ];
 
     /**
@@ -58,6 +95,7 @@ final class IssueApiKey
     /**
      * @param  list<string>  $scopes
      * @param  list<string>  $subjectTypes
+     * @param  list<string>  $aiTasks
      */
     public function handle(
         string $organizationId,
@@ -66,6 +104,7 @@ final class IssueApiKey
         User $creator,
         ?string $expiresAt = null,
         array $subjectTypes = [],
+        array $aiTasks = [],
     ): IssuedApiKey {
         $unknown = array_values(array_diff($scopes, self::SCOPES));
 
@@ -77,8 +116,10 @@ final class IssueApiKey
         }
 
         $subjectTypes = array_values(array_unique($subjectTypes));
+        $aiTasks = array_values(array_unique($aiTasks));
 
         $this->guardSubjectTypes($scopes, $subjectTypes);
+        $this->guardAiTasks($scopes, $aiTasks);
 
         // `sk_live_` en production, `sk_test_` ailleurs : une clé de test
         // utilisée par erreur en production doit être reconnaissable d'un coup
@@ -93,11 +134,47 @@ final class IssueApiKey
             'key_hash' => ApiKey::hash($plainKey),
             'scopes' => array_values($scopes),
             'subject_types' => $subjectTypes === [] ? null : $subjectTypes,
+            'ai_tasks' => $aiTasks === [] ? null : $aiTasks,
             'created_by' => $creator->id,
             'expires_at' => $expiresAt,
         ]);
 
         return new IssuedApiKey($key, $plainKey);
+    }
+
+    /**
+     * Une clé qui exécute doit dire quoi, et une liste sans le scope est une
+     * erreur de saisie qu'il vaut mieux ne pas taire.
+     *
+     * @param  list<string>  $scopes
+     * @param  list<string>  $aiTasks
+     */
+    private function guardAiTasks(array $scopes, array $aiTasks): void
+    {
+        $needsPerimeter = array_intersect($scopes, self::SCOPES_REQUIRING_AI_TASKS) !== [];
+
+        if ($needsPerimeter && $aiTasks === []) {
+            throw DomainException::unprocessable(
+                'VALIDATION_ERROR',
+                __('identity::messages.api_key_ai_tasks_required'),
+            );
+        }
+
+        if (! $needsPerimeter && $aiTasks !== []) {
+            throw DomainException::unprocessable(
+                'VALIDATION_ERROR',
+                __('identity::messages.api_key_ai_tasks_unused'),
+            );
+        }
+
+        $unknown = array_values(array_diff($aiTasks, array_keys((array) config('ai.tasks', []))));
+
+        if ($unknown !== []) {
+            throw DomainException::unprocessable(
+                'VALIDATION_ERROR',
+                __('identity::messages.api_key_unknown_task', ['tasks' => implode(', ', $unknown)]),
+            );
+        }
     }
 
     /**

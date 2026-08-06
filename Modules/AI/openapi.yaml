@@ -1,0 +1,707 @@
+openapi: 3.1.0
+
+info:
+  title: Sekuu AI API
+  version: '1.0'
+  description: |
+    Exécuter des **tâches** nommées par la plateforme. Pas des modèles.
+
+    Il n'existe aucun champ `model` dans cette API, et il n'y en aura pas. Un
+    appelant demande `summarize` ou `prompt-deep` ; la plateforme choisit le
+    modèle, la température et le format de sortie, et peut en changer sans que
+    personne ait rien à modifier.
+
+    Trois décisions gouvernent le reste :
+
+    - [ADR-0015](../../docs/04-decisions/adr-0015-ai-task-not-model.md) — une
+      tâche, jamais un modèle. C'est ce qui rend une dépréciation de fournisseur
+      invisible pour les produits.
+    - [ADR-0016](../../docs/04-decisions/adr-0016-ai-spend-and-privacy.md) — deux
+      bornes de dépense, et **rien n'est conservé** du contenu par défaut.
+    - [ADR-0017](../../docs/04-decisions/adr-0017-ai-accounts.md) — le compte
+      chez un fournisseur est une donnée, pas une configuration. Nos clés **et**
+      les vôtres.
+
+    **La sortie n'est lisible qu'une fois.** Elle n'est pas conservée, sauf si la
+    tâche le déclare : passé la lecture, la réponse ne porte plus que les
+    métriques. Un produit doit donc écrire ce qu'il reçoit — il est le seul à
+    savoir où cela a sa place.
+
+    **La bascule entre fournisseurs est étroite.** On ne réessaie ailleurs que si
+    la requête n'a jamais atteint le modèle. Passé le premier jeton, les jetons
+    sont facturés qu'on obtienne une réponse ou non : l'incertitude compte comme
+    un appel abouti.
+
+servers:
+  - url: https://platform.sekuu.com/api/v1
+    description: |
+      Production. Un seul domaine sert tous les modules : leur separation
+      est logique, pas encore reseau.
+  - url: http://localhost:8000/api/v1
+    description: Local
+
+tags:
+  - name: Tâches
+  - name: Comptes
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  /ai/health:
+    get:
+      tags: [Comptes]
+      security: []
+      summary: Les comptes, et lesquels servent
+      description: |
+        La vérification d'avant-vol du module. `can_generate` répond à la seule
+        question qui compte : une génération peut-elle partir ?
+
+        Publique, comme la santé des magasins et des agrégateurs. Sur une
+        installation sans accès shell, c'est le seul moyen de constater qu'un
+        compte est tombé — sinon on l'apprend à la première génération refusée,
+        c'est-à-dire par un client.
+
+        Elle ne dit ni l'empreinte de la clé, ni le point d'accès, ni le message
+        brut du fournisseur.
+      responses:
+        '200':
+          description: État des comptes de cet environnement
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      can_generate: { type: boolean }
+                      accounts:
+                        type: array
+                        items: { $ref: '#/components/schemas/AccountHealth' }
+
+  /ai/tasks:
+    get:
+      tags: [Tâches]
+      summary: Le catalogue
+      description: |
+        Ce que la plateforme sait faire, et sous quelle forme.
+
+        Sans cette route, un intégrateur devrait lire la documentation pour
+        savoir ce qu'il peut demander, et découvrirait en production qu'une tâche
+        a changé de forme.
+
+        Une clé d'API ne voit **que ce qu'elle peut demander** : lui montrer le
+        reste l'inviterait à écrire du code contre une tâche qui lui rendra
+        `AI_TASK_OUT_OF_SCOPE`.
+      responses:
+        '200':
+          description: Les tâches accessibles à cet appelant
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TaskDescriptor' }
+
+    post:
+      tags: [Tâches]
+      summary: Demander une exécution
+      description: |
+        `200` avec la sortie pour une tâche déclarée synchrone, `202` avec une
+        demande à sonder sinon. **Jamais `201`** : ce qui est créé est une
+        demande, pas un résultat.
+
+        Le synchrone est un **confort, jamais une garantie**. Une tâche déclarée
+        courte peut s'allonger, et le changement ne sera pas annoncé — un
+        appelant qui le suppose casse ce jour-là. Il faut savoir traiter les
+        deux.
+
+        `Idempotency-Key` rend la génération existante plutôt que d'en lancer une
+        seconde, **même si la première a échoué** : réessayer est une décision de
+        coût, et la prendre à la place de l'appelant lui ferait payer deux fois.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string, maxLength: 128 }
+          description: |
+            Un double-clic, un réessai de file, un navigateur qui renvoie : sans
+            clé, chacun est une génération de plus, facturée.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskSubmission' }
+      responses:
+        '200':
+          description: Tâche synchrone exécutée. La sortie est rendue **une seule fois**.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/Generation' }
+        '202':
+          description: Demande enfilée. À sonder par `GET /ai/tasks/{id}`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/Generation' }
+        '403':
+          description: |
+            `AI_TASK_OUT_OF_SCOPE` — la tâche existe, mais cette clé ne la porte
+            pas. Ou `AI_ACCOUNT_FORBIDDEN` si le compte nommé n'est pas le sien.
+          $ref: '#/components/responses/Error'
+        '422':
+          description: |
+            `AI_TASK_UNKNOWN`, `CONTEXT_LENGTH_EXCEEDED`, `CONTENT_FLAGGED`, ou
+            un champ interdit — `model`, `temperature`, `max_tokens`, `top_p`,
+            `system`. Ils ne sont pas ignorés : un champ ignoré en silence est un
+            champ dont l'appelant croit qu'il agit.
+          $ref: '#/components/responses/Error'
+        '429':
+          description: |
+            `AI_QUOTA_EXCEEDED` — vos crédits sont épuisés, un plan supérieur y
+            répond. `AI_SPEND_CAP_REACHED` — la plateforme s'est protégée, et
+            ce n'est pas votre faute : vous inviter à payer plus serait
+            mensonger. `AI_ACCOUNT_CAP_REACHED` — le plafond de votre compte.
+          $ref: '#/components/responses/Error'
+
+  /ai/tasks/{generation}:
+    get:
+      tags: [Tâches]
+      summary: L'issue, et la sortie
+      description: |
+        Tant que le statut est `queued` ou `running`, la réponse porte
+        `poll_after_ms` et pas de sortie.
+
+        **La sortie n'est lisible qu'une fois.** La relire n'échoue pas — une
+        erreur ferait croire à une génération perdue alors qu'elle a bien eu lieu
+        et a été payée — mais le corps ne porte plus que les métriques.
+
+        `usage` est rendu **même en échec**, avec le coût réel : un modèle qui a
+        produit une réponse hors schéma a consommé des jetons, et les cacher
+        reviendrait à s'offrir les échecs.
+      parameters:
+        - $ref: '#/components/parameters/Generation'
+      responses:
+        '200':
+          description: L'état de la génération
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/Generation' }
+        '404':
+          description: |
+            `RESOURCE_NOT_FOUND`. « Pas la vôtre » et « n'existe pas » rendent la
+            même erreur : distinguer les deux dirait à qui essaie des
+            identifiants au hasard lesquels existent.
+          $ref: '#/components/responses/Error'
+
+  /ai/tasks/{generation}/cancel:
+    post:
+      tags: [Tâches]
+      summary: Annuler, tant que rien n'est parti
+      description: |
+        N'aboutit que sur `queued`. Une fois la requête partie chez un
+        fournisseur, il n'y a rien à annuler : les jetons seront consommés et
+        facturés, que la réponse nous intéresse encore ou non.
+
+        Prétendre le contraire — rendre `200` et jeter le résultat — donnerait
+        l'illusion d'économiser, et masquerait une dépense réelle.
+      parameters:
+        - $ref: '#/components/parameters/Generation'
+      responses:
+        '200':
+          description: Annulée avant tout appel
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/Generation' }
+        '409':
+          description: '`AI_ALREADY_STARTED` — la requête est partie.'
+          $ref: '#/components/responses/Error'
+
+  /ai/usage:
+    get:
+      tags: [Tâches]
+      summary: Ce que l'organisation a consommé ce mois-ci
+      description: |
+        Les deux natures de coût sont **séparées, jamais additionnées**. Celui de
+        nos comptes est exact et compte pour le quota ; celui de vos comptes est
+        estimé à partir des prix publics, et ne vous est pas opposé — vous le
+        payez à votre fournisseur. Un total les mêlant ne voudrait rien dire.
+
+        `by_task` est le seul endroit où vous voyez **où** part votre budget.
+        C'est ce qui permet de découvrir qu'une tâche appelée en boucle coûte
+        plus que tout le reste.
+
+        `limit.covered` à faux signifie que le plan n'ouvre pas la ressource —
+        ce qui n'est pas un refus. Un quota borne un usage autorisé ; il ne
+        décide pas de l'autorisation.
+      responses:
+        '200':
+          description: Consommation de la période courante
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/Usage' }
+
+  /ai/accounts:
+    get:
+      tags: [Comptes]
+      summary: Les comptes utilisables par l'appelant
+      description: |
+        Les vôtres, et ceux de la plateforme — ces derniers servent tout le
+        monde, mais ne s'administrent pas ici.
+      responses:
+        '200':
+          description: Comptes visibles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Account' }
+
+    post:
+      tags: [Comptes]
+      summary: Enregistrer une clé, et l'éprouver
+      description: |
+        L'épreuve est immédiate : **une génération réelle d'un jeton**, sur le
+        plus petit modèle déclaré. Une épreuve qui ne consommerait rien — lister
+        les modèles — ne prouverait pas ce qui compte : un compte peut lister
+        sans avoir de crédit.
+
+        Elle coûte une fraction de centime, et elle est à notre charge : nous ne
+        facturons pas le fait de vérifier une configuration.
+
+        `201` **même si l'épreuve échoue**. Le compte existe, il ne sert
+        simplement pas encore : rendre une erreur obligerait à le recréer, et
+        laisserait une ligne orpheline à chaque tentative. Lisez
+        `verification_reason`.
+
+        La réponse ne rend jamais les identifiants — une empreinte, et l'état.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountSubmission' }
+      responses:
+        '201':
+          description: Compte enregistré, éprouvé ou non
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/Account' }
+        '409':
+          description: '`AI_ACCOUNT_IN_USE` — ce nom est pris.'
+          $ref: '#/components/responses/Error'
+        '422':
+          description: |
+            `AI_DRIVER_UNKNOWN`, ou un environnement qui n'est pas celui de
+            l'instance. Le garde-fou est sans échappatoire : une clé de
+            production sur un poste de développement facture de vrais appels à
+            chaque exécution de la suite de tests.
+          $ref: '#/components/responses/Error'
+
+  /ai/accounts/{account}/verify:
+    post:
+      tags: [Comptes]
+      summary: Rejouer l'épreuve
+      description: |
+        Ce qui casse un compte arrive **après** l'enregistrement : une clé
+        révoquée, un crédit épuisé, un modèle retiré par le fournisseur.
+
+        L'épreuve tourne aussi chaque nuit, et elle est la **reprise** : un
+        compte corrigé se rallume de lui-même, sans intervention.
+      parameters:
+        - $ref: '#/components/parameters/Account'
+      responses:
+        '200':
+          description: État après épreuve
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/Account' }
+        '404':
+          description: '`AI_ACCOUNT_NOT_FOUND`'
+          $ref: '#/components/responses/Error'
+
+  /ai/accounts/{account}/credentials:
+    put:
+      tags: [Comptes]
+      summary: Rotation, éprouvée avant remplacement
+      description: |
+        L'épreuve porte sur la **nouvelle** clé avant que l'ancienne soit
+        abandonnée. Une rotation ratée ne doit pas mettre hors service un compte
+        qui fonctionnait : en cas d'échec, les anciens identifiants et l'état
+        sont restaurés, et l'appel rend `AI_ACCOUNT_UNVERIFIED`.
+      parameters:
+        - $ref: '#/components/parameters/Account'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [credentials]
+              properties:
+                credentials:
+                  type: object
+                  additionalProperties: true
+                  description: '`{ "api_key": "…" }` pour la plupart des fournisseurs.'
+      responses:
+        '200':
+          description: Clé remplacée et éprouvée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/Account' }
+        '422':
+          description: '`AI_ACCOUNT_UNVERIFIED` — la nouvelle clé a échoué. L''ancienne reste en service.'
+          $ref: '#/components/responses/Error'
+
+  /ai/accounts/{account}:
+    patch:
+      tags: [Comptes]
+      summary: État et plafond
+      description: |
+        `paused` et `disabled` diffèrent par l'intention, pas par l'effet
+        immédiat : le premier est une suspension, le second dit que le compte
+        n'est plus le vôtre. La distinction compte au moment de nettoyer — on
+        relance un compte en pause, on ne relance pas un compte rendu.
+
+        Il n'y a **aucune route de suppression** : un compte qui porte des
+        générations ne se supprime pas, le registre dit qui a payé quoi.
+
+        Un compte jamais éprouvé ne peut pas être rendu `active` : ce serait
+        contourner l'épreuve par la porte de service.
+      parameters:
+        - $ref: '#/components/parameters/Account'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [active, paused, disabled] }
+                spend_cap_micros:
+                  type: [integer, 'null']
+                  description: |
+                    Sur votre compte, c'est votre **seule** borne : notre plafond
+                    protège notre argent, pas le vôtre, et votre plan ne compte
+                    pas ce que vous dépensez chez vous.
+      responses:
+        '200':
+          description: Compte mis à jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/Account' }
+        '409':
+          description: '`AI_ACCOUNT_UNVERIFIED` — activation d''un compte qui n''a rien prouvé.'
+          $ref: '#/components/responses/Error'
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Un access token, ou une clé d'API `sk_…`. Les clés portent des scopes
+        distincts — `ai.run`, `ai.read`, `ai.accounts` — **et** une liste blanche
+        de tâches : le catalogue dit ce qui existe, la clé dit ce que ce
+        produit-là peut demander.
+
+  parameters:
+    Generation:
+      name: generation
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Account:
+      name: account
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Error:
+      description: Erreur normalisée de la plateforme
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success: { type: boolean, example: false }
+              error:
+                type: object
+                properties:
+                  code: { type: string }
+                  message: { type: string }
+                  details: { type: object, additionalProperties: true }
+
+  schemas:
+
+    TaskSubmission:
+      type: object
+      required: [task, inputs]
+      description: |
+        **Aucun champ `model`.** Ni `temperature`, ni `max_tokens`, ni `top_p`,
+        ni `system` : ce sont les réglages du coût et de la stabilité, et un
+        prompt système fourni par l'appelant contournerait les bornes de la
+        tâche. Les envoyer est refusé, pas ignoré.
+      properties:
+        task:
+          type: string
+          maxLength: 64
+          description: Un nom du catalogue — `summarize`, `extract`, `prompt-deep`.
+        inputs:
+          type: object
+          additionalProperties: true
+          description: |
+            Les champs déclarés par la tâche. `{ "prompt": "…" }` pour une tâche
+            libre ; `{ "input": "…", "language": "fr" }` pour `translate`.
+        history:
+          type: array
+          description: |
+            Le fil, fourni par l'appelant. **Le module n'en garde aucun** : un
+            fil est de la logique produit, et le stocker ferait de cette base le
+            dépôt des conversations de tous les produits.
+          items:
+            type: object
+            properties:
+              role: { type: string, enum: [user, assistant] }
+              content: { type: string }
+        account:
+          type: [string, 'null']
+          maxLength: 64
+          description: |
+            « Utilisez ma clé ». Un compte nommé mais inéligible **échoue** : la
+            résolution ne redescend pas d'un rang. Se rabattre sur un compte de
+            la plateforme nous ferait payer à votre place, sans que personne
+            l'ait décidé.
+
+    Generation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        task: { type: string }
+        status:
+          type: string
+          enum: [queued, running, succeeded, failed, cancelled]
+        poll_after_ms:
+          type: integer
+          description: Présent tant que rien n'est conclu. Un ordre de grandeur, pas une promesse.
+        output:
+          type: string
+          description: |
+            **Rendu une seule fois.** Absent des lectures suivantes, sauf si la
+            tâche déclare une rétention. Écrivez ce que vous recevez.
+        usage:
+          type: object
+          description: Rendu même en échec — les jetons consommés le sont.
+          properties:
+            input_tokens: { type: [integer, 'null'] }
+            output_tokens: { type: [integer, 'null'] }
+            cost_micros:
+              type: [integer, 'null']
+              description: |
+                En millionièmes de dollar, la monnaie dans laquelle les
+                fournisseurs facturent. `null` — distinct de zéro — quand le
+                modèle n'a pas de prix public : un modèle auto-hébergé coûte par
+                heure de machine, pas par jeton.
+            estimated:
+              type: boolean
+              description: |
+                Vrai sur votre compte : notre calcul suit les prix publics, votre
+                tarif négocié donne autre chose.
+        failure_code:
+          type: string
+          description: |
+            Le code, jamais le message brut du fournisseur — il peut porter un
+            identifiant d'organisation ou un nom de déploiement.
+        created_at: { type: string, format: date-time }
+        completed_at: { type: [string, 'null'], format: date-time }
+
+    TaskDescriptor:
+      type: object
+      properties:
+        task: { type: string }
+        inputs:
+          type: object
+          additionalProperties: { type: string }
+          description: Les champs attendus, et leurs règles.
+        output: { type: string, enum: [text, json] }
+        synchronous:
+          type: boolean
+          description: Un confort, jamais une garantie. Sachez traiter `202`.
+        accepts_history: { type: boolean }
+        retains_content:
+          type: boolean
+          description: |
+            Faux par défaut, et c'est le point : ni le prompt ni la sortie ne
+            sont stockés. Conserver se déclare, tâche par tâche.
+        max_input_tokens: { type: integer }
+        max_output_tokens: { type: integer }
+        estimated_cost_micros:
+          type: [integer, 'null']
+          description: |
+            Un **ordre de grandeur**, pas un prix, et il n'engage à rien : le
+            coût réel dépend de l'entrée. Il permet de décider si l'appel vaut la
+            peine.
+
+    Usage:
+      type: object
+      properties:
+        period: { type: string, example: '2026-08' }
+        generations: { type: integer }
+        platform:
+          type: object
+          properties:
+            cost_micros: { type: integer }
+            estimated: { type: boolean, example: false }
+        own_accounts:
+          type: object
+          properties:
+            cost_micros: { type: integer }
+            estimated: { type: boolean, example: true }
+        limit:
+          type: object
+          properties:
+            covered: { type: boolean }
+            credits: { type: [integer, 'null'] }
+            remaining: { type: [integer, 'null'] }
+        by_task:
+          type: array
+          items:
+            type: object
+            properties:
+              task: { type: string }
+              generations: { type: integer }
+              cost_micros: { type: integer }
+
+    AccountSubmission:
+      type: object
+      required: [slug, environment]
+      properties:
+        slug: { type: string, maxLength: 64, pattern: '^[a-z0-9][a-z0-9-]*$' }
+        preset:
+          type: [string, 'null']
+          description: |
+            `anthropic`, `openai`, `gemini`, `deepseek`, `mistral`, `groq`,
+            `azure`, `ollama`… Treize services pour **deux pilotes** : un pilote
+            porte un protocole, pas une entreprise.
+        driver: { type: string, maxLength: 32 }
+        config:
+          type: object
+          additionalProperties: true
+          description: |
+            Les valeurs que vous donnez **l'emportent** sur le préréglage. C'est
+            ce qui permet de pointer un serveur compatible que nous n'avons
+            jamais vu.
+        credentials:
+          type: object
+          additionalProperties: true
+          description: Chiffrés au repos, jamais rendus — pas même à vous.
+        models:
+          type: array
+          items: { type: string }
+          description: |
+            Modèles servis par ce compte. Le **premier est celui de l'épreuve** :
+            mettez-y le moins cher, elle consomme de vrais jetons.
+        spend_cap_micros:
+          type: [integer, 'null']
+          description: Votre seule borne sur votre propre clé.
+        environment: { type: string, enum: [production, local, testing, staging] }
+
+    Account:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        driver: { type: string }
+        preset: { type: [string, 'null'] }
+        config: { type: object, additionalProperties: true }
+        credential_fingerprint:
+          type: [string, 'null']
+          description: |
+            Quatre derniers caractères et un condensat court. Assez pour
+            reconnaître une clé, jamais assez pour s'en servir.
+        models: { type: [array, 'null'], items: { type: string } }
+        environment: { type: string }
+        status:
+          type: string
+          enum: [unverified, active, paused, disabled]
+        spend_cap_micros: { type: [integer, 'null'] }
+        owned_by_platform:
+          type: boolean
+          description: |
+            Un compte de la plateforme sert tout le monde et ne s'administre pas
+            ici : il porte nos identifiants, et une clé d'IA fuitée se dépense.
+        verified_at: { type: [string, 'null'], format: date-time }
+        verification_reason:
+          type: [string, 'null']
+          enum: [credentials_rejected, model_unavailable, quota_exhausted, rate_limited, unreachable, internal_error, null]
+          description: |
+            Un jeu fermé. `quota_exhausted` est propre à l'IA : un compte
+            parfaitement valide dont le crédit chez le fournisseur est épuisé —
+            ni une erreur d'identifiants, ni une panne, et la confusion enverrait
+            régénérer une clé qui n'a rien.
+        generations:
+          type: integer
+          description: Tant qu'il y en a, le compte ne peut pas disparaître.
+
+    AccountHealth:
+      type: object
+      properties:
+        slug: { type: string }
+        provider: { type: string }
+        status: { type: string }
+        priority:
+          type: integer
+          description: |
+            Un **ordre**, pas un drapeau « par défaut ». Plusieurs comptes
+            peuvent servir le même modèle, et l'un prend la suite de l'autre.
+        owned_by: { type: string, enum: [platform, tenant] }
+        models: { type: [array, 'null'], items: { type: string } }
+        verified_at: { type: [string, 'null'], format: date-time }
+        reason: { type: [string, 'null'] }

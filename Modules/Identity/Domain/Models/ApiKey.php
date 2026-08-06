@@ -23,6 +23,7 @@ final class ApiKey extends Model
         'scopes',
         'subject_types',
         'max_retention_days',
+        'ai_tasks',
         'created_by',
         'expires_at',
     ];
@@ -36,6 +37,7 @@ final class ApiKey extends Model
             'scopes' => 'array',
             'subject_types' => 'array',
             'max_retention_days' => 'integer',
+            'ai_tasks' => 'array',
             'last_used_at' => 'datetime',
             'expires_at' => 'datetime',
             'revoked_at' => 'datetime',

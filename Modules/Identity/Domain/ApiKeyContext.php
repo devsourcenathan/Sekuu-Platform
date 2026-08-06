@@ -43,4 +43,18 @@ final readonly class ApiKeyContext
     {
         return (int) ($this->key->max_retention_days ?? 0);
     }
+
+    /**
+     * Les taches d'IA que cette cle peut demander.
+     *
+     * Le catalogue dit ce qui **existe**, la cle dit ce que **ce produit-la**
+     * peut demander. Une liste vide n'ouvre rien : `IssueApiKey` refuse
+     * d'emettre une cle portant `ai.run` sans liste.
+     *
+     * @return list<string>
+     */
+    public function aiTasks(): array
+    {
+        return array_values((array) ($this->key->ai_tasks ?? []));
+    }
 }
