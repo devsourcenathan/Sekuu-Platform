@@ -447,11 +447,14 @@ Les trois premiers sont désormais verrouillés par des tests.
 
   Reste connu : le nom affiché sur l'invite est celui de l'agrégateur, pas
   celui de Sekuu — voir [ADR-0008](04-decisions/adr-0008-payment-aggregators-failover.md).
-* **Sortir de l'offre gratuite.** Le service dort après quinze minutes, et le
-  worker comme l'ordonnanceur dorment avec lui : un callback arrivant pendant le
-  sommeil est perdu, et le filet censé le rattraper dort aussi. Acceptable pour
-  valider, jamais pour encaisser l'argent d'un tiers —
-  [05-free-tier.md](06-operations/05-free-tier.md).
+* **Sortir de l'offre gratuite.** Le sommeil après quinze minutes est aujourd'hui
+  évité par un service externe qui sonde l'API toutes les onze minutes, et les
+  callbacks arrivent donc sur un service chaud. Restent : la coupure au
+  redéploiement, le plafond d'heures mensuel — dont le franchissement est une
+  panne totale à date prévisible — et le fait que **ce sondage est devenu une
+  pièce porteuse que rien ne surveille**. S'il s'arrête, rien ne le dit, et le
+  symptôme est un paiement non constaté découvert des semaines plus tard —
+  [05-free-tier.md](06-operations/05-free-tier.md) §2.1bis.
 * **Le domaine expéditeur** vérifié chez Resend (DKIM, Return-Path, DMARC).
   Sans cela les messages partent par le mailer Laravel, qui ne rapporte aucun
   rebond : le service paraît fonctionner tout en accumulant une dette de

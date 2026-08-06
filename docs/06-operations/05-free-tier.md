@@ -56,6 +56,48 @@ Autrement dit : sur l'offre gratuite, **le filet de sécurité a les mêmes hora
 que ce qu'il protège**. C'est exactement la défaillance que ce module existe pour
 empêcher.
 
+## 2.1bis Le maintien en éveil, et ce qu'il ne règle pas
+
+Un service externe appelle l'API toutes les onze minutes. Le conteneur ne
+s'endort donc jamais, et **les trois conséquences ci-dessus disparaissent** : les
+callbacks arrivent sur un service chaud, la réconciliation tourne à l'heure, les
+livraisons sortantes partent.
+
+C'est une vraie atténuation, pas un pansement. Elle mérite d'être écrite ici
+parce qu'elle change ce que le paragraphe précédent décrit.
+
+### Ce qu'elle ne règle pas
+
+**Le déploiement coupe toujours.** L'offre gratuite ne fait pas de bascule sans
+interruption : pendant le redéploiement, le service ne répond pas. Un callback
+qui tombe là est perdu exactement comme pendant un sommeil — plus rarement, et
+sur une fenêtre qu'on choisit.
+
+**Le plafond d'heures.** Garder un service éveillé en permanence consomme la
+quasi-totalité de l'allocation mensuelle gratuite. Une fois franchie, le service
+est suspendu jusqu'au mois suivant — c'est-à-dire une panne totale, à une date
+prévisible, pour une raison qui n'apparaît dans aucun journal applicatif. À
+vérifier sur le tableau de bord Render, dont les conditions changent.
+
+**La mémoire.** Un conteneur qui ne redémarre plus n'a plus le nettoyage gratuit
+que lui offrait le sommeil. La mise en page d'un PDF et une génération d'IA sont
+les deux postes qui consomment ; un travailleur tué pour dépassement laisse une
+génération `queued`, et c'est `ai:sweep` qui la conclut — toutes les heures.
+
+### Le maintien en éveil est devenu une pièce porteuse
+
+C'est le point le plus important, et le moins visible.
+
+Le service de sondage n'est ni déployé, ni surveillé, ni versionné avec la
+plateforme. S'il s'arrête, rien ne le dit : la plateforme retombe simplement dans
+le comportement décrit en §2.1, et le symptôme est un paiement non constaté
+découvert des semaines plus tard.
+
+**Une dépendance dont la panne est silencieuse est pire qu'une absence de
+dépendance**, parce qu'on cesse de compter avec le cas qu'elle couvre. Si elle
+doit rester, elle mérite la même attention que le reste : savoir qui la fait
+tourner, et être prévenu quand elle s'arrête.
+
 ## 2.2 La base de données expire
 
 La base gratuite de Render est supprimée après un délai fixe. Sur des données
