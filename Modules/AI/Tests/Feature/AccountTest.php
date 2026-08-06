@@ -300,6 +300,58 @@ final class AccountTest extends TestCase
         $this->assertSame('clé-témoin', $account->refresh()->apiKey());
     }
 
+    /**
+     * **Une première saisie ratée doit pouvoir se corriger à la main.**
+     *
+     * Sans cette porte, une clé tronquée laissait une ligne `unverified` que
+     * rien ne pouvait plus reprendre : la commande renvoyait vers `--status`,
+     * qui ne touche pas aux identifiants, et `--from-env` est réservé aux
+     * machines sans shell.
+     *
+     * C'est l'impasse déjà rencontrée sur Storage, refermée sur le chemin
+     * automatique puis rouverte sur le chemin manuel.
+     */
+    public function test_a_key_typed_wrong_can_be_corrected_by_hand(): void
+    {
+        FakeDriver::failOnce('AI_CREDENTIALS_REJECTED');
+        $account = $this->register('a-corriger-a-la-main');
+        $this->assertSame(AiAccount::UNVERIFIED, $account->status);
+
+        $this->artisan('ai:account', [
+            'slug' => 'a-corriger-a-la-main',
+            '--driver' => 'fake',
+            '--key' => 'la-bonne-cle',
+            '--models' => ['fake-model'],
+        ])->assertSuccessful();
+
+        $account->refresh();
+        $this->assertSame(AiAccount::ACTIVE, $account->status);
+        $this->assertSame('la-bonne-cle', $account->apiKey());
+    }
+
+    /**
+     * **Et elle reste étroite.**
+     *
+     * Un compte en service ne se laisse pas réécrire : une clé remplacée à la
+     * légère enverrait les générations chez un fournisseur que personne n'a
+     * choisi, facturées à quelqu'un d'autre. Pour celui-là, la rotation éprouve
+     * avant de remplacer.
+     */
+    public function test_a_working_account_is_not_rewritten_by_the_command(): void
+    {
+        $this->register('en-service-cli');
+
+        $this->artisan('ai:account', [
+            'slug' => 'en-service-cli',
+            '--key' => 'cle-intruse',
+        ])->assertFailed();
+
+        $this->assertSame(
+            'clé-témoin',
+            AiAccount::query()->where('slug', 'en-service-cli')->first()->apiKey(),
+        );
+    }
+
     private function register(string $slug, ?string $environment = null): AiAccount
     {
         return app(RegisterAccount::class)->handle(

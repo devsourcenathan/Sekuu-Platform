@@ -15,7 +15,7 @@
 | Déploiement | **En ligne** — Render + Neon, `platform.sekuu.com` |
 | Endpoints | 115 sous `/api/v1` + `/.well-known/jwks.json` |
 | Migrations | 40 |
-| Tests | 682, sur PostgreSQL |
+| Tests | 684, sur PostgreSQL |
 | Contrats | `Modules/*/openapi.yaml`, vérifiés par test |
 | Collection de test | `postman/` — 18 dossiers, 150 requêtes, **toutes les routes couvertes** |
 

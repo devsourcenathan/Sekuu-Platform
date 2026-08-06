@@ -55,11 +55,74 @@ final class ManageAccountCommand extends Command
 
         $existing = AiAccount::query()->where('slug', $slug)->first();
 
-        if ($existing !== null) {
+        if ($existing === null) {
+            return $this->create($register, (string) $slug);
+        }
+
+        if ($this->option('status') !== null) {
             return $this->changeStatus($existing);
         }
 
-        return $this->create($register, (string) $slug);
+        return $this->fix($register, $existing);
+    }
+
+    /**
+     * Corriger un compte **jamais éprouvé**, à la main.
+     *
+     * ## Pourquoi cette porte manquait, et ce que son absence coûtait
+     *
+     * Une première saisie ratée — une clé tronquée, un préréglage oublié —
+     * laissait une ligne `unverified` que rien ne pouvait plus corriger : la
+     * commande renvoyait vers `--status`, qui ne touche pas aux identifiants, et
+     * la seule voie de reprise était `--from-env`, réservée aux machines **sans**
+     * shell. Sur une machine qui en a un, il fallait aller en base.
+     *
+     * C'est l'impasse déjà rencontrée sur Storage, reproduite ici sur le chemin
+     * manuel après avoir été fermée sur le chemin automatique.
+     *
+     * ## Et elle reste étroite
+     *
+     * `repair()` ne touche qu'un compte `unverified` — il n'a jamais rien servi,
+     * le corriger ne peut rien casser. Un compte **en service** ne se laisse pas
+     * réécrire : une clé remplacée à la légère enverrait les générations chez un
+     * fournisseur que personne n'a choisi, facturées à quelqu'un d'autre. Pour
+     * celui-là, la rotation éprouve avant de remplacer.
+     */
+    private function fix(RegisterAccount $register, AiAccount $account): int
+    {
+        if ($account->status !== AiAccount::UNVERIFIED) {
+            $this->error("Le compte « {$account->slug} » est en service ({$account->status}).");
+            $this->newLine();
+            $this->comment('--status pour le changer d\'état.');
+            $this->comment('La clé se remplace par PUT /ai/accounts/{id}/credentials, qui éprouve avant de remplacer.');
+
+            return self::FAILURE;
+        }
+
+        $models = array_values((array) $this->option('models'));
+
+        $account = $register->repair(
+            account: $account,
+            preset: $this->option('preset') ?? $account->preset,
+            driver: $this->option('driver') ?? ($this->option('preset') === null ? $account->driver : null),
+            config: array_filter(
+                ['base_url' => $this->option('base-url')],
+                fn ($v): bool => $v !== null && $v !== '',
+            ),
+            credentials: $this->credentials(),
+            models: $models === [] ? (array) $account->models : $models,
+        );
+
+        if ($account->status === AiAccount::ACTIVE) {
+            $this->info("Compte « {$account->slug} » corrigé et éprouvé.");
+
+            return self::SUCCESS;
+        }
+
+        $this->error("Épreuve échouée — {$account->verification_reason}.");
+        $this->line((string) $account->verification_error);
+
+        return self::FAILURE;
     }
 
     /**
