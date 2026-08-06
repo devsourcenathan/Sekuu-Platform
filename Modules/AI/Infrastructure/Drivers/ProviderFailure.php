@@ -86,8 +86,19 @@ final class ProviderFailure
     {
         $text = mb_strtolower($body);
 
-        foreach (['insufficient_quota', 'insufficient quota', 'credit balance', 'insufficient_credit',
-            'exceeded your current quota', 'billing', 'payment required'] as $signature) {
+        /*
+         * `insufficient balance` vient de DeepSeek, observé en conditions
+         * réelles. Il n'était dans aucune signature : c'est le statut `402` qui
+         * avait tranché, et tous les fournisseurs ne le rendent pas.
+         *
+         * La liste s'allonge à mesure qu'on rencontre les formulations, et c'est
+         * assumé — mais chaque entrée doit venir d'un cas **vu**, pas deviné.
+         * Une signature inventée élargirait la catégorie sans qu'on sache de
+         * combien.
+         */
+        foreach (['insufficient_quota', 'insufficient quota', 'insufficient balance',
+            'credit balance', 'insufficient_credit', 'exceeded your current quota',
+            'billing', 'payment required'] as $signature) {
             if (str_contains($text, $signature)) {
                 return true;
             }

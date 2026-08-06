@@ -269,6 +269,67 @@ final class DriverTest extends TestCase
         $this->assertStringNotContainsString('sk-ant-EXAMPLE', (string) $account->credentialFingerprint());
     }
 
+    /**
+     * **Un crédit épuisé n'est pas une clé refusée**, et les fournisseurs ne
+     * disent pas la même chose pour le dire.
+     *
+     * Les confondre fait réessayer indéfiniment chez un compte à sec, et envoie
+     * régénérer une clé qui n'a rien de cassé : l'un se résout en quelques
+     * secondes, l'autre demande une carte bancaire.
+     *
+     * Les deux premiers cas sont des réponses **réellement observées** ; le
+     * dernier vérifie qu'un `402` seul suffit, puisque tous les fournisseurs ne
+     * nomment pas la chose.
+     */
+    public function test_an_exhausted_balance_is_told_apart_from_a_bad_key(): void
+    {
+        $cases = [
+            // DeepSeek, observé en conditions réelles.
+            [402, ['error' => ['message' => 'Insufficient Balance']], 'AI_CREDIT_EXHAUSTED'],
+
+            // OpenAI, même fait sous un autre statut et un autre nom.
+            [429, ['error' => ['code' => 'insufficient_quota']], 'AI_CREDIT_EXHAUSTED'],
+
+            // Un fournisseur muet : le statut suffit.
+            [402, ['error' => 'nope'], 'AI_CREDIT_EXHAUSTED'],
+
+            // Et un vrai débit trop rapide reste distinct.
+            [429, ['error' => ['message' => 'Rate limit reached']], 'AI_RATE_LIMITED'],
+        ];
+
+        /*
+         * Une **séquence**, et non un `Http::fake` par tour de boucle.
+         *
+         * Les doublures s'empilent au lieu de se remplacer : la première
+         * enregistrée répond à tous les appels suivants. Écrit d'abord avec un
+         * `Http::fake` dans la boucle, ce test a classé « Rate limit reached »
+         * en crédit épuisé — parce qu'il relisait la réponse du premier cas.
+         *
+         * Le piège est le même que dans `test_provider_failures_are_classified`,
+         * et il s'est reproduit malgré le commentaire qui l'y décrit.
+         */
+        $sequence = Http::sequence();
+
+        foreach ($cases as [$status, $body, $_]) {
+            $sequence->push($body, $status);
+        }
+
+        Http::fake(['*/chat/completions' => $sequence]);
+
+        foreach ($cases as [$status, $body, $expected]) {
+            try {
+                app(DriverRegistry::class)->get('openai')->generate(
+                    $this->account('openai', 'https://api.deepseek.com/v1'),
+                    $this->request('deepseek-chat'),
+                );
+
+                $this->fail("Le statut {$status} aurait dû lever.");
+            } catch (DomainException $e) {
+                $this->assertSame($expected, $e->errorCode, json_encode($body, JSON_UNESCAPED_UNICODE));
+            }
+        }
+    }
+
     private function request(string $model = 'claude-sonnet-4-6'): GenerationRequest
     {
         return new GenerationRequest(
