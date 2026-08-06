@@ -22,23 +22,23 @@ final class FakePayable implements PayableSource
     public const TYPE = 'learn.enrollment';
 
     /** Prix renvoyé par la cotation. */
-    public static int $prix = 15000;
+    public static int $price = 15000;
 
     /** Refus opposé à la cotation, le cas échéant. */
     public static ?array $refus = null;
 
     /** @var list<string> */
-    public static array $regles = [];
+    public static array $rules = [];
 
     /** @var list<string> */
-    public static array $echoues = [];
+    public static array $failed = [];
 
     public static function reset(): void
     {
-        self::$prix = 15000;
+        self::$price = 15000;
         self::$refus = null;
-        self::$regles = [];
-        self::$echoues = [];
+        self::$rules = [];
+        self::$failed = [];
     }
 
     public function quote(PayableRef $ref, PayerContext $payer): PayableQuote
@@ -48,18 +48,18 @@ final class FakePayable implements PayableSource
         }
 
         return PayableQuote::due(
-            Money::of(self::$prix, 'XAF'),
+            Money::of(self::$price, 'XAF'),
             'Sekuu Learn — formation',
         );
     }
 
     public function settled(PaymentSettlement $settlement): void
     {
-        self::$regles[] = $settlement->subject->id;
+        self::$rules[] = $settlement->subject->id;
     }
 
     public function failed(PaymentSettlement $settlement): void
     {
-        self::$echoues[] = $settlement->subject->id;
+        self::$failed[] = $settlement->subject->id;
     }
 }

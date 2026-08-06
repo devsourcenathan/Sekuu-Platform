@@ -67,19 +67,19 @@ final class PlatformPlanController
             throw DomainException::notFound('PLAN_NOT_FOUND', __('billing::messages.plan_not_found'));
         }
 
-        $inconnues = array_diff(
+        $unknown = array_diff(
             [...array_keys($validated['limits']), ...(array) ($request->input('remove') ?? [])],
             self::KEYS,
         );
 
-        if ($inconnues !== []) {
+        if ($unknown !== []) {
             throw DomainException::unprocessable(
                 'PLAN_LIMIT_UNKNOWN',
-                __('billing::messages.plan_limit_unknown', ['keys' => implode(', ', $inconnues)]),
+                __('billing::messages.plan_limit_unknown', ['keys' => implode(', ', $unknown)]),
             );
         }
 
-        $avant = (array) ($plan->limits ?? []);
+        $before = (array) ($plan->limits ?? []);
 
         /*
          * `PATCH` **fusionne**, il ne remplace pas.
@@ -93,10 +93,10 @@ final class PlatformPlanController
          * verbeux, et c'est le point — fermer une ressource ne doit pas être
          * l'effet de bord d'autre chose.
          */
-        $apres = [...$avant, ...$validated['limits']];
-        $apres = array_diff_key($apres, array_flip((array) ($validated['remove'] ?? [])));
+        $after = [...$before, ...$validated['limits']];
+        $after = array_diff_key($after, array_flip((array) ($validated['remove'] ?? [])));
 
-        $plan->forceFill(['limits' => $apres])->save();
+        $plan->forceFill(['limits' => $after])->save();
 
         // Reporté aux abonnements : les hausses tout de suite, les baisses au
         // renouvellement.
@@ -114,8 +114,8 @@ final class PlatformPlanController
             target: $plan,
             payload: [
                 'plan' => $plan->key,
-                'before' => $avant,
-                'after' => $apres,
+                'before' => $before,
+                'after' => $after,
                 'operator_id' => $this->platform->operatorId(),
                 ...$effet,
             ],

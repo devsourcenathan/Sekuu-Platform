@@ -39,9 +39,9 @@ final class RegrantLimitsCommand extends Command
         $sec = (bool) $this->option('dry-run');
         $force = (bool) $this->option('force');
 
-        $abonnements = Subscription::query()->alive()->with('plan')->get();
+        $subscriptions = Subscription::query()->alive()->with('plan')->get();
 
-        if ($abonnements->isEmpty()) {
+        if ($subscriptions->isEmpty()) {
             $this->info('Aucun abonnement vivant.');
 
             return self::SUCCESS;
@@ -53,25 +53,25 @@ final class RegrantLimitsCommand extends Command
             $this->newLine();
         }
 
-        $lignes = [];
-        $modifies = 0;
+        $rows = [];
+        $changed = 0;
 
-        foreach ($abonnements as $subscription) {
+        foreach ($subscriptions as $subscription) {
             $catalogue = (array) ($subscription->plan?->limits ?? []);
-            $accordees = (array) ($subscription->granted_limits ?? []);
+            $granted = (array) ($subscription->granted_limits ?? []);
 
-            $apres = $force ? $catalogue : $this->raisesOnly($accordees, $catalogue);
+            $after = $force ? $catalogue : $this->raisesOnly($granted, $catalogue);
 
-            if ($apres === $accordees) {
+            if ($after === $granted) {
                 continue;
             }
 
-            $modifies++;
-            $lignes[] = [
+            $changed++;
+            $rows[] = [
                 mb_substr((string) $subscription->organization_id, 0, 8),
                 $subscription->plan?->key ?? '—',
-                $this->summarise($accordees),
-                $this->summarise($apres),
+                $this->summarise($granted),
+                $this->summarise($after),
             ];
 
             if ($sec) {
@@ -79,20 +79,20 @@ final class RegrantLimitsCommand extends Command
             }
 
             $subscription->forceFill([
-                'granted_limits' => $apres,
+                'granted_limits' => $after,
                 'limits_granted_at' => now(),
             ])->save();
         }
 
-        if ($lignes !== []) {
-            $this->table(['Organisation', 'Plan', 'Avant', 'Après'], $lignes);
+        if ($rows !== []) {
+            $this->table(['Organisation', 'Plan', 'Avant', 'Après'], $rows);
         }
 
         $this->info(sprintf(
             '%s : %d abonnement(s) sur %d %s.',
             $sec ? 'Simulation' : 'Rattrapage',
-            $modifies,
-            $abonnements->count(),
+            $changed,
+            $subscriptions->count(),
             $sec ? 'changeraient' : 'mis à jour',
         ));
 
@@ -100,52 +100,52 @@ final class RegrantLimitsCommand extends Command
     }
 
     /**
-     * @param  array<string, mixed>  $accordees
+     * @param  array<string, mixed>  $granted
      * @param  array<string, mixed>  $catalogue
      * @return array<string, mixed>
      */
-    private function raisesOnly(array $accordees, array $catalogue): array
+    private function raisesOnly(array $granted, array $catalogue): array
     {
-        $apres = $accordees;
+        $after = $granted;
 
-        foreach ($catalogue as $cle => $valeur) {
-            if (! array_key_exists($cle, $accordees)) {
-                $apres[$cle] = $valeur;
+        foreach ($catalogue as $key => $value) {
+            if (! array_key_exists($key, $granted)) {
+                $after[$key] = $value;
 
                 continue;
             }
 
-            $actuelle = $accordees[$cle];
+            $current = $granted[$key];
 
             // `null` vaut illimité : on n'en descend jamais, et on y monte
             // toujours.
-            if ($actuelle === null) {
+            if ($current === null) {
                 continue;
             }
 
-            if ($valeur === null || (int) $valeur > (int) $actuelle) {
-                $apres[$cle] = $valeur;
+            if ($value === null || (int) $value > (int) $current) {
+                $after[$key] = $value;
             }
         }
 
-        return $apres;
+        return $after;
     }
 
     /**
-     * @param  array<string, mixed>  $limites
+     * @param  array<string, mixed>  $limits
      */
-    private function summarise(array $limites): string
+    private function summarise(array $limits): string
     {
-        if ($limites === []) {
+        if ($limits === []) {
             return '(vide)';
         }
 
-        $paires = [];
+        $pairs = [];
 
-        foreach ($limites as $cle => $valeur) {
-            $paires[] = $cle.'='.($valeur === null ? '∞' : $valeur);
+        foreach ($limits as $key => $value) {
+            $pairs[] = $key.'='.($value === null ? '∞' : $value);
         }
 
-        return implode(' ', $paires);
+        return implode(' ', $pairs);
     }
 }

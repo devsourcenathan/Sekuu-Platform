@@ -182,9 +182,9 @@ final class ManageDestinationCommand extends Command
          * Sans cette ligne, le diagnostic ne vit qu'en base, c'est-à-dire hors
          * de portée sur une offre sans shell — la seule où ce chemin sert.
          */
-        foreach (preg_split('/\R/', (string) $destination->verification_error) ?: [] as $ligne) {
-            if (trim($ligne) !== '') {
-                $this->line('[storage]   '.mb_substr(trim($ligne), 0, 300));
+        foreach (preg_split('/\R/', (string) $destination->verification_error) ?: [] as $row) {
+            if (trim($row) !== '') {
+                $this->line('[storage]   '.mb_substr(trim($row), 0, 300));
             }
         }
 

@@ -41,13 +41,13 @@ final class VerifyCredentialsCommand extends Command
     {
         $this->components->info('Aucun paiement n\'est déclenché : appels en lecture seule.');
 
-        $lignes = [$this->tranzak(), $this->notchpay()];
+        $rows = [$this->tranzak(), $this->notchpay()];
 
-        $this->table(['Agrégateur', 'Environnement', 'Identifiants', 'Détail'], $lignes);
+        $this->table(['Agrégateur', 'Environnement', 'Identifiants', 'Détail'], $rows);
 
-        $echecs = array_filter($lignes, static fn (array $l): bool => str_starts_with($l[2], 'refusés'));
+        $failures = array_filter($rows, static fn (array $l): bool => str_starts_with($l[2], 'refusés'));
 
-        if ($echecs !== []) {
+        if ($failures !== []) {
             $this->newLine();
             $this->components->error('Des identifiants sont refusés. Ne déployez pas en l\'état.');
 
@@ -72,33 +72,33 @@ final class VerifyCredentialsCommand extends Command
     private function tranzak(): array
     {
         $base = (string) config('payments.tranzak.base_url');
-        $environnement = str_contains($base, 'sandbox') ? 'bac à sable' : '**production**';
+        $environment = str_contains($base, 'sandbox') ? 'bac à sable' : '**production**';
 
         if (config('payments.tranzak.app_id') === null || config('payments.tranzak.app_id') === '') {
-            return ['tranzak', $environnement, 'non configurés', 'Jamais essayé.'];
+            return ['tranzak', $environment, 'non configurés', 'Jamais essayé.'];
         }
 
         try {
-            $reponse = Http::timeout(20)->acceptJson()->post(rtrim($base, '/').'/auth/token', [
+            $response = Http::timeout(20)->acceptJson()->post(rtrim($base, '/').'/auth/token', [
                 'appId' => config('payments.tranzak.app_id'),
                 'appKey' => config('payments.tranzak.app_key'),
             ]);
 
-            $corps = $reponse->json();
+            $body = $response->json();
 
             // Une authentification refusée revient en HTTP 200 avec
             // `success: false` : c'est le corps qui fait autorité, pas le code.
-            if ($reponse->failed() || ($corps['success'] ?? null) === false) {
-                return ['tranzak', $environnement, 'refusés', (string) ($corps['errorMsg'] ?? 'HTTP '.$reponse->status())];
+            if ($response->failed() || ($body['success'] ?? null) === false) {
+                return ['tranzak', $environment, 'refusés', (string) ($body['errorMsg'] ?? 'HTTP '.$response->status())];
             }
 
             // Un jeton obtenu prouve que la cle **et** l'hote s'accordent :
             // verifie en conditions reelles, une cle de production est refusee
             // par l'hote de bac a sable. C'est ce qui rend une URL oubliee
             // bruyante plutot que silencieuse.
-            return ['tranzak', $environnement, 'acceptés', 'Jeton obtenu sur cet hôte.'];
+            return ['tranzak', $environment, 'acceptés', 'Jeton obtenu sur cet hôte.'];
         } catch (Throwable $e) {
-            return ['tranzak', $environnement, 'refusés', mb_substr($e->getMessage(), 0, 60)];
+            return ['tranzak', $environment, 'refusés', mb_substr($e->getMessage(), 0, 60)];
         }
     }
 
@@ -111,31 +111,31 @@ final class VerifyCredentialsCommand extends Command
      */
     private function notchpay(): array
     {
-        $cle = (string) config('payments.notchpay.public_key');
-        $environnement = str_starts_with($cle, 'test_') ? 'bac à sable' : '**production**';
+        $key = (string) config('payments.notchpay.public_key');
+        $environment = str_starts_with($key, 'test_') ? 'bac à sable' : '**production**';
 
-        if ($cle === '') {
+        if ($key === '') {
             return ['notchpay', '—', 'non configurés', 'Jamais essayé.'];
         }
 
         try {
             // Lecture d'une liste, sans filtre qui écrive quoi que ce soit.
-            $reponse = Http::timeout(20)
+            $response = Http::timeout(20)
                 ->acceptJson()
-                ->withHeaders(['Authorization' => $cle])
+                ->withHeaders(['Authorization' => $key])
                 ->get(rtrim((string) config('payments.notchpay.base_url'), '/').'/payments');
 
-            if ($reponse->status() === 401 || $reponse->status() === 403) {
-                return ['notchpay', $environnement, 'refusés', 'HTTP '.$reponse->status()];
+            if ($response->status() === 401 || $response->status() === 403) {
+                return ['notchpay', $environment, 'refusés', 'HTTP '.$response->status()];
             }
 
-            if ($reponse->failed()) {
-                return ['notchpay', $environnement, 'incertains', 'HTTP '.$reponse->status()];
+            if ($response->failed()) {
+                return ['notchpay', $environment, 'incertains', 'HTTP '.$response->status()];
             }
 
-            return ['notchpay', $environnement, 'acceptés', 'Lecture autorisée.'];
+            return ['notchpay', $environment, 'acceptés', 'Lecture autorisée.'];
         } catch (Throwable $e) {
-            return ['notchpay', $environnement, 'refusés', mb_substr($e->getMessage(), 0, 60)];
+            return ['notchpay', $environment, 'refusés', mb_substr($e->getMessage(), 0, 60)];
         }
     }
 }

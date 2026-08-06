@@ -31,10 +31,10 @@ final class PlatformOrganizationController
 {
     public function index(Request $request): JsonResponse
     {
-        $recherche = $request->string('q')->toString();
+        $search = $request->string('q')->toString();
 
         $organizations = DB::table('organizations')
-            ->when($recherche !== '', fn ($q) => $q->where('name', 'ilike', '%'.$recherche.'%'))
+            ->when($search !== '', fn ($q) => $q->where('name', 'ilike', '%'.$search.'%'))
             ->orderBy('created_at')
             ->limit(100)
             ->get(['id', 'name', 'slug', 'created_at']);

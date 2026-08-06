@@ -145,19 +145,19 @@ final class RefundController
      */
     private function remaining(PaymentIntent $intent, ExternalCharge $charge): Money
     {
-        $encaisse = (int) PaymentTransaction::query()
+        $collected = (int) PaymentTransaction::query()
             ->where('payment_intent_id', $intent->id)
             ->where('type', PaymentTransaction::CHARGE)
             ->sum('amount');
 
-        $engage = (int) Refund::query()
+        $committed = (int) Refund::query()
             ->where('payment_intent_id', $intent->id)
             ->whereIn('status', Refund::HOLDS_FUNDS)
             ->sum('amount');
 
-        $reste = $encaisse - $engage;
+        $remainder = $collected - $committed;
 
-        if ($reste <= 0) {
+        if ($remainder <= 0) {
             throw DomainException::unprocessable(
                 'REFUND_EXCEEDS_PAYMENT',
                 __('payments::messages.refund_exceeds_payment', [
@@ -166,7 +166,7 @@ final class RefundController
             );
         }
 
-        return Money::of($reste, $charge->currency);
+        return Money::of($remainder, $charge->currency);
     }
 
     /**

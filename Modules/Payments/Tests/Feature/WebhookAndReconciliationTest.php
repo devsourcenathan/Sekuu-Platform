@@ -107,7 +107,7 @@ final class WebhookAndReconciliationTest extends TestCase
         $this->assertSame(PaymentIntent::FAILED, $intent->fresh()->status);
 
         // Le propriétaire de l'objet n'a **pas** été réglé.
-        $this->assertSame([], FakePayable::$regles);
+        $this->assertSame([], FakePayable::$rules);
         $this->assertSame(0, PaymentTransaction::query()->where('type', 'charge')->count());
     }
 
@@ -165,7 +165,7 @@ final class WebhookAndReconciliationTest extends TestCase
         $this->assertSame(PaymentIntent::SUCCEEDED, $intent->fresh()->status);
 
         // Le propriétaire a été prévenu, sans qu'aucun callback n'arrive.
-        $this->assertSame([$intent->subject_id], FakePayable::$regles);
+        $this->assertSame([$intent->subject_id], FakePayable::$rules);
     }
 
     /**

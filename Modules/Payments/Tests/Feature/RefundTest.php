@@ -186,15 +186,15 @@ final class RefundTest extends TestCase
     public function test_the_same_idempotency_key_never_refunds_twice(): void
     {
         $charge = $this->paidCharge();
-        $cle = (string) Str::uuid();
+        $key = (string) Str::uuid();
 
-        $premier = $this->refund($charge, ['amount' => 5000, 'reason' => 'Geste'], $cle)
+        $first = $this->refund($charge, ['amount' => 5000, 'reason' => 'Geste'], $key)
             ->assertStatus(202)->json('data.refund_id');
 
-        $second = $this->refund($charge, ['amount' => 5000, 'reason' => 'Geste'], $cle)
+        $second = $this->refund($charge, ['amount' => 5000, 'reason' => 'Geste'], $key)
             ->assertStatus(202)->json('data.refund_id');
 
-        $this->assertSame($premier, $second);
+        $this->assertSame($first, $second);
         $this->assertSame(1, Refund::query()->count());
     }
 
@@ -276,10 +276,10 @@ final class RefundTest extends TestCase
     {
         $charge = $this->paidCharge();
 
-        $sansRemboursement = $this->issueKey(['payments.charge', 'payments.read']);
+        $withoutRefund = $this->issueKey(['payments.charge', 'payments.read']);
 
         $this->flushHeaders();
-        $this->withToken($sansRemboursement)
+        $this->withToken($withoutRefund)
             ->postJson("/api/v1/payments/charges/{$charge->id}/refunds", ['reason' => 'Tentative'])
             ->assertStatus(403)
             ->assertJsonPath('error.code', 'INSUFFICIENT_PERMISSIONS');
@@ -290,7 +290,7 @@ final class RefundTest extends TestCase
      */
     public function test_a_charge_of_another_product_is_not_refundable(): void
     {
-        $autre = ExternalCharge::create([
+        $other = ExternalCharge::create([
             'organization_id' => (string) Str::uuid(),
             'subject_type' => self::TYPE,
             'subject_id' => (string) Str::uuid(),
@@ -302,7 +302,7 @@ final class RefundTest extends TestCase
             'status' => ExternalCharge::PAID,
         ]);
 
-        $this->refund($autre, ['reason' => 'Tentative'])->assertStatus(404);
+        $this->refund($other, ['reason' => 'Tentative'])->assertStatus(404);
     }
 
     /**

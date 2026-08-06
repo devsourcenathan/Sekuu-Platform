@@ -46,24 +46,24 @@ final class GrantLimits
     public function afterPlanChange(Plan $plan): array
     {
         $catalogue = (array) ($plan->limits ?? []);
-        $maintenant = [];
-        $auRenouvellement = [];
-        $touchees = 0;
+        $immediately = [];
+        $atRenewal = [];
+        $affected = 0;
 
         foreach (Subscription::query()->where('plan_id', $plan->id)->alive()->cursor() as $subscription) {
-            $accordees = (array) ($subscription->granted_limits ?? []);
-            $apres = $accordees;
+            $granted = (array) ($subscription->granted_limits ?? []);
+            $after = $granted;
 
-            foreach ($catalogue as $cle => $valeur) {
-                if ($this->isRaise($accordees, $cle, $valeur)) {
-                    $apres[$cle] = $valeur;
-                    $maintenant[$cle] = true;
+            foreach ($catalogue as $key => $value) {
+                if ($this->isRaise($granted, $key, $value)) {
+                    $after[$key] = $value;
+                    $immediately[$key] = true;
 
                     continue;
                 }
 
-                if (! array_key_exists($cle, $accordees) || $accordees[$cle] !== $valeur) {
-                    $auRenouvellement[$cle] = true;
+                if (! array_key_exists($key, $granted) || $granted[$key] !== $value) {
+                    $atRenewal[$key] = true;
                 }
             }
 
@@ -72,24 +72,24 @@ final class GrantLimits
              * baisse, elle attend. On ne touche donc pas aux clés de la copie
              * qui ont disparu du plan.
              */
-            foreach (array_diff_key($accordees, $catalogue) as $cle => $_) {
-                $auRenouvellement[$cle] = true;
+            foreach (array_diff_key($granted, $catalogue) as $key => $_) {
+                $atRenewal[$key] = true;
             }
 
-            if ($apres !== $accordees) {
+            if ($after !== $granted) {
                 $subscription->forceFill([
-                    'granted_limits' => $apres,
+                    'granted_limits' => $after,
                     'limits_granted_at' => now(),
                 ])->save();
             }
 
-            $touchees++;
+            $affected++;
         }
 
         return [
-            'applied_now' => array_keys($maintenant),
-            'applied_at_renewal' => array_keys(array_diff_key($auRenouvellement, $maintenant)),
-            'subscriptions' => $touchees,
+            'applied_now' => array_keys($immediately),
+            'applied_at_renewal' => array_keys(array_diff_key($atRenewal, $immediately)),
+            'subscriptions' => $affected,
         ];
     }
 
@@ -104,22 +104,22 @@ final class GrantLimits
      *    grand ;
      *  - une valeur qui monte est une hausse.
      */
-    private function isRaise(array $accordees, string $cle, mixed $valeur): bool
+    private function isRaise(array $granted, string $key, mixed $value): bool
     {
-        if (! array_key_exists($cle, $accordees)) {
+        if (! array_key_exists($key, $granted)) {
             return true;
         }
 
-        $actuelle = $accordees[$cle];
+        $current = $granted[$key];
 
-        if ($actuelle === null) {
+        if ($current === null) {
             return false;
         }
 
-        if ($valeur === null) {
+        if ($value === null) {
             return true;
         }
 
-        return (int) $valeur > (int) $actuelle;
+        return (int) $value > (int) $current;
     }
 }

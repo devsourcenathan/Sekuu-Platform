@@ -196,12 +196,12 @@ final class PaymentFailoverTest extends TestCase
      */
     public function test_the_same_idempotency_key_may_serve_two_payers(): void
     {
-        foreach ([Str::uuid(), Str::uuid()] as $payeur) {
+        foreach ([Str::uuid(), Str::uuid()] as $payerId) {
             PaymentIntent::create([
                 'subject_type' => 'learn.enrollment',
                 'subject_id' => (string) Str::uuid(),
                 'payer_type' => PaymentIntent::PAYER_USER,
-                'payer_id' => (string) $payeur,
+                'payer_id' => (string) $payerId,
                 'amount' => 15000,
                 'currency' => 'XAF',
                 'method' => 'mobile_money',

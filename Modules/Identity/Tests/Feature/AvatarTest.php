@@ -75,14 +75,14 @@ final class AvatarTest extends TestCase
      */
     public function test_nobody_deposits_a_photo_on_someone_elses_profile(): void
     {
-        $autre = User::query()->create([
+        $other = User::query()->create([
             'first_name' => 'Ada', 'last_name' => 'Lovelace',
             'email' => 'ada@sekuu.com', 'password' => bcrypt('un-mot-de-passe-long'),
         ]);
 
         $this->postJson('/api/v1/files', [
             'owner_type' => AvatarFiles::TYPE,
-            'owner_id' => (string) $autre->id,
+            'owner_id' => (string) $other->id,
             'name' => 'photo.png',
             'mime_type' => 'image/png',
             'size' => 100,

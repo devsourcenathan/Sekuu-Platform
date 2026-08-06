@@ -137,11 +137,11 @@ final class PlatformOperatorTest extends TestCase
         $this->makeOperator([PlatformOperator::PLANS]);
 
         $subscription = Subscription::query()->firstOrFail();
-        $avant = $subscription->granted_limits;
+        $before = $subscription->granted_limits;
 
         // `workspaces` vaut 25 sur ce plan, `storage_gb` 500. On monte l'un,
         // on baisse l'autre, et on ajoute une clé qui n'existait pas.
-        $reponse = $this->patchJson('/api/v1/platform/plans/business', [
+        $response = $this->patchJson('/api/v1/platform/plans/business', [
             'limits' => [
                 'workspaces' => 100,           // hausse
                 'storage_gb' => 10,            // baisse
@@ -149,16 +149,16 @@ final class PlatformOperatorTest extends TestCase
             ],
         ])->assertOk()->json('data');
 
-        $apres = $subscription->fresh()->granted_limits;
+        $after = $subscription->fresh()->granted_limits;
 
-        $this->assertSame(100, $apres['workspaces']);
-        $this->assertSame(5000, $apres['ai_credits_monthly']);
+        $this->assertSame(100, $after['workspaces']);
+        $this->assertSame(5000, $after['ai_credits_monthly']);
 
         // La baisse n'a pas touché ce que le client a déjà payé.
-        $this->assertSame($avant['storage_gb'], $apres['storage_gb']);
+        $this->assertSame($before['storage_gb'], $after['storage_gb']);
 
-        $this->assertContains('workspaces', $reponse['applied_now']);
-        $this->assertContains('storage_gb', $reponse['applied_at_renewal']);
+        $this->assertContains('workspaces', $response['applied_now']);
+        $this->assertContains('storage_gb', $response['applied_at_renewal']);
     }
 
     /**
@@ -193,11 +193,11 @@ final class PlatformOperatorTest extends TestCase
     {
         $this->makeOperator([PlatformOperator::PLANS]);
 
-        $avant = AuditLog::query()->where('action', 'platform.get')->count();
+        $before = AuditLog::query()->where('action', 'platform.get')->count();
 
         $this->getJson('/api/v1/platform/plans')->assertOk();
 
-        $this->assertSame($avant + 1, AuditLog::query()->where('action', 'platform.get')->count());
+        $this->assertSame($before + 1, AuditLog::query()->where('action', 'platform.get')->count());
     }
 
     /**
@@ -245,13 +245,13 @@ final class PlatformOperatorTest extends TestCase
 
         $this->patchJson('/api/v1/platform/plans/business', ['limits' => ['storage_gb' => 1]])->assertOk();
 
-        $vue = $this->getJson("/api/v1/platform/organizations/{$this->organizationId}")
+        $view = $this->getJson("/api/v1/platform/organizations/{$this->organizationId}")
             ->assertOk()
             ->json('data');
 
         // Le catalogue dit 1, le client garde ce qu'il a payé.
-        $this->assertNotSame(1, $vue['subscription']['granted_limits']['storage_gb']);
-        $this->assertNotNull($vue['subscription']['limits_granted_at']);
+        $this->assertNotSame(1, $view['subscription']['granted_limits']['storage_gb']);
+        $this->assertNotNull($view['subscription']['limits_granted_at']);
     }
 
     /**
@@ -265,13 +265,13 @@ final class PlatformOperatorTest extends TestCase
         $this->withToken($this->ownerToken);
         $this->makeOperator([PlatformOperator::BILLING]);
 
-        $factures = $this->getJson("/api/v1/platform/organizations/{$this->organizationId}/invoices")
+        $invoices = $this->getJson("/api/v1/platform/organizations/{$this->organizationId}/invoices")
             ->assertOk()
             ->json('data');
 
-        $this->assertArrayHasKey('has_pdf', $factures[0]);
-        $this->assertArrayNotHasKey('pdf_file_id', $factures[0]);
-        $this->assertArrayNotHasKey('billing_details', $factures[0]);
+        $this->assertArrayHasKey('has_pdf', $invoices[0]);
+        $this->assertArrayNotHasKey('pdf_file_id', $invoices[0]);
+        $this->assertArrayNotHasKey('billing_details', $invoices[0]);
     }
 
     /**

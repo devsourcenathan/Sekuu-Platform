@@ -195,18 +195,18 @@ final class TranzakProvider implements PaymentProvider
         }
 
         $body = $response->json();
-        $lignes = $this->data($body);
-        $lignes = is_array($lignes[0] ?? null) ? $lignes : [$lignes];
+        $rows = $this->data($body);
+        $rows = is_array($rows[0] ?? null) ? $rows : [$rows];
 
-        foreach ($lignes as $ligne) {
-            if (! is_array($ligne) || ($ligne['mchTransactionRef'] ?? null) !== $reference) {
+        foreach ($rows as $row) {
+            if (! is_array($row) || ($row['mchTransactionRef'] ?? null) !== $reference) {
                 continue;
             }
 
-            $providerRef = $this->providerRef($ligne);
+            $providerRef = $this->providerRef($row);
 
             if ($providerRef !== null) {
-                return $this->translate($ligne, $providerRef);
+                return $this->translate($row, $providerRef);
             }
         }
 

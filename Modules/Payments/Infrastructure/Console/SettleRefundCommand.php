@@ -64,15 +64,15 @@ final class SettleRefundCommand extends Command
             return self::SUCCESS;
         }
 
-        if ($motif = $this->option('fail')) {
-            $settle->failed($refund, 'REFUND_TRANSFER_FAILED', (string) $motif);
+        if ($reason = $this->option('fail')) {
+            $settle->failed($refund, 'REFUND_TRANSFER_FAILED', (string) $reason);
             $this->info('Échec constaté. La somme redevient remboursable.');
 
             return self::SUCCESS;
         }
 
-        if ($motif = $this->option('cancel')) {
-            $settle->cancelled($refund, (string) $motif);
+        if ($reason = $this->option('cancel')) {
+            $settle->cancelled($refund, (string) $reason);
             $this->info("Annulé. Aucun argent n'a bougé.");
 
             return self::SUCCESS;
@@ -116,12 +116,12 @@ final class SettleRefundCommand extends Command
      */
     private function listPending(): int
     {
-        $attente = Refund::query()
+        $pending = Refund::query()
             ->whereIn('status', [Refund::PENDING, Refund::PROCESSING])
             ->orderBy('created_at')
             ->get();
 
-        if ($attente->isEmpty()) {
+        if ($pending->isEmpty()) {
             $this->info('Aucun remboursement en attente.');
 
             return self::SUCCESS;
@@ -129,7 +129,7 @@ final class SettleRefundCommand extends Command
 
         $this->table(
             ['Identifiant', 'Montant', 'Objet', 'Motif', 'Décidé le'],
-            $attente->map(fn (Refund $r): array => [
+            $pending->map(fn (Refund $r): array => [
                 $r->id,
                 Money::of($r->amount, $r->currency)->format(),
                 $r->subject_type.':'.mb_substr($r->subject_id, 0, 8),

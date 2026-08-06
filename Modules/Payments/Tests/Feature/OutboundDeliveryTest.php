@@ -42,9 +42,9 @@ final class OutboundDeliveryTest extends TestCase
         $this->app->make(DeliverPaymentEvent::class, ['deliveryId' => $delivery->id])->handle();
 
         Http::assertSent(function (Request $request) use ($endpoint): bool {
-            $attendu = 'v1='.hash_hmac('sha256', $request->body(), $endpoint->secret);
+            $expected = 'v1='.hash_hmac('sha256', $request->body(), $endpoint->secret);
 
-            return $request->header('X-Sekuu-Signature')[0] === $attendu;
+            return $request->header('X-Sekuu-Signature')[0] === $expected;
         });
 
         $delivery->refresh();

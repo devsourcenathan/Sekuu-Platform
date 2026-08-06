@@ -36,17 +36,17 @@ final class InvoicePdfCommand extends Command
     public function handle(RenderInvoicePdf $renderer): int
     {
         $rebuild = (bool) $this->option('rebuild');
-        $factures = $this->invoices($rebuild);
+        $invoices = $this->invoices($rebuild);
 
-        if ($factures->isEmpty()) {
+        if ($invoices->isEmpty()) {
             $this->info('Aucune facture à mettre en page.');
 
             return self::SUCCESS;
         }
 
-        $echecs = 0;
+        $failures = 0;
 
-        foreach ($factures as $invoice) {
+        foreach ($invoices as $invoice) {
             try {
                 $fileId = $rebuild ? $renderer->rebuild($invoice) : $renderer->handle($invoice);
 
@@ -58,7 +58,7 @@ final class InvoicePdfCommand extends Command
 
                 $this->line("  <fg=green>✓</> {$invoice->number}");
             } catch (Throwable $e) {
-                $echecs++;
+                $failures++;
 
                 // Une facture qui échoue n'arrête pas les autres : un
                 // rattrapage interrompu au dixième document laisserait le
@@ -68,9 +68,9 @@ final class InvoicePdfCommand extends Command
         }
 
         $this->newLine();
-        $this->info(sprintf('%d facture(s) traitée(s), %d échec(s).', $factures->count(), $echecs));
+        $this->info(sprintf('%d facture(s) traitée(s), %d échec(s).', $invoices->count(), $failures));
 
-        return $echecs > 0 ? self::FAILURE : self::SUCCESS;
+        return $failures > 0 ? self::FAILURE : self::SUCCESS;
     }
 
     /**

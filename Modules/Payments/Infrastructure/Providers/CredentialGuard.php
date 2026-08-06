@@ -60,7 +60,7 @@ final class CredentialGuard
      */
     private static function inconsistencies(bool $production): array
     {
-        $problemes = [];
+        $issues = [];
 
         $notchpay = (string) config('payments.notchpay.public_key');
 
@@ -68,7 +68,7 @@ final class CredentialGuard
             $test = str_starts_with($notchpay, self::NOTCHPAY_TEST_PREFIX);
 
             if (! $production && ! $test) {
-                $problemes[] = self::message(
+                $issues[] = self::message(
                     'NOTCHPAY_PUBLIC_KEY est une clé de production, et APP_ENV ne l\'est pas.',
                     'Un paiement partirait réellement, sur le téléphone d\'une vraie personne. '
                     .'Notch Pay ne distingue pas ses environnements par l\'URL : seul le préfixe '
@@ -77,7 +77,7 @@ final class CredentialGuard
             }
 
             if ($production && $test) {
-                $problemes[] = self::message(
+                $issues[] = self::message(
                     'NOTCHPAY_PUBLIC_KEY est une clé de test, en production.',
                     'Les paiements aboutiraient sans qu\'aucun argent ne soit encaissé — le '
                     .'client verrait son service ouvert, et la plateforme n\'aurait rien reçu.',
@@ -89,31 +89,31 @@ final class CredentialGuard
         $appId = (string) config('payments.tranzak.app_id');
 
         if ($appId !== '' && $tranzak !== '') {
-            $bacASable = str_contains($tranzak, self::TRANZAK_SANDBOX);
+            $sandbox = str_contains($tranzak, self::TRANZAK_SANDBOX);
 
-            if (! $production && ! $bacASable) {
-                $problemes[] = self::message(
+            if (! $production && ! $sandbox) {
+                $issues[] = self::message(
                     'TRANZAK_BASE_URL pointe sur la production, et APP_ENV ne l\'est pas.',
                     'Un paiement partirait réellement.',
                 );
             }
 
-            if ($production && $bacASable) {
-                $problemes[] = self::message(
+            if ($production && $sandbox) {
+                $issues[] = self::message(
                     'TRANZAK_BASE_URL pointe sur le bac à sable, en production.',
                     'Les paiements aboutiraient sans encaissement réel.',
                 );
             }
         }
 
-        return $problemes;
+        return $issues;
     }
 
-    private static function message(string $constat, string $consequence): string
+    private static function message(string $observation, string $consequence): string
     {
         return implode(' ', [
             '[Payments]',
-            $constat,
+            $observation,
             $consequence,
             'Corrigez APP_ENV ou les identifiants — il n\'existe pas d\'option pour ignorer ce contrôle.',
             'Voir docs/06-operations/01-go-live.md.',

@@ -80,20 +80,20 @@ final class ManageOperatorCommand extends Command
 
     private function grant(User $user): int
     {
-        $demandees = (array) $this->option('grant');
+        $requestedScopes = (array) $this->option('grant');
 
-        if ($demandees === []) {
+        if ($requestedScopes === []) {
             $this->error('Aucune permission demandée. Utilisez --grant, une fois par permission.');
             $this->comment('Disponibles : '.implode(', ', $this->grantable()));
 
             return self::FAILURE;
         }
 
-        $permissions = in_array('all', $demandees, true) ? $this->grantable() : $demandees;
-        $inconnues = array_diff($permissions, $this->grantable());
+        $permissions = in_array('all', $requestedScopes, true) ? $this->grantable() : $requestedScopes;
+        $unknown = array_diff($permissions, $this->grantable());
 
-        if ($inconnues !== []) {
-            $this->error('Permissions inconnues : '.implode(', ', $inconnues));
+        if ($unknown !== []) {
+            $this->error('Permissions inconnues : '.implode(', ', $unknown));
             $this->comment('Disponibles : '.implode(', ', $this->grantable()));
 
             return self::FAILURE;

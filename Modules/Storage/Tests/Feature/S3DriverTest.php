@@ -112,9 +112,9 @@ final class S3DriverTest extends TestCase
     private function s3(): Destination
     {
         [$driver, $config] = (function (): array {
-            $reflet = new \ReflectionMethod(RegisterDestination::class, 'applyPreset');
+            $mirror = new \ReflectionMethod(RegisterDestination::class, 'applyPreset');
 
-            return $reflet->invoke(app(RegisterDestination::class), 'r2', null, [
+            return $mirror->invoke(app(RegisterDestination::class), 'r2', null, [
                 'bucket' => 'sekuu-test',
                 'account_id' => 'compte',
             ]);

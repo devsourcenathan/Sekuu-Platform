@@ -140,10 +140,10 @@ final class ResolveDestination
             return;
         }
 
-        $sien = ($destination->owner_api_key_id !== null && $destination->owner_api_key_id === $actor->id)
+        $isTheirs = ($destination->owner_api_key_id !== null && $destination->owner_api_key_id === $actor->id)
             || ($destination->owner_organization_id !== null && $destination->owner_organization_id === $actor->organizationId);
 
-        if (! $sien) {
+        if (! $isTheirs) {
             throw DomainException::forbidden(
                 'STORAGE_DESTINATION_FORBIDDEN',
                 __('storage::messages.destination_forbidden'),

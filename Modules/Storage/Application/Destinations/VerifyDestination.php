@@ -57,23 +57,23 @@ final class VerifyDestination
 
     public function handle(Destination $destination): bool
     {
-        $etaitActive = $destination->status === Destination::ACTIVE;
-        $temoin = $destination->prefix().'.sekuu-probe';
-        $contenu = 'sekuu-probe-'.Str::uuid()->toString();
+        $wasActive = $destination->status === Destination::ACTIVE;
+        $witness = $destination->prefix().'.sekuu-probe';
+        $content = 'sekuu-probe-'.Str::uuid()->toString();
 
         try {
             $driver = $this->drivers->for($destination);
-            $driver->put($destination, $temoin, $contenu, 'text/plain');
+            $driver->put($destination, $witness, $content, 'text/plain');
 
-            $faits = $driver->inspect($destination, $temoin);
+            $facts = $driver->inspect($destination, $witness);
 
-            if ($faits === null || $faits->size !== strlen($contenu)) {
-                return $this->fail($destination, self::PROBE_MISMATCH, 'Objet écrit puis introuvable ou de taille inattendue.', $etaitActive);
+            if ($facts === null || $facts->size !== strlen($content)) {
+                return $this->fail($destination, self::PROBE_MISMATCH, 'Objet écrit puis introuvable ou de taille inattendue.', $wasActive);
             }
 
-            $driver->delete($destination, $temoin);
+            $driver->delete($destination, $witness);
         } catch (Throwable $e) {
-            return $this->fail($destination, $this->classify($e), $e->getMessage(), $etaitActive);
+            return $this->fail($destination, $this->classify($e), $e->getMessage(), $wasActive);
         }
 
         $destination->forceFill([
@@ -93,7 +93,7 @@ final class VerifyDestination
      * Seule une destination qui **servait** bascule en `unverified`, et c'est
      * ce basculement qui produit l'événement.
      */
-    private function fail(Destination $destination, string $reason, string $error, bool $etaitActive): bool
+    private function fail(Destination $destination, string $reason, string $error, bool $wasActive): bool
     {
         $destination->forceFill([
             'status' => in_array($destination->status, [Destination::READ_ONLY, Destination::DISABLED], true)
@@ -107,7 +107,7 @@ final class VerifyDestination
             'verification_error' => mb_substr($error, 0, 2000),
         ])->save();
 
-        if ($etaitActive) {
+        if ($wasActive) {
             Event::dispatch(new DomainEvent('storage.destination.unverified', [
                 'destination_id' => (string) $destination->id,
                 'slug' => (string) $destination->slug,

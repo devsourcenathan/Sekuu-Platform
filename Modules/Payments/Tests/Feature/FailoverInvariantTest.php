@@ -46,34 +46,34 @@ final class FailoverInvariantTest extends TestCase
      * sur les états effectivement rencontrés, et rien n'obligeait un nouvel
      * état à échouer fermé.
      */
-    #[DataProvider('tousLesStatuts')]
-    public function test_only_a_rejection_ever_allows_failover(string $statut, bool $bascule, bool $sollicite): void
+    #[DataProvider('everyStatus')]
+    public function test_only_a_rejection_ever_allows_failover(string $status, bool $failover, bool $solicited): void
     {
-        $cas = AttemptStatus::from($statut);
+        $case = AttemptStatus::from($status);
 
-        $this->assertSame($bascule, $cas->allowsFailover(), "allowsFailover() pour {$statut}");
-        $this->assertSame($sollicite, $cas->customerWasPrompted(), "customerWasPrompted() pour {$statut}");
+        $this->assertSame($failover, $case->allowsFailover(), "allowsFailover() pour {$status}");
+        $this->assertSame($solicited, $case->customerWasPrompted(), "customerWasPrompted() pour {$status}");
 
         // L'invariant, dans le seul sens où il est vrai : **basculer implique
         // que le client n'a pas été sollicité**. La réciproque est fausse et
         // doit le rester — `created` n'a sollicité personne, et n'autorise
         // pourtant aucune bascule : il n'y a encore rien à quoi échapper.
-        if ($bascule) {
-            $this->assertFalse($sollicite, "bascule autorisée alors que le client a été sollicité : {$statut}");
+        if ($failover) {
+            $this->assertFalse($solicited, "bascule autorisée alors que le client a été sollicité : {$status}");
         }
     }
 
     public function test_every_status_is_covered_by_the_truth_table(): void
     {
-        $couverts = array_column(self::tousLesStatuts(), 0);
-        $existants = array_map(static fn (AttemptStatus $c): string => $c->value, AttemptStatus::cases());
+        $covered = array_column(self::everyStatus(), 0);
+        $existing = array_map(static fn (AttemptStatus $c): string => $c->value, AttemptStatus::cases());
 
-        sort($couverts);
-        sort($existants);
+        sort($covered);
+        sort($existing);
 
         $this->assertSame(
-            $existants,
-            $couverts,
+            $existing,
+            $covered,
             'Un état de tentative a été ajouté sans entrée dans la table de vérité. '
             .'Décidez explicitement s\'il autorise une bascule — le défaut doit être non.',
         );
@@ -82,7 +82,7 @@ final class FailoverInvariantTest extends TestCase
     /**
      * @return list<array{string, bool, bool}>
      */
-    public static function tousLesStatuts(): array
+    public static function everyStatus(): array
     {
         return [
             // statut, autorise la bascule, le client a été sollicité

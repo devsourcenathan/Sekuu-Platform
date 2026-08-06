@@ -39,11 +39,11 @@ final class HealthController
             ->orderBy('slug')
             ->get();
 
-        $servables = $destinations->filter(fn (Destination $d): bool => $d->acceptsWrites());
+        $servable = $destinations->filter(fn (Destination $d): bool => $d->acceptsWrites());
 
         return ApiResponse::success([
             // La seule question qui compte : un fichier peut-il être déposé ?
-            'can_store' => $servables->isNotEmpty()
+            'can_store' => $servable->isNotEmpty()
                 && $destinations->contains(fn (Destination $d): bool => $d->is_default && $d->acceptsWrites()),
 
             'destinations' => $destinations->map(fn (Destination $d): array => [

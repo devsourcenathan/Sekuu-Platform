@@ -482,5 +482,4 @@ Le canal WhatsApp reste le plus attendu au Cameroun ; il suppose un compte Busin
 * Aucun endpoint de listing des rôles globaux — la collection Postman doit lire l'identifiant en base.
 * `GET /users` et `PATCH /users/{id}` sont spécifiés mais pas implémentés.
 * Pas de MFA ni de passkeys — prévus au modèle, non développés.
-* Identifiants en français dans cinq modules — `$payeur`, `$bascule`, `$repli`, `$limites`. Le dépôt écrit son code en anglais et ses commentaires en français ; AI a été aligné, le reste attend.
 * Internationalisation limitée à `en` et `fr`. Ajouter une langue suppose de traduire les 93 clés et les 10 templates de Notify ; un test échoue tant qu'une clé manque.

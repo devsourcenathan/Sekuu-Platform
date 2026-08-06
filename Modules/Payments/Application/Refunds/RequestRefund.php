@@ -147,13 +147,13 @@ final class RequestRefund
                     );
                 }
 
-                $disponible = $this->refundable($locked, $amount->currency);
+                $available = $this->refundable($locked, $amount->currency);
 
-                if ($amount->amount > $disponible->amount) {
+                if ($amount->amount > $available->amount) {
                     throw DomainException::unprocessable(
                         'REFUND_EXCEEDS_PAYMENT',
                         __('payments::messages.refund_exceeds_payment', [
-                            'available' => $disponible->format(),
+                            'available' => $available->format(),
                         ]),
                     );
                 }
@@ -197,17 +197,17 @@ final class RequestRefund
      */
     private function refundable(PaymentIntent $intent, string $currency): Money
     {
-        $encaisse = (int) PaymentTransaction::query()
+        $collected = (int) PaymentTransaction::query()
             ->where('payment_intent_id', $intent->id)
             ->where('type', PaymentTransaction::CHARGE)
             ->sum('amount');
 
-        $engage = (int) Refund::query()
+        $committed = (int) Refund::query()
             ->where('payment_intent_id', $intent->id)
             ->whereIn('status', Refund::HOLDS_FUNDS)
             ->sum('amount');
 
-        return Money::of(max(0, $encaisse - $engage), $currency);
+        return Money::of(max(0, $collected - $committed), $currency);
     }
 
     /**

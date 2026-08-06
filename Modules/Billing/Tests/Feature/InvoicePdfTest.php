@@ -96,12 +96,12 @@ final class InvoicePdfTest extends TestCase
     public function test_a_second_download_serves_the_very_same_document(): void
     {
         $invoice = $this->issue();
-        $premier = $invoice->pdf_file_id;
+        $first = $invoice->pdf_file_id;
 
         $this->get("/api/v1/invoices/{$invoice->id}/download")->assertRedirect();
         $this->get("/api/v1/invoices/{$invoice->id}/download")->assertRedirect();
 
-        $this->assertSame($premier, $invoice->fresh()->pdf_file_id);
+        $this->assertSame($first, $invoice->fresh()->pdf_file_id);
         $this->assertSame(1, StoredFile::query()->where('owner_id', $invoice->id)->count());
     }
 
@@ -113,15 +113,15 @@ final class InvoicePdfTest extends TestCase
     public function test_rebuilding_adds_a_document_instead_of_replacing_one(): void
     {
         $invoice = $this->issue();
-        $ancien = $invoice->pdf_file_id;
+        $previous = $invoice->pdf_file_id;
 
-        $nouveau = app(RenderInvoicePdf::class)->rebuild($invoice->fresh());
+        $incoming = app(RenderInvoicePdf::class)->rebuild($invoice->fresh());
 
-        $this->assertNotSame($ancien, $nouveau);
-        $this->assertSame($nouveau, $invoice->fresh()->pdf_file_id);
+        $this->assertNotSame($previous, $incoming);
+        $this->assertSame($incoming, $invoice->fresh()->pdf_file_id);
 
         // L'ancien est toujours là, et toujours servable.
-        $this->assertSame(StoredFile::READY, StoredFile::query()->find($ancien)->status);
+        $this->assertSame(StoredFile::READY, StoredFile::query()->find($previous)->status);
     }
 
     /**

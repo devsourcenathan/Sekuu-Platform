@@ -87,7 +87,7 @@ final class DestinationController
         $validated = $request->validate(['credentials' => ['required', 'array']]);
 
         $destination = $this->find($request, $destinationId);
-        $anciens = $destination->credentials;
+        $previous = $destination->credentials;
 
         $destination->forceFill(['credentials' => $validated['credentials']])->save();
 
@@ -96,7 +96,7 @@ final class DestinationController
          * abandonnés : une rotation ratée ne doit pas couper le service.
          */
         if (! $this->verifier->handle($destination)) {
-            $destination->forceFill(['credentials' => $anciens])->save();
+            $destination->forceFill(['credentials' => $previous])->save();
             $this->verifier->handle($destination);
 
             throw DomainException::conflict(

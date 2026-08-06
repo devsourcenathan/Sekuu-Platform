@@ -26,7 +26,7 @@ final class SweepStorageCommand extends Command
     public function handle(DriverRegistry $drivers): int
     {
         $sec = (bool) $this->option('dry-run');
-        $orphelins = 0;
+        $orphans = 0;
         $purges = 0;
 
         /*
@@ -45,14 +45,14 @@ final class SweepStorageCommand extends Command
                 continue;
             }
 
-            $orphelins += $this->sweepOrphans($destination, $driver, $sec);
+            $orphans += $this->sweepOrphans($destination, $driver, $sec);
             $purges += $this->purgeDeleted($destination, $driver, $sec);
         }
 
         $this->info(sprintf(
             '%s : %d déclaration(s) jamais confirmée(s), %d fichier(s) effacé(s) du magasin.',
             $sec ? 'Simulation' : 'Balayage',
-            $orphelins,
+            $orphans,
             $purges,
         ));
 
@@ -69,16 +69,16 @@ final class SweepStorageCommand extends Command
      */
     private function sweepOrphans(Destination $destination, $driver, bool $sec): int
     {
-        $seuil = now()->subHours((int) config('storage.orphan_after_hours', 24));
-        $compte = 0;
+        $threshold = now()->subHours((int) config('storage.orphan_after_hours', 24));
+        $count = 0;
 
         $query = StoredFile::query()
             ->where('destination_id', $destination->id)
             ->where('status', StoredFile::PENDING)
-            ->where('created_at', '<', $seuil);
+            ->where('created_at', '<', $threshold);
 
         foreach ($query->cursor() as $file) {
-            $compte++;
+            $count++;
 
             if ($sec) {
                 continue;
@@ -96,7 +96,7 @@ final class SweepStorageCommand extends Command
             $file->forceFill(['status' => StoredFile::DELETED, 'deleted_at' => now()])->save();
         }
 
-        return $compte;
+        return $count;
     }
 
     /**
@@ -105,18 +105,18 @@ final class SweepStorageCommand extends Command
      */
     private function purgeDeleted(Destination $destination, $driver, bool $sec): int
     {
-        $seuil = now()->subDays((int) config('storage.purge_after_days', 7));
-        $compte = 0;
+        $threshold = now()->subDays((int) config('storage.purge_after_days', 7));
+        $count = 0;
 
         $query = StoredFile::query()
             ->where('destination_id', $destination->id)
             ->where('status', StoredFile::DELETED)
             ->whereNotNull('deleted_at')
-            ->where('deleted_at', '<', $seuil)
+            ->where('deleted_at', '<', $threshold)
             ->whereNull('purged_at');
 
         foreach ($query->cursor() as $file) {
-            $compte++;
+            $count++;
 
             if ($sec) {
                 continue;
@@ -134,6 +134,6 @@ final class SweepStorageCommand extends Command
             }
         }
 
-        return $compte;
+        return $count;
     }
 }

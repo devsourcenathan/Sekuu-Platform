@@ -47,9 +47,9 @@ final class DestinationResolutionTest extends TestCase
 
     public function test_the_platform_default_serves_when_nothing_else_says_otherwise(): void
     {
-        $defaut = $this->destination('defaut', isDefault: true);
+        $default = $this->destination('defaut', isDefault: true);
 
-        $this->assertSame($defaut->id, $this->declare()->file->destination_id);
+        $this->assertSame($default->id, $this->declare()->file->destination_id);
     }
 
     public function test_a_placement_beats_the_default(): void
@@ -73,28 +73,28 @@ final class DestinationResolutionTest extends TestCase
     public function test_a_typed_placement_beats_a_catch_all(): void
     {
         $this->destination('defaut', isDefault: true);
-        $tout = $this->destination('tout');
-        $lecons = $this->destination('lecons');
+        $catchAll = $this->destination('tout');
+        $lessons = $this->destination('lecons');
 
         StoragePlacement::query()->create([
             'organization_id' => self::ORG,
             'owner_type' => null,
-            'destination_id' => $tout->id,
+            'destination_id' => $catchAll->id,
         ]);
         StoragePlacement::query()->create([
             'organization_id' => self::ORG,
             'owner_type' => FakeFileOwner::TYPE,
-            'destination_id' => $lecons->id,
+            'destination_id' => $lessons->id,
         ]);
 
-        $this->assertSame($lecons->id, $this->declare()->file->destination_id);
+        $this->assertSame($lessons->id, $this->declare()->file->destination_id);
     }
 
     public function test_the_owner_policy_beats_every_placement(): void
     {
         $this->destination('defaut', isDefault: true);
         $place = $this->destination('place');
-        $exige = $this->destination('exige-par-le-module');
+        $required = $this->destination('exige-par-le-module');
 
         StoragePlacement::query()->create([
             'organization_id' => self::ORG,
@@ -104,7 +104,7 @@ final class DestinationResolutionTest extends TestCase
 
         FakeFileOwner::$destination = 'exige-par-le-module';
 
-        $this->assertSame($exige->id, $this->declare()->file->destination_id);
+        $this->assertSame($required->id, $this->declare()->file->destination_id);
     }
 
     /**
@@ -137,17 +137,17 @@ final class DestinationResolutionTest extends TestCase
     {
         $this->destination('defaut', isDefault: true);
         $this->destination('videos', status: Destination::READ_ONLY);
-        $repli = $this->destination('archives');
+        $fallbackStore = $this->destination('archives');
 
         FakeFileOwner::$destination = 'videos';
         FakeFileOwner::$fallback = 'archives';
 
-        $this->assertSame($repli->id, $this->declare()->file->destination_id);
+        $this->assertSame($fallbackStore->id, $this->declare()->file->destination_id);
     }
 
     public function test_a_fallback_that_is_also_down_fails_rather_than_going_further(): void
     {
-        $defaut = $this->destination('defaut', isDefault: true);
+        $default = $this->destination('defaut', isDefault: true);
         $this->destination('videos', status: Destination::READ_ONLY);
         $this->destination('archives', status: Destination::UNVERIFIED);
 
@@ -160,7 +160,7 @@ final class DestinationResolutionTest extends TestCase
             $this->declare();
         } catch (DomainException $e) {
             // Surtout pas le défaut de la plateforme : le repli n'a qu'un rang.
-            $this->assertSame(0, StoredFile::query()->where('destination_id', $defaut->id)->count());
+            $this->assertSame(0, StoredFile::query()->where('destination_id', $default->id)->count());
 
             throw $e;
         }
@@ -174,11 +174,11 @@ final class DestinationResolutionTest extends TestCase
      */
     public function test_changing_a_placement_never_moves_an_existing_file(): void
     {
-        $premier = $this->destination('premier', isDefault: true);
+        $first = $this->destination('premier', isDefault: true);
         $second = $this->destination('second');
 
         $file = $this->declare()->file;
-        $this->assertSame($premier->id, $file->destination_id);
+        $this->assertSame($first->id, $file->destination_id);
 
         StoragePlacement::query()->create([
             'organization_id' => self::ORG,
@@ -186,7 +186,7 @@ final class DestinationResolutionTest extends TestCase
             'destination_id' => $second->id,
         ]);
 
-        $this->assertSame($premier->id, $file->fresh()->destination_id);
+        $this->assertSame($first->id, $file->fresh()->destination_id);
         $this->assertSame($second->id, $this->declare()->file->destination_id);
     }
 
@@ -493,7 +493,7 @@ final class DestinationResolutionTest extends TestCase
     public function test_a_working_store_is_never_rewritten_by_the_environment(): void
     {
         $destination = $this->destination('intouchable', isDefault: true);
-        $racine = $destination->config['root'];
+        $root = $destination->config['root'];
 
         putenv('STORAGE_DEFAULT_SLUG=intouchable');
         putenv('STORAGE_DEFAULT_DRIVER=local');
@@ -501,7 +501,7 @@ final class DestinationResolutionTest extends TestCase
 
         $this->artisan('storage:destination', ['--from-env' => true])->assertSuccessful();
 
-        $this->assertSame($racine, $destination->fresh()->config['root']);
+        $this->assertSame($root, $destination->fresh()->config['root']);
 
         putenv('STORAGE_DEFAULT_SLUG');
         putenv('STORAGE_DEFAULT_DRIVER');

@@ -40,7 +40,7 @@ final class VerifyDestinationsCommand extends Command
             return self::SUCCESS;
         }
 
-        $echecs = 0;
+        $failures = 0;
 
         foreach ($destinations as $destination) {
             $ok = $verifier->handle($destination);
@@ -52,18 +52,18 @@ final class VerifyDestinationsCommand extends Command
                 continue;
             }
 
-            $echecs++;
+            $failures++;
             $this->line("  <fg=red>✗</> {$destination->slug} — {$destination->verification_reason}");
         }
 
         $this->newLine();
 
-        if ($echecs > 0) {
-            $this->warn("{$echecs} magasin(s) hors service. Les fichiers qu'ils portent restent lisibles s'ils sont en lecture seule.");
+        if ($failures > 0) {
+            $this->warn("{$failures} magasin(s) hors service. Les fichiers qu'ils portent restent lisibles s'ils sont en lecture seule.");
         }
 
         // Sortie non nulle : un ordonnanceur ou une CI doivent pouvoir s'en
         // apercevoir sans lire la sortie.
-        return $echecs > 0 ? self::FAILURE : self::SUCCESS;
+        return $failures > 0 ? self::FAILURE : self::SUCCESS;
     }
 }

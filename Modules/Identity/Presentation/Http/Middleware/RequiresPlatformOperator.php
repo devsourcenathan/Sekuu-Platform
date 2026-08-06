@@ -37,9 +37,9 @@ final class RequiresPlatformOperator
 
     public function handle(Request $request, Closure $next, string $permission): Response
     {
-        $autorise = $this->context->may($permission);
+        $authorised = $this->context->may($permission);
 
-        if (! $autorise) {
+        if (! $authorised) {
             $this->record($request, $permission, 403);
 
             /*

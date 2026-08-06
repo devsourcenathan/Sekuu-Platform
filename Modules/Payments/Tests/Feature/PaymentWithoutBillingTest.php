@@ -45,9 +45,9 @@ final class PaymentWithoutBillingTest extends TestCase
     {
         FakeProvider::willReturn('primary', ChargeOutcome::succeeded('ref-1', gross: 15000, fee: 450));
 
-        $inscription = (string) Str::uuid();
+        $registration = (string) Str::uuid();
 
-        $intent = $this->pay($inscription);
+        $intent = $this->pay($registration);
 
         $this->assertSame(PaymentIntent::SUCCEEDED, $intent->status);
         $this->assertSame(15000, $intent->amount);
@@ -56,7 +56,7 @@ final class PaymentWithoutBillingTest extends TestCase
         $this->assertSame(PaymentIntent::PAYER_USER, $intent->payer_type);
 
         // Le propriétaire de l'objet a été prévenu, dans la transaction.
-        $this->assertSame([$inscription], FakePayable::$regles);
+        $this->assertSame([$registration], FakePayable::$rules);
 
         // Le registre de caisse porte le brut et la commission.
         $this->assertDatabaseHas('payment_transactions', ['type' => 'charge', 'amount' => 15000]);
@@ -74,7 +74,7 @@ final class PaymentWithoutBillingTest extends TestCase
      */
     public function test_the_amount_comes_from_the_owner(): void
     {
-        FakePayable::$prix = 42_000;
+        FakePayable::$price = 42_000;
         FakeProvider::willReturn('primary', ChargeOutcome::prompted('ref-1'));
 
         $this->assertSame(42_000, $this->pay((string) Str::uuid())->amount);
@@ -104,12 +104,12 @@ final class PaymentWithoutBillingTest extends TestCase
     {
         FakeProvider::willReturn('primary', ChargeOutcome::prompted('ref-1'));
 
-        $inscription = (string) Str::uuid();
+        $registration = (string) Str::uuid();
 
-        $this->pay($inscription);
+        $this->pay($registration);
 
         $this->expectException(DomainException::class);
-        $this->pay($inscription);
+        $this->pay($registration);
     }
 
     /**
@@ -124,10 +124,10 @@ final class PaymentWithoutBillingTest extends TestCase
 
         $this->assertSame(['primary', 'secondary'], FakeProvider::$charged);
 
-        $tentatives = $intent->attempts()->orderBy('priority')->get();
+        $attempts = $intent->attempts()->orderBy('priority')->get();
 
-        $this->assertSame(AttemptStatus::Rejected, $tentatives[0]->status);
-        $this->assertSame(AttemptStatus::Prompted, $tentatives[1]->status);
+        $this->assertSame(AttemptStatus::Rejected, $attempts[0]->status);
+        $this->assertSame(AttemptStatus::Prompted, $attempts[1]->status);
     }
 
     /**
@@ -137,18 +137,18 @@ final class PaymentWithoutBillingTest extends TestCase
     {
         FakeProvider::willReturn('primary', ChargeOutcome::prompted('ref-1'));
 
-        $inscription = (string) Str::uuid();
-        $intent = $this->pay($inscription);
+        $registration = (string) Str::uuid();
+        $intent = $this->pay($registration);
 
         $this->assertSame(PaymentIntent::PENDING, $intent->status);
-        $this->assertSame([], FakePayable::$regles);
+        $this->assertSame([], FakePayable::$rules);
 
         FakeProvider::willPoll('primary', ChargeOutcome::succeeded('ref-1', gross: 15000));
 
         $this->app->make(ReconcilePayments::class)->handle();
 
         $this->assertSame(PaymentIntent::SUCCEEDED, $intent->fresh()->status);
-        $this->assertSame([$inscription], FakePayable::$regles);
+        $this->assertSame([$registration], FakePayable::$rules);
         $this->assertSame(1, PaymentTransaction::query()->where('type', 'charge')->count());
     }
 
