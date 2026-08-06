@@ -492,11 +492,15 @@ Par ordre décroissant de valeur :
 
 Puis Verify.
 
-**Avant qu'AI serve un vrai client**, trois gestes qui ne sont pas du code :
+~~**Avant qu'AI serve un vrai client**~~ — **fait le 6 août 2026.**
 
-* poser `ai_credits_monthly` sur les plans, par `PATCH /platform/plans/{key}` — en **millionièmes de dollar**, l'unité dans laquelle les fournisseurs facturent ;
-* poser au moins un compte de la plateforme, par `ai:account` ou par `AI_DEFAULT_*` là où il n'y a pas de shell ;
-* vérifier que le fournisseur choisi garantit contractuellement le **non-entraînement** sur les données envoyées par l'API. C'est le cas des offres professionnelles d'Anthropic, d'OpenAI, de Google et de Mistral — pas de leurs offres grand public, ni de tous les intermédiaires. Rien dans le code ne peut le détecter.
+* Un opérateur de plateforme habilité, par insertion SQL sur Neon — l'offre gratuite n'ayant pas de shell. L'habilitation étant relue à chaque requête, la ligne ouvre les routes sans redéploiement.
+* `ai_credits_monthly` posé sur les trois plans : `starter` 1 $, `clinic-pro` 5 $, `business` 20 $ — en millionièmes de dollar.
+* `plateforme-deepseek` posé par `AI_DEFAULT_*`, **éprouvé au démarrage** contre le vrai service : `can_generate: true`.
+
+Reste à vérifier, et rien dans le code ne peut le faire : que le fournisseur retenu garantisse contractuellement le **non-entraînement** sur les données envoyées par l'API. C'est le cas des offres professionnelles d'Anthropic, d'OpenAI, de Google et de Mistral — pas de leurs offres grand public, ni de tous les intermédiaires. DeepSeek n'a pas été vérifié sur ce point.
+
+Et une conséquence à surveiller : le **plafond absolu** vaut 100 $/mois par défaut. À 20 $ par client `business`, cinq clients suffisent à l'atteindre — et il rendrait alors `AI_SPEND_CAP_REACHED` à des clients qui n'ont rien fait de mal. `AI_SPEND_CAP_MICROS` doit rester au-dessus de la somme des quotas vendus.
 
 Le canal WhatsApp reste le plus attendu au Cameroun ; il suppose un compte Business vérifié et des modèles approuvés par Meta, donc un délai externe qu'il vaut mieux engager tôt.
 
