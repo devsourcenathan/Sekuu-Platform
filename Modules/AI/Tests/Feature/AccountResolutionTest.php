@@ -41,9 +41,9 @@ final class AccountResolutionTest extends TestCase
         $this->account('secours', priority: 50);
         $this->account('principal', priority: 10);
 
-        $comptes = app(ResolveAccount::class)->handle('summarize', AiActor::user('u', $this->orgA));
+        $accounts = app(ResolveAccount::class)->handle('summarize', AiActor::user('u', $this->orgA));
 
-        $this->assertSame(['principal', 'secours'], array_map(fn (AiAccount $c): string => $c->slug, $comptes));
+        $this->assertSame(['principal', 'secours'], array_map(fn (AiAccount $c): string => $c->slug, $accounts));
     }
 
     /**
@@ -53,12 +53,12 @@ final class AccountResolutionTest extends TestCase
     public function test_a_named_account_has_no_successor(): void
     {
         $this->account('plateforme');
-        $sien = $this->account('a-lui', organizationId: $this->orgA);
+        $isTheirs = $this->account('a-lui', organizationId: $this->orgA);
 
-        $comptes = app(ResolveAccount::class)->handle('summarize', AiActor::user('u', $this->orgA), 'a-lui');
+        $accounts = app(ResolveAccount::class)->handle('summarize', AiActor::user('u', $this->orgA), 'a-lui');
 
-        $this->assertCount(1, $comptes);
-        $this->assertTrue($comptes[0]->is($sien));
+        $this->assertCount(1, $accounts);
+        $this->assertTrue($accounts[0]->is($isTheirs));
     }
 
     /**
@@ -71,8 +71,8 @@ final class AccountResolutionTest extends TestCase
     public function test_an_unusable_named_account_fails_instead_of_falling_back_to_ours(): void
     {
         $this->account('plateforme');
-        $sien = $this->account('a-lui', organizationId: $this->orgA);
-        $sien->forceFill(['status' => AiAccount::UNVERIFIED])->save();
+        $isTheirs = $this->account('a-lui', organizationId: $this->orgA);
+        $isTheirs->forceFill(['status' => AiAccount::UNVERIFIED])->save();
 
         try {
             app(ResolveAccount::class)->handle('summarize', AiActor::user('u', $this->orgA), 'a-lui');
@@ -90,13 +90,13 @@ final class AccountResolutionTest extends TestCase
     public function test_a_placement_pointing_at_a_dead_account_fails_too(): void
     {
         $this->account('plateforme');
-        $sien = $this->account('a-lui', organizationId: $this->orgA);
-        $sien->forceFill(['status' => AiAccount::PAUSED])->save();
+        $isTheirs = $this->account('a-lui', organizationId: $this->orgA);
+        $isTheirs->forceFill(['status' => AiAccount::PAUSED])->save();
 
         AiPlacement::query()->create([
             'organization_id' => $this->orgA,
             'task' => null,
-            'account_id' => $sien->id,
+            'account_id' => $isTheirs->id,
         ]);
 
         $this->expectExceptionMessage('a-lui');
@@ -110,11 +110,11 @@ final class AccountResolutionTest extends TestCase
      */
     public function test_a_task_rule_beats_the_catch_all(): void
     {
-        $tout = $this->account('pour-tout', organizationId: $this->orgA);
-        $resumes = $this->account('pour-resumes', organizationId: $this->orgA);
+        $catchAll = $this->account('pour-tout', organizationId: $this->orgA);
+        $summaries = $this->account('pour-resumes', organizationId: $this->orgA);
 
-        AiPlacement::query()->create(['organization_id' => $this->orgA, 'task' => null, 'account_id' => $tout->id]);
-        AiPlacement::query()->create(['organization_id' => $this->orgA, 'task' => 'summarize', 'account_id' => $resumes->id]);
+        AiPlacement::query()->create(['organization_id' => $this->orgA, 'task' => null, 'account_id' => $catchAll->id]);
+        AiPlacement::query()->create(['organization_id' => $this->orgA, 'task' => 'summarize', 'account_id' => $summaries->id]);
 
         $this->assertSame(
             'pour-resumes',
@@ -151,9 +151,9 @@ final class AccountResolutionTest extends TestCase
     {
         $this->account('plateforme');
 
-        $comptes = app(ResolveAccount::class)->handle('summarize', AiActor::user('u', $this->orgB), 'plateforme');
+        $accounts = app(ResolveAccount::class)->handle('summarize', AiActor::user('u', $this->orgB), 'plateforme');
 
-        $this->assertSame('plateforme', $comptes[0]->slug);
+        $this->assertSame('plateforme', $accounts[0]->slug);
     }
 
     /**
@@ -175,16 +175,16 @@ final class AccountResolutionTest extends TestCase
      */
     public function test_an_api_key_reaches_its_own_account(): void
     {
-        $cle = (string) Str::uuid();
-        $this->account('produit', apiKeyId: $cle);
+        $key = (string) Str::uuid();
+        $this->account('produit', apiKeyId: $key);
 
-        $comptes = app(ResolveAccount::class)->handle(
+        $accounts = app(ResolveAccount::class)->handle(
             'summarize',
-            AiActor::apiKey($cle, ['summarize'], $this->orgA),
+            AiActor::apiKey($key, ['summarize'], $this->orgA),
             'produit',
         );
 
-        $this->assertSame('produit', $comptes[0]->slug);
+        $this->assertSame('produit', $accounts[0]->slug);
 
         $this->expectException(DomainException::class);
 

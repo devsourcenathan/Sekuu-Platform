@@ -27,9 +27,9 @@ final class CatalogueTest extends TestCase
      */
     public function test_every_model_of_a_chain_satisfies_its_task(): void
     {
-        $problemes = app(TaskRegistry::class)->incoherences();
+        $issues = app(TaskRegistry::class)->inconsistencies();
 
-        $this->assertSame([], $problemes, implode("\n", $problemes));
+        $this->assertSame([], $issues, implode("\n", $issues));
     }
 
     /**
@@ -38,12 +38,12 @@ final class CatalogueTest extends TestCase
      */
     public function test_every_model_belongs_to_a_registered_driver(): void
     {
-        $pilotes = app(DriverRegistry::class)->names();
+        $drivers = app(DriverRegistry::class)->names();
 
         foreach (app(ModelRegistry::class)->all() as $model) {
             $this->assertContains(
                 $model->family,
-                $pilotes,
+                $drivers,
                 "Le modèle « {$model->id} » déclare le pilote « {$model->family} », qui n'existe pas.",
             );
         }
@@ -56,11 +56,11 @@ final class CatalogueTest extends TestCase
     public function test_no_task_accepts_a_model_as_an_input(): void
     {
         foreach (app(TaskRegistry::class)->all() as $task) {
-            foreach (array_keys($task->inputs) as $champ) {
+            foreach (array_keys($task->inputs) as $field) {
                 $this->assertNotContains(
-                    $champ,
+                    $field,
                     ['model', 'temperature', 'max_tokens', 'top_p', 'system'],
-                    "La tâche « {$task->name} » accepte « {$champ} », ce que l'ADR-0015 refuse.",
+                    "La tâche « {$task->name} » accepte « {$field} », ce que l'ADR-0015 refuse.",
                 );
             }
         }
@@ -105,10 +105,10 @@ final class CatalogueTest extends TestCase
         ));
 
         $tasks = app(TaskRegistry::class);
-        $chaine = $tasks->modelsFor($tasks->get('summarize'));
+        $chain = $tasks->modelsFor($tasks->get('summarize'));
 
-        $this->assertCount(1, $chaine);
-        $this->assertSame('deepseek-chat', $chaine[0]->id);
+        $this->assertCount(1, $chain);
+        $this->assertSame('deepseek-chat', $chain[0]->id);
     }
 
     /**
@@ -120,10 +120,10 @@ final class CatalogueTest extends TestCase
     {
         $tasks = app(TaskRegistry::class);
 
-        foreach (['prompt', 'prompt-fast', 'prompt-deep'] as $nom) {
-            $task = $tasks->get($nom);
+        foreach (['prompt', 'prompt-fast', 'prompt-deep'] as $name) {
+            $task = $tasks->get($name);
 
-            $this->assertTrue($task->isFreeForm(), "« {$nom} » devrait être libre.");
+            $this->assertTrue($task->isFreeForm(), "« {$name} » devrait être libre.");
 
             // Ce sont les bornes qui tiennent le coût, à défaut d'un schéma.
             $this->assertGreaterThan(0, $task->maxInputTokens);
@@ -138,10 +138,10 @@ final class CatalogueTest extends TestCase
      */
     public function test_structured_tasks_are_deterministic(): void
     {
-        foreach (['extract', 'classify'] as $nom) {
-            $task = app(TaskRegistry::class)->get($nom);
+        foreach (['extract', 'classify'] as $name) {
+            $task = app(TaskRegistry::class)->get($name);
 
-            $this->assertSame(0.0, $task->temperature, "« {$nom} » doit être déterministe.");
+            $this->assertSame(0.0, $task->temperature, "« {$name} » doit être déterministe.");
             $this->assertTrue($task->producesJson());
         }
     }

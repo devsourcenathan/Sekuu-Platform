@@ -38,16 +38,16 @@ final class OpenAiDriver implements AiDriver
      */
     public function serves(AiAccount $account, string $model): bool
     {
-        $autorises = $account->models;
+        $allowed = $account->models;
 
-        return $autorises === null || $autorises === [] || in_array($model, $autorises, true);
+        return $allowed === null || $allowed === [] || in_array($model, $allowed, true);
     }
 
     public function generate(AiAccount $account, GenerationRequest $request): GenerationResult
     {
-        $debut = (int) (microtime(true) * 1000);
+        $start = (int) (microtime(true) * 1000);
 
-        $corps = [
+        $body = [
             'model' => $request->model,
             'messages' => $this->messages($request),
             'max_tokens' => $request->maxOutputTokens,
@@ -55,23 +55,23 @@ final class OpenAiDriver implements AiDriver
         ];
 
         if ($request->json) {
-            $corps['response_format'] = ['type' => 'json_object'];
+            $body['response_format'] = ['type' => 'json_object'];
         }
 
         try {
-            $reponse = $this->client($account)->post('/chat/completions', $corps);
+            $response = $this->client($account)->post('/chat/completions', $body);
         } catch (ConnectionException $e) {
             throw ProviderFailure::from($e);
         }
 
-        if ($reponse->failed()) {
-            throw $this->failure($reponse->status(), (string) $reponse->body());
+        if ($response->failed()) {
+            throw $this->failure($response->status(), (string) $response->body());
         }
 
-        $donnees = (array) $reponse->json();
+        $data = (array) $response->json();
 
         return new GenerationResult(
-            output: (string) ($donnees['choices'][0]['message']['content'] ?? ''),
+            output: (string) ($data['choices'][0]['message']['content'] ?? ''),
 
             /*
              * Les jetons **rapportés par le fournisseur**, jamais estimés.
@@ -80,16 +80,16 @@ final class OpenAiDriver implements AiDriver
              * divergerait de la facture, et la divergence ne se verrait qu'en
              * fin de mois.
              */
-            inputTokens: (int) ($donnees['usage']['prompt_tokens'] ?? 0),
-            outputTokens: (int) ($donnees['usage']['completion_tokens'] ?? 0),
+            inputTokens: (int) ($data['usage']['prompt_tokens'] ?? 0),
+            outputTokens: (int) ($data['usage']['completion_tokens'] ?? 0),
 
-            latencyMs: (int) (microtime(true) * 1000) - $debut,
+            latencyMs: (int) (microtime(true) * 1000) - $start,
         );
     }
 
     public function probe(AiAccount $account): void
     {
-        $modele = ($account->models[0] ?? null) ?? throw DomainException::unprocessable(
+        $model = ($account->models[0] ?? null) ?? throw DomainException::unprocessable(
             'AI_ACCOUNT_UNVERIFIED',
             __('ai::messages.probe_needs_model'),
         );
@@ -98,7 +98,7 @@ final class OpenAiDriver implements AiDriver
         // centime — et une épreuve qui ne consommerait rien ne prouverait pas
         // qu'on peut générer.
         $this->generate($account, new GenerationRequest(
-            model: $modele,
+            model: $model,
             prompt: 'ping',
             instructions: null,
             maxOutputTokens: 1,
@@ -120,8 +120,8 @@ final class OpenAiDriver implements AiDriver
 
         // L'historique vient de l'appelant : le module ne garde aucun fil, un
         // fil est de la logique produit.
-        foreach ($request->history as $tour) {
-            $messages[] = ['role' => $tour['role'], 'content' => $tour['content']];
+        foreach ($request->history as $turn) {
+            $messages[] = ['role' => $turn['role'], 'content' => $turn['content']];
         }
 
         $messages[] = ['role' => 'user', 'content' => $request->prompt];
@@ -136,11 +136,11 @@ final class OpenAiDriver implements AiDriver
 
         // Azure authentifie par `api-key`, les autres par `Authorization`. Deux
         // en-têtes, toujours pas de pilote de plus.
-        $entetes = ($account->config['auth'] ?? null) === 'api-key'
+        $headers = ($account->config['auth'] ?? null) === 'api-key'
             ? ['api-key' => (string) $account->apiKey()]
             : ['Authorization' => 'Bearer '.$account->apiKey()];
 
-        return Http::withHeaders($entetes)
+        return Http::withHeaders($headers)
             ->baseUrl(rtrim($base, '/'))
             ->timeout((int) config('ai.request_timeout', 120))
             ->acceptJson();

@@ -53,10 +53,10 @@ final class ResolveAccount
         }
 
         if ($actor->organizationId !== null) {
-            $place = $this->fromPlacements($actor->organizationId, $task, $actor);
+            $placed = $this->fromPlacements($actor->organizationId, $task, $actor);
 
-            if ($place !== null) {
-                return [$place];
+            if ($placed !== null) {
+                return [$placed];
             }
         }
 
@@ -104,10 +104,10 @@ final class ResolveAccount
             return;
         }
 
-        $sien = ($account->owner_api_key_id !== null && $account->owner_api_key_id === $actor->id)
+        $isTheirs = ($account->owner_api_key_id !== null && $account->owner_api_key_id === $actor->id)
             || ($account->owner_organization_id !== null && $account->owner_organization_id === $actor->organizationId);
 
-        if (! $sien) {
+        if (! $isTheirs) {
             throw DomainException::forbidden('AI_ACCOUNT_FORBIDDEN', __('ai::messages.account_forbidden'));
         }
     }
@@ -122,7 +122,7 @@ final class ResolveAccount
      */
     private function fromPlacements(string $organizationId, string $task, AiActor $actor): ?AiAccount
     {
-        $regles = AiPlacement::query()
+        $rules = AiPlacement::query()
             ->with('account')
             ->where('organization_id', $organizationId)
             ->where(fn ($query) => $query->where('task', $task)->orWhereNull('task'))
@@ -131,22 +131,22 @@ final class ResolveAccount
             // plus précise, donc la plus délibérée.
             ->sortByDesc(fn (AiPlacement $p): int => $p->task === null ? 0 : 1);
 
-        $regle = $regles->first();
+        $rule = $rules->first();
 
-        if ($regle === null || $regle->account === null) {
+        if ($rule === null || $rule->account === null) {
             return null;
         }
 
-        $this->guardOwnership($regle->account, $actor);
+        $this->guardOwnership($rule->account, $actor);
 
-        if (! $regle->account->canGenerate() || $regle->account->environment !== app()->environment()) {
+        if (! $rule->account->canGenerate() || $rule->account->environment !== app()->environment()) {
             throw DomainException::conflict(
                 'AI_ACCOUNT_UNVERIFIED',
-                __('ai::messages.account_unverified', ['slug' => (string) $regle->account->slug]),
+                __('ai::messages.account_unverified', ['slug' => (string) $rule->account->slug]),
             );
         }
 
-        return $regle->account;
+        return $rule->account;
     }
 
     /**

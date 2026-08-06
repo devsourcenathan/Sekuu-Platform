@@ -63,17 +63,17 @@ final class TaskRegistry
      */
     public function modelsFor(TaskDefinition $task): array
     {
-        $chaine = [];
+        $chain = [];
 
         foreach ($task->chain() as $id) {
             $model = $this->models->get($id);
 
             if (! $model->isRetired()) {
-                $chaine[] = $model;
+                $chain[] = $model;
             }
         }
 
-        return $chaine;
+        return $chain;
     }
 
     /**
@@ -87,14 +87,14 @@ final class TaskRegistry
      *
      * @return list<string> Les incohérences, vide si tout va bien
      */
-    public function incoherences(): array
+    public function inconsistencies(): array
     {
-        $problemes = [];
+        $issues = [];
 
         foreach ($this->tasks as $task) {
             foreach ($task->chain() as $id) {
                 if (! $this->models->knows($id)) {
-                    $problemes[] = "{$task->name} : modèle « {$id} » absent du registre";
+                    $issues[] = "{$task->name} : modèle « {$id} » absent du registre";
 
                     continue;
                 }
@@ -102,16 +102,16 @@ final class TaskRegistry
                 $model = $this->models->get($id);
 
                 if (! $model->satisfies($task->requires)) {
-                    $manquantes = implode(', ', array_diff($task->requires, $model->capabilities));
-                    $problemes[] = "{$task->name} : « {$id} » ne sait pas {$manquantes}";
+                    $missing = implode(', ', array_diff($task->requires, $model->capabilities));
+                    $issues[] = "{$task->name} : « {$id} » ne sait pas {$missing}";
                 }
 
                 if ($model->context < $task->maxInputTokens) {
-                    $problemes[] = "{$task->name} : « {$id} » n'accepte que {$model->context} jetons";
+                    $issues[] = "{$task->name} : « {$id} » n'accepte que {$model->context} jetons";
                 }
             }
         }
 
-        return $problemes;
+        return $issues;
     }
 }

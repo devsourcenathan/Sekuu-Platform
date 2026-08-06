@@ -33,10 +33,10 @@ final class AccountTest extends TestCase
 
     public function test_a_registered_account_is_probed_immediately(): void
     {
-        $compte = $this->register('plateforme');
+        $account = $this->register('plateforme');
 
-        $this->assertSame(AiAccount::ACTIVE, $compte->status);
-        $this->assertNotNull($compte->verified_at);
+        $this->assertSame(AiAccount::ACTIVE, $account->status);
+        $this->assertNotNull($account->verified_at);
         $this->assertSame(1, FakeDriver::$calls, 'L\'enregistrement doit avoir généré, pas seulement écrit une ligne.');
     }
 
@@ -48,11 +48,11 @@ final class AccountTest extends TestCase
     {
         FakeDriver::failOnce('AI_CREDENTIALS_REJECTED');
 
-        $compte = $this->register('refusee');
+        $account = $this->register('refusee');
 
-        $this->assertSame(AiAccount::UNVERIFIED, $compte->status);
-        $this->assertSame(VerifyAccount::CREDENTIALS_REJECTED, $compte->verification_reason);
-        $this->assertFalse($compte->canGenerate());
+        $this->assertSame(AiAccount::UNVERIFIED, $account->status);
+        $this->assertSame(VerifyAccount::CREDENTIALS_REJECTED, $account->verification_reason);
+        $this->assertFalse($account->canGenerate());
     }
 
     /**
@@ -69,17 +69,17 @@ final class AccountTest extends TestCase
     {
         Event::fake();
 
-        $compte = $this->register('chargee');
+        $account = $this->register('chargee');
 
         FakeDriver::failOnce('AI_RATE_LIMITED');
-        $this->assertFalse(app(VerifyAccount::class)->handle($compte));
+        $this->assertFalse(app(VerifyAccount::class)->handle($account));
 
-        $compte->refresh();
-        $this->assertSame(AiAccount::ACTIVE, $compte->status, 'Un 429 ne doit pas retirer un compte du service.');
+        $account->refresh();
+        $this->assertSame(AiAccount::ACTIVE, $account->status, 'Un 429 ne doit pas retirer un compte du service.');
 
         // La raison est conservée : un compte durablement saturé est une
         // information d'exploitation, même s'il continue de servir.
-        $this->assertSame(VerifyAccount::RATE_LIMITED, $compte->verification_reason);
+        $this->assertSame(VerifyAccount::RATE_LIMITED, $account->verification_reason);
 
         Event::assertNotDispatched(
             DomainEvent::class,
@@ -95,12 +95,12 @@ final class AccountTest extends TestCase
     {
         Event::fake();
 
-        $compte = $this->register('revoquee');
+        $account = $this->register('revoquee');
 
         FakeDriver::failOnce('AI_CREDENTIALS_REJECTED');
-        app(VerifyAccount::class)->handle($compte);
+        app(VerifyAccount::class)->handle($account);
 
-        $this->assertSame(AiAccount::UNVERIFIED, $compte->refresh()->status);
+        $this->assertSame(AiAccount::UNVERIFIED, $account->refresh()->status);
 
         Event::assertDispatched(
             DomainEvent::class,
@@ -114,7 +114,7 @@ final class AccountTest extends TestCase
         // événement chaque nuit jusqu'à la correction.
         Event::fake();
         FakeDriver::failOnce('AI_CREDENTIALS_REJECTED');
-        app(VerifyAccount::class)->handle($compte->refresh());
+        app(VerifyAccount::class)->handle($account->refresh());
 
         Event::assertNotDispatched(
             DomainEvent::class,
@@ -128,11 +128,11 @@ final class AccountTest extends TestCase
      */
     public function test_the_probe_does_not_undo_a_human_decision(): void
     {
-        $compte = $this->register('rendue');
-        $compte->forceFill(['status' => AiAccount::DISABLED])->save();
+        $account = $this->register('rendue');
+        $account->forceFill(['status' => AiAccount::DISABLED])->save();
 
-        $this->assertTrue(app(VerifyAccount::class)->handle($compte));
-        $this->assertSame(AiAccount::DISABLED, $compte->refresh()->status, 'Une épreuve réussie ne rallume pas un compte rendu.');
+        $this->assertTrue(app(VerifyAccount::class)->handle($account));
+        $this->assertSame(AiAccount::DISABLED, $account->refresh()->status, 'Une épreuve réussie ne rallume pas un compte rendu.');
     }
 
     /**
@@ -142,13 +142,13 @@ final class AccountTest extends TestCase
     public function test_a_corrected_account_comes_back_on_its_own(): void
     {
         FakeDriver::failOnce('AI_CREDENTIALS_REJECTED');
-        $compte = $this->register('a-corriger');
+        $account = $this->register('a-corriger');
 
-        $this->assertSame(AiAccount::UNVERIFIED, $compte->status);
+        $this->assertSame(AiAccount::UNVERIFIED, $account->status);
 
         $this->artisan('ai:verify')->assertSuccessful();
 
-        $this->assertSame(AiAccount::ACTIVE, $compte->refresh()->status);
+        $this->assertSame(AiAccount::ACTIVE, $account->refresh()->status);
     }
 
     /**
@@ -177,7 +177,7 @@ final class AccountTest extends TestCase
             'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1],
         ])]);
 
-        $compte = app(RegisterAccount::class)->handle(
+        $account = app(RegisterAccount::class)->handle(
             slug: 'deepseek-defaut',
             preset: 'deepseek',
             driver: null,
@@ -187,10 +187,10 @@ final class AccountTest extends TestCase
             environment: app()->environment(),
         );
 
-        $this->assertSame('openai', $compte->driver);
-        $this->assertSame('https://api.deepseek.com/v1', $compte->baseUrl());
+        $this->assertSame('openai', $account->driver);
+        $this->assertSame('https://api.deepseek.com/v1', $account->baseUrl());
 
-        $sien = app(RegisterAccount::class)->handle(
+        $isTheirs = app(RegisterAccount::class)->handle(
             slug: 'deepseek-a-lui',
             preset: 'deepseek',
             driver: 'fake',
@@ -200,7 +200,7 @@ final class AccountTest extends TestCase
             environment: app()->environment(),
         );
 
-        $this->assertSame('https://ia.exemple.cm/v1', $sien->baseUrl());
+        $this->assertSame('https://ia.exemple.cm/v1', $isTheirs->baseUrl());
     }
 
     public function test_a_preset_that_requires_a_field_says_which(): void
@@ -225,29 +225,29 @@ final class AccountTest extends TestCase
      */
     public function test_a_failed_rotation_keeps_the_key_that_worked(): void
     {
-        $compte = $this->register('en-rotation');
+        $account = $this->register('en-rotation');
 
         FakeDriver::failOnce('AI_CREDENTIALS_REJECTED');
 
         try {
-            app(RegisterAccount::class)->rotate($compte, ['api_key' => 'nouvelle-mauvaise']);
+            app(RegisterAccount::class)->rotate($account, ['api_key' => 'nouvelle-mauvaise']);
             $this->fail('Une rotation refusée doit lever.');
         } catch (DomainException $e) {
             $this->assertSame('AI_ACCOUNT_UNVERIFIED', $e->errorCode);
         }
 
-        $compte->refresh();
-        $this->assertSame(AiAccount::ACTIVE, $compte->status);
-        $this->assertSame('clé-témoin', $compte->apiKey());
+        $account->refresh();
+        $this->assertSame(AiAccount::ACTIVE, $account->status);
+        $this->assertSame('clé-témoin', $account->apiKey());
     }
 
     public function test_a_successful_rotation_replaces_the_key(): void
     {
-        $compte = $this->register('rotation-ok');
+        $account = $this->register('rotation-ok');
 
-        app(RegisterAccount::class)->rotate($compte, ['api_key' => 'nouvelle-bonne']);
+        app(RegisterAccount::class)->rotate($account, ['api_key' => 'nouvelle-bonne']);
 
-        $this->assertSame('nouvelle-bonne', $compte->refresh()->apiKey());
+        $this->assertSame('nouvelle-bonne', $account->refresh()->apiKey());
     }
 
     /**
@@ -261,11 +261,11 @@ final class AccountTest extends TestCase
     public function test_the_environment_repairs_an_account_that_never_served(): void
     {
         FakeDriver::failOnce('AI_CREDENTIALS_REJECTED');
-        $compte = $this->register('a-reprendre');
-        $this->assertSame(AiAccount::UNVERIFIED, $compte->status);
+        $account = $this->register('a-reprendre');
+        $this->assertSame(AiAccount::UNVERIFIED, $account->status);
 
-        $repare = app(RegisterAccount::class)->repair(
-            account: $compte,
+        $repaired = app(RegisterAccount::class)->repair(
+            account: $account,
             preset: null,
             driver: 'fake',
             config: ['base_url' => 'https://corrige.exemple.cm'],
@@ -273,8 +273,8 @@ final class AccountTest extends TestCase
             models: ['fake-model'],
         );
 
-        $this->assertSame(AiAccount::ACTIVE, $repare->status);
-        $this->assertSame('clé-corrigée', $repare->apiKey());
+        $this->assertSame(AiAccount::ACTIVE, $repaired->status);
+        $this->assertSame('clé-corrigée', $repaired->apiKey());
     }
 
     /**
@@ -286,10 +286,10 @@ final class AccountTest extends TestCase
      */
     public function test_the_environment_never_rewrites_an_account_that_works(): void
     {
-        $compte = $this->register('en-service');
+        $account = $this->register('en-service');
 
         app(RegisterAccount::class)->repair(
-            account: $compte,
+            account: $account,
             preset: null,
             driver: 'fake',
             config: ['base_url' => 'https://autre.exemple.cm'],
@@ -297,7 +297,7 @@ final class AccountTest extends TestCase
             models: ['fake-model'],
         );
 
-        $this->assertSame('clé-témoin', $compte->refresh()->apiKey());
+        $this->assertSame('clé-témoin', $account->refresh()->apiKey());
     }
 
     private function register(string $slug, ?string $environment = null): AiAccount

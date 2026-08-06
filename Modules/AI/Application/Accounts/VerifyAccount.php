@@ -80,12 +80,12 @@ final class VerifyAccount
 
     public function handle(AiAccount $account): bool
     {
-        $servait = $account->status === AiAccount::ACTIVE;
+        $wasServing = $account->status === AiAccount::ACTIVE;
 
         try {
             $this->drivers->for($account)->probe($account);
         } catch (Throwable $e) {
-            return $this->fail($account, $this->classify($e), $e->getMessage(), $servait);
+            return $this->fail($account, $this->classify($e), $e->getMessage(), $wasServing);
         }
 
         $account->forceFill([
@@ -106,16 +106,16 @@ final class VerifyAccount
      * dite plus haut — mais la raison est conservée, parce qu'un compte
      * durablement saturé est une information d'exploitation.
      */
-    private function fail(AiAccount $account, string $reason, string $error, bool $servait): bool
+    private function fail(AiAccount $account, string $reason, string $error, bool $wasServing): bool
     {
-        $etat = match (true) {
+        $state = match (true) {
             $reason === self::RATE_LIMITED => $account->status,
             in_array($account->status, [AiAccount::PAUSED, AiAccount::DISABLED], true) => $account->status,
             default => AiAccount::UNVERIFIED,
         };
 
         $account->forceFill([
-            'status' => $etat,
+            'status' => $state,
             'verification_reason' => $reason,
 
             /*
@@ -129,7 +129,7 @@ final class VerifyAccount
         // Seul un compte qui **servait** et qui ne sert plus produit
         // l'événement. Un compte déjà hors service qui échoue à nouveau n'est
         // pas une nouvelle.
-        if ($servait && $etat !== AiAccount::ACTIVE) {
+        if ($wasServing && $state !== AiAccount::ACTIVE) {
             Event::dispatch(new DomainEvent('ai.account.unverified', [
                 'account_id' => (string) $account->id,
                 'slug' => (string) $account->slug,

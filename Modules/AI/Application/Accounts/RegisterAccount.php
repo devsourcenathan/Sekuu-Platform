@@ -89,8 +89,8 @@ final class RegisterAccount
      */
     public function rotate(AiAccount $account, array $credentials): AiAccount
     {
-        $anciens = $account->credentials;
-        $etat = $account->status;
+        $previous = $account->credentials;
+        $state = $account->status;
 
         $account->forceFill(['credentials' => $credentials])->save();
 
@@ -102,8 +102,8 @@ final class RegisterAccount
         // sorti le compte du service. On remet ce qui marchait, y compris
         // l'état, et on le dit franchement à l'appelant.
         $account->forceFill([
-            'credentials' => $anciens,
-            'status' => $etat,
+            'credentials' => $previous,
+            'status' => $state,
             'verification_reason' => null,
             'verification_error' => null,
         ])->save();

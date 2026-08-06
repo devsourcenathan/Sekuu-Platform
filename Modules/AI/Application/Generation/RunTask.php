@@ -64,15 +64,15 @@ final class RunTask
 
         $prompt = $this->prompts->handle($request->inputs);
 
-        $deja = $this->alreadyRun($request);
+        $earlier = $this->alreadyRun($request);
 
-        if ($deja !== null) {
-            return $deja;
+        if ($earlier !== null) {
+            return $earlier;
         }
 
-        $comptes = $this->accounts->handle($task->name, $request->actor, $request->account);
+        $accounts = $this->accounts->handle($task->name, $request->actor, $request->account);
 
-        if ($comptes === []) {
+        if ($accounts === []) {
             throw DomainException::conflict(
                 'MODEL_NOT_AVAILABLE',
                 __('ai::messages.no_account_for_model', ['model' => $task->model]),
@@ -87,12 +87,12 @@ final class RunTask
          * Un compte de tiers ne bascule jamais vers un des nôtres — ce serait
          * faire payer autrui, silencieusement.
          */
-        $this->ledger->assertMayRun($comptes[0], $request->actor->organizationId);
+        $this->ledger->assertMayRun($accounts[0], $request->actor->organizationId);
         $this->assertInputFits($task, $prompt);
 
         $generation = $this->open($task, $request, $prompt);
 
-        return $this->attempt($generation, $task, $request, $prompt, $comptes);
+        return $this->attempt($generation, $task, $request, $prompt, $accounts);
     }
 
     /**
@@ -149,7 +149,7 @@ final class RunTask
      */
     private function open(TaskDefinition $task, TaskRequest $request, string $prompt): AiGeneration
     {
-        $attributs = [
+        $attributes = [
             'organization_id' => $request->actor->organizationId,
             'task' => $task->name,
             'status' => AiGeneration::RUNNING,
@@ -170,7 +170,7 @@ final class RunTask
         ];
 
         try {
-            return AiGeneration::query()->create($attributs);
+            return AiGeneration::query()->create($attributes);
         } catch (QueryException $e) {
             /*
              * Deux requêtes concurrentes portant la même clé : l'index unique
@@ -178,13 +178,13 @@ final class RunTask
              * de lever — c'est exactement ce que l'appelant a demandé en
              * fournissant une clé.
              */
-            $gagnante = $this->alreadyRun($request);
+            $winner = $this->alreadyRun($request);
 
-            if ($gagnante === null) {
+            if ($winner === null) {
                 throw $e;
             }
 
-            return $gagnante;
+            return $winner;
         }
     }
 
@@ -195,17 +195,17 @@ final class RunTask
      * repli est une dégradation de qualité, changer de compte n'en est pas une.
      * On épuise donc les comptes du premier modèle avant de descendre au second.
      *
-     * @param  list<AiAccount>  $comptes
+     * @param  list<AiAccount>  $accounts
      */
     private function attempt(
         AiGeneration $generation,
         TaskDefinition $task,
         TaskRequest $request,
         string $prompt,
-        array $comptes,
+        array $accounts,
     ): AiGeneration {
-        $derniere = null;
-        $essais = 0;
+        $last = null;
+        $attempts = 0;
 
         foreach ($this->tasks->modelsFor($task) as $model) {
             if ($model->isDeprecated()) {
@@ -217,23 +217,23 @@ final class RunTask
                 ]);
             }
 
-            foreach ($comptes as $compte) {
-                if (! $this->drivers->for($compte)->serves($compte, $model->id)) {
+            foreach ($accounts as $account) {
+                if (! $this->drivers->for($account)->serves($account, $model->id)) {
                     continue;
                 }
 
-                $essais++;
+                $attempts++;
 
                 try {
-                    $resultat = $this->generate($compte, $model, $task, $prompt, $request);
+                    $result = $this->generate($account, $model, $task, $prompt, $request);
 
-                    return $this->succeed($generation, $compte, $model, $resultat, $task, $prompt, $essais);
+                    return $this->succeed($generation, $account, $model, $result, $task, $prompt, $attempts);
                 } catch (DomainException $e) {
-                    $derniere = $e;
-                    $this->reactTo($e, $compte);
+                    $last = $e;
+                    $this->reactTo($e, $account);
 
                     if (! $this->mayTryElsewhere($e)) {
-                        return $this->fail($generation, $compte, $model, $e, $essais);
+                        return $this->fail($generation, $account, $model, $e, $attempts);
                     }
                 }
             }
@@ -241,10 +241,10 @@ final class RunTask
 
         return $this->fail(
             $generation,
-            $comptes[0],
+            $accounts[0],
             null,
-            $derniere ?? DomainException::conflict('MODEL_NOT_AVAILABLE', __('ai::messages.no_account_for_model', ['model' => $task->model])),
-            $essais,
+            $last ?? DomainException::conflict('MODEL_NOT_AVAILABLE', __('ai::messages.no_account_for_model', ['model' => $task->model])),
+            $attempts,
         );
     }
 
@@ -257,15 +257,15 @@ final class RunTask
      * sien.
      */
     private function generate(
-        AiAccount $compte,
+        AiAccount $account,
         ModelDefinition $model,
         TaskDefinition $task,
         string $prompt,
         TaskRequest $request,
     ): GenerationResult {
-        $pilote = $this->drivers->for($compte);
+        $driver = $this->drivers->for($account);
 
-        $demande = new GenerationRequest(
+        $payload = new GenerationRequest(
             model: $model->id,
             prompt: $prompt,
             instructions: $task->instructions,
@@ -275,13 +275,13 @@ final class RunTask
             history: $task->acceptsHistory ? $request->history : [],
         );
 
-        $resultat = $pilote->generate($compte, $demande);
+        $result = $driver->generate($account, $payload);
 
-        if (! $task->producesJson() || $this->isJson($resultat->output)) {
-            return $resultat;
+        if (! $task->producesJson() || $this->isJson($result->output)) {
+            return $result;
         }
 
-        $second = $pilote->generate($compte, $demande);
+        $second = $driver->generate($account, $payload);
 
         if ($this->isJson($second->output)) {
             return $second;
@@ -296,15 +296,15 @@ final class RunTask
             __('ai::messages.output_invalid'),
             502,
             [
-                'input_tokens' => $resultat->inputTokens + $second->inputTokens,
-                'output_tokens' => $resultat->outputTokens + $second->outputTokens,
+                'input_tokens' => $result->inputTokens + $second->inputTokens,
+                'output_tokens' => $result->outputTokens + $second->outputTokens,
             ],
         );
     }
 
-    private function isJson(string $sortie): bool
+    private function isJson(string $output): bool
     {
-        json_decode($sortie, true);
+        json_decode($output, true);
 
         return json_last_error() === JSON_ERROR_NONE;
     }
@@ -368,72 +368,72 @@ final class RunTask
      * par un, chez le même compte. Un débit trop rapide, lui, ne change rien :
      * il se résout seul en quelques secondes.
      */
-    private function reactTo(DomainException $e, AiAccount $compte): void
+    private function reactTo(DomainException $e, AiAccount $account): void
     {
-        $raison = match ($e->errorCode) {
+        $reason = match ($e->errorCode) {
             'AI_CREDENTIALS_REJECTED' => VerifyAccount::CREDENTIALS_REJECTED,
             'AI_CREDIT_EXHAUSTED' => VerifyAccount::QUOTA_EXHAUSTED,
             default => null,
         };
 
-        if ($raison === null || $compte->status !== AiAccount::ACTIVE) {
+        if ($reason === null || $account->status !== AiAccount::ACTIVE) {
             return;
         }
 
-        $compte->forceFill([
+        $account->forceFill([
             'status' => AiAccount::UNVERIFIED,
-            'verification_reason' => $raison,
+            'verification_reason' => $reason,
             'verification_error' => mb_substr($e->getMessage(), 0, 2000),
         ])->save();
 
         Event::dispatch(new DomainEvent('ai.account.unverified', [
-            'account_id' => (string) $compte->id,
-            'slug' => (string) $compte->slug,
-            'reason' => $raison,
+            'account_id' => (string) $account->id,
+            'slug' => (string) $account->slug,
+            'reason' => $reason,
             'since' => now()->toIso8601String(),
         ]));
     }
 
     private function succeed(
         AiGeneration $generation,
-        AiAccount $compte,
+        AiAccount $account,
         ModelDefinition $model,
-        GenerationResult $resultat,
+        GenerationResult $result,
         TaskDefinition $task,
         string $prompt,
-        int $essais,
+        int $attempts,
     ): AiGeneration {
-        $cout = $model->costMicros($resultat->inputTokens, $resultat->outputTokens);
+        $cost = $model->costMicros($result->inputTokens, $result->outputTokens);
 
         $generation->forceFill([
             'status' => AiGeneration::SUCCEEDED,
-            'account_id' => $compte->id,
-            'provider' => $compte->preset ?? $compte->driver,
+            'account_id' => $account->id,
+            'provider' => $account->preset ?? $account->driver,
             'model' => $model->id,
-            'input_tokens' => $resultat->inputTokens,
-            'output_tokens' => $resultat->outputTokens,
-            'cost_micros' => $cout,
+            'input_tokens' => $result->inputTokens,
+            'output_tokens' => $result->outputTokens,
+            'cost_micros' => $cost,
 
             // Sur le compte d'un tiers, notre calcul suit les prix publics ; son
             // tarif négocié, son engagement de volume ou sa région donnent autre
             // chose.
-            'cost_estimated' => $compte->costIsEstimated(),
+            'cost_estimated' => $account->costIsEstimated(),
 
-            'latency_ms' => $resultat->latencyMs,
-            'attempts' => $essais,
+            'latency_ms' => $result->latencyMs,
+            'attempts' => $attempts,
             'retain_until' => $task->retainDays === null ? null : now()->addDays($task->retainDays),
             'completed_at' => now(),
         ])->save();
 
-        $this->ledger->record($generation->organization_id, $compte, $cout);
-        $this->retain($generation, $task, $prompt, $resultat->output);
+        $this->ledger->record($generation->organization_id, $account, $cost);
+        $this->retain($generation, $task, $prompt, $result->output);
 
         Event::dispatch(new DomainEvent('ai.generation.succeeded', [
             'generation_id' => (string) $generation->id,
             'organization_id' => $generation->organization_id,
             'task' => $task->name,
             'model' => $model->id,
-            'cost_micros' => $cout,
+            'cost_micros' => $cost,
         ]));
 
         return $generation->refresh();
@@ -448,27 +448,27 @@ final class RunTask
      */
     private function fail(
         AiGeneration $generation,
-        AiAccount $compte,
+        AiAccount $account,
         ?ModelDefinition $model,
         DomainException $e,
-        int $essais,
+        int $attempts,
     ): AiGeneration {
-        $entrants = (int) ($e->details['input_tokens'] ?? 0);
-        $sortants = (int) ($e->details['output_tokens'] ?? 0);
-        $cout = $model !== null && ($entrants > 0 || $sortants > 0)
-            ? $model->costMicros($entrants, $sortants)
+        $consumedIn = (int) ($e->details['input_tokens'] ?? 0);
+        $consumedOut = (int) ($e->details['output_tokens'] ?? 0);
+        $cost = $model !== null && ($consumedIn > 0 || $consumedOut > 0)
+            ? $model->costMicros($consumedIn, $consumedOut)
             : null;
 
         $generation->forceFill([
             'status' => AiGeneration::FAILED,
-            'account_id' => $compte->id,
-            'provider' => $compte->preset ?? $compte->driver,
+            'account_id' => $account->id,
+            'provider' => $account->preset ?? $account->driver,
             'model' => $model?->id,
-            'input_tokens' => $entrants > 0 ? $entrants : null,
-            'output_tokens' => $sortants > 0 ? $sortants : null,
-            'cost_micros' => $cout,
-            'cost_estimated' => $compte->costIsEstimated(),
-            'attempts' => $essais,
+            'input_tokens' => $consumedIn > 0 ? $consumedIn : null,
+            'output_tokens' => $consumedOut > 0 ? $consumedOut : null,
+            'cost_micros' => $cost,
+            'cost_estimated' => $account->costIsEstimated(),
+            'attempts' => $attempts,
             'failure_code' => $e->errorCode,
 
             // Le message du fournisseur reste en base, jamais publié : il peut
@@ -478,8 +478,8 @@ final class RunTask
             'completed_at' => now(),
         ])->save();
 
-        if ($cout !== null && $cout > 0) {
-            $this->ledger->record($generation->organization_id, $compte, $cout);
+        if ($cost !== null && $cost > 0) {
+            $this->ledger->record($generation->organization_id, $account, $cost);
         }
 
         Event::dispatch(new DomainEvent('ai.generation.failed', [
@@ -487,7 +487,7 @@ final class RunTask
             'organization_id' => $generation->organization_id,
             'task' => (string) $generation->task,
             'failure_code' => $e->errorCode,
-            'attempts' => $essais,
+            'attempts' => $attempts,
         ]));
 
         return $generation->refresh();

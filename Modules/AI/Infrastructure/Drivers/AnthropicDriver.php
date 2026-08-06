@@ -40,16 +40,16 @@ final class AnthropicDriver implements AiDriver
 
     public function serves(AiAccount $account, string $model): bool
     {
-        $autorises = $account->models;
+        $allowed = $account->models;
 
-        return $autorises === null || $autorises === [] || in_array($model, $autorises, true);
+        return $allowed === null || $allowed === [] || in_array($model, $allowed, true);
     }
 
     public function generate(AiAccount $account, GenerationRequest $request): GenerationResult
     {
-        $debut = (int) (microtime(true) * 1000);
+        $start = (int) (microtime(true) * 1000);
 
-        $corps = [
+        $body = [
             'model' => $request->model,
             'max_tokens' => $request->maxOutputTokens,
             'temperature' => $request->temperature,
@@ -58,38 +58,38 @@ final class AnthropicDriver implements AiDriver
 
         // Les instructions vont dans un champ à part, jamais dans les messages.
         if ($request->instructions !== null) {
-            $corps['system'] = $request->instructions;
+            $body['system'] = $request->instructions;
         }
 
         try {
-            $reponse = $this->client($account)->post('/v1/messages', $corps);
+            $response = $this->client($account)->post('/v1/messages', $body);
         } catch (ConnectionException $e) {
             throw ProviderFailure::from($e);
         }
 
-        if ($reponse->failed()) {
-            throw $this->failure($reponse->status(), (string) $reponse->body());
+        if ($response->failed()) {
+            throw $this->failure($response->status(), (string) $response->body());
         }
 
-        $donnees = (array) $reponse->json();
+        $data = (array) $response->json();
 
         return new GenerationResult(
-            output: $this->text($donnees),
-            inputTokens: (int) ($donnees['usage']['input_tokens'] ?? 0),
-            outputTokens: (int) ($donnees['usage']['output_tokens'] ?? 0),
-            latencyMs: (int) (microtime(true) * 1000) - $debut,
+            output: $this->text($data),
+            inputTokens: (int) ($data['usage']['input_tokens'] ?? 0),
+            outputTokens: (int) ($data['usage']['output_tokens'] ?? 0),
+            latencyMs: (int) (microtime(true) * 1000) - $start,
         );
     }
 
     public function probe(AiAccount $account): void
     {
-        $modele = ($account->models[0] ?? null) ?? throw DomainException::unprocessable(
+        $model = ($account->models[0] ?? null) ?? throw DomainException::unprocessable(
             'AI_ACCOUNT_UNVERIFIED',
             __('ai::messages.probe_needs_model'),
         );
 
         $this->generate($account, new GenerationRequest(
-            model: $modele,
+            model: $model,
             prompt: 'ping',
             instructions: null,
             maxOutputTokens: 1,
@@ -105,19 +105,19 @@ final class AnthropicDriver implements AiDriver
      * concatène que le texte : joindre le reste produirait une sortie
      * silencieusement fausse.
      *
-     * @param  array<string, mixed>  $donnees
+     * @param  array<string, mixed>  $data
      */
-    private function text(array $donnees): string
+    private function text(array $data): string
     {
-        $morceaux = [];
+        $parts = [];
 
-        foreach ((array) ($donnees['content'] ?? []) as $bloc) {
-            if (($bloc['type'] ?? null) === 'text') {
-                $morceaux[] = (string) $bloc['text'];
+        foreach ((array) ($data['content'] ?? []) as $block) {
+            if (($block['type'] ?? null) === 'text') {
+                $parts[] = (string) $block['text'];
             }
         }
 
-        return implode('', $morceaux);
+        return implode('', $parts);
     }
 
     /**
@@ -127,8 +127,8 @@ final class AnthropicDriver implements AiDriver
     {
         $messages = [];
 
-        foreach ($request->history as $tour) {
-            $messages[] = ['role' => $tour['role'], 'content' => $tour['content']];
+        foreach ($request->history as $turn) {
+            $messages[] = ['role' => $turn['role'], 'content' => $turn['content']];
         }
 
         $messages[] = ['role' => 'user', 'content' => $request->prompt];

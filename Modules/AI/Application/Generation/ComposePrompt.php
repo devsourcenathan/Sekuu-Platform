@@ -28,28 +28,28 @@ final class ComposePrompt
             return (string) $inputs['prompt'];
         }
 
-        $morceaux = [];
+        $parts = [];
 
-        foreach ($inputs as $champ => $valeur) {
-            if ($champ === 'input' || $valeur === null || $valeur === []) {
+        foreach ($inputs as $field => $value) {
+            if ($field === 'input' || $value === null || $value === []) {
                 continue;
             }
 
-            $morceaux[] = $this->label($champ).' : '.$this->render($valeur);
+            $parts[] = $this->label($field).' : '.$this->render($value);
         }
 
-        $morceaux[] = "\n".(string) ($inputs['input'] ?? '');
+        $parts[] = "\n".(string) ($inputs['input'] ?? '');
 
-        return trim(implode("\n", $morceaux));
+        return trim(implode("\n", $parts));
     }
 
-    private function label(string $champ): string
+    private function label(string $field): string
     {
-        return match ($champ) {
+        return match ($field) {
             'language' => 'Langue cible',
             'fields' => 'Champs à extraire',
             'labels' => 'Étiquettes possibles',
-            default => ucfirst(str_replace('_', ' ', $champ)),
+            default => ucfirst(str_replace('_', ' ', $field)),
         };
     }
 
@@ -59,15 +59,15 @@ final class ComposePrompt
      * Du JSON imbriqué dans un prompt consomme des jetons pour de la ponctuation
      * que le modèle n'exploite pas, et qu'il facture au même prix que du texte.
      */
-    private function render(mixed $valeur): string
+    private function render(mixed $value): string
     {
-        if (is_array($valeur)) {
+        if (is_array($value)) {
             return implode(', ', array_map(
                 fn ($v): string => is_scalar($v) ? (string) $v : json_encode($v, JSON_UNESCAPED_UNICODE),
-                $valeur,
+                $value,
             ));
         }
 
-        return (string) $valeur;
+        return (string) $value;
     }
 }

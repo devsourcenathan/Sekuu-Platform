@@ -50,38 +50,38 @@ final class VerifyAccountsCommand extends Command
             $query = AiAccount::query()->where('slug', $slug);
         }
 
-        $comptes = $query->orderBy('priority')->orderBy('slug')->get();
+        $accounts = $query->orderBy('priority')->orderBy('slug')->get();
 
-        if ($comptes->isEmpty()) {
+        if ($accounts->isEmpty()) {
             $this->info('Aucun compte à éprouver.');
 
             return self::SUCCESS;
         }
 
-        $echecs = 0;
+        $failures = 0;
 
-        foreach ($comptes as $compte) {
-            $ok = $verifier->handle($compte);
-            $compte->refresh();
+        foreach ($accounts as $account) {
+            $ok = $verifier->handle($account);
+            $account->refresh();
 
             if ($ok) {
-                $this->line("  <fg=green>✓</> {$compte->slug}");
+                $this->line("  <fg=green>✓</> {$account->slug}");
 
                 continue;
             }
 
-            $echecs++;
-            $this->line("  <fg=red>✗</> {$compte->slug} — {$compte->verification_reason}");
+            $failures++;
+            $this->line("  <fg=red>✗</> {$account->slug} — {$account->verification_reason}");
         }
 
         $this->newLine();
 
-        if ($echecs > 0) {
-            $this->warn("{$echecs} compte(s) hors service. Les tâches qui en dépendaient basculeront ou échoueront.");
+        if ($failures > 0) {
+            $this->warn("{$failures} compte(s) hors service. Les tâches qui en dépendaient basculeront ou échoueront.");
         }
 
         // Sortie non nulle : un ordonnanceur doit pouvoir s'en apercevoir sans
         // lire la sortie.
-        return $echecs > 0 ? self::FAILURE : self::SUCCESS;
+        return $failures > 0 ? self::FAILURE : self::SUCCESS;
     }
 }

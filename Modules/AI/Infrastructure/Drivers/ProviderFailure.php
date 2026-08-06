@@ -84,11 +84,11 @@ final class ProviderFailure
      */
     public static function looksLikeExhaustedCredit(string $body): bool
     {
-        $texte = mb_strtolower($body);
+        $text = mb_strtolower($body);
 
         foreach (['insufficient_quota', 'insufficient quota', 'credit balance', 'insufficient_credit',
             'exceeded your current quota', 'billing', 'payment required'] as $signature) {
-            if (str_contains($texte, $signature)) {
+            if (str_contains($text, $signature)) {
                 return true;
             }
         }
@@ -106,10 +106,10 @@ final class ProviderFailure
      */
     public static function looksLikeModeration(string $body): bool
     {
-        $texte = mb_strtolower($body);
+        $text = mb_strtolower($body);
 
         foreach (['content_policy', 'content_filter', 'moderation', 'safety', 'blocked', 'refusal'] as $signature) {
-            if (str_contains($texte, $signature)) {
+            if (str_contains($text, $signature)) {
                 return true;
             }
         }

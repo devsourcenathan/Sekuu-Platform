@@ -64,15 +64,15 @@ final class RunTaskTest extends TestCase
 
         $generation = $this->execute('prompt-fast', ['prompt' => 'Numéro de dossier 4471, diabète de type 2.']);
 
-        $contenu = AiContent::query()->find($generation->id);
+        $content = AiContent::query()->find($generation->id);
 
         // La sortie survit brievement — un sondage doit pouvoir la lire. Le
         // prompt, lui, n'est pas ecrit du tout : `null` dit « on ne l'a pas
         // gardee », ce qu'une chaine vide ne dirait pas.
-        $this->assertNotNull($contenu);
-        $this->assertNull($contenu->input);
-        $this->assertNotNull($contenu->output);
-        $this->assertTrue($contenu->expires_at->lessThanOrEqualTo(now()->addHours(24)));
+        $this->assertNotNull($content);
+        $this->assertNull($content->input);
+        $this->assertNotNull($content->output);
+        $this->assertTrue($content->expires_at->lessThanOrEqualTo(now()->addHours(24)));
 
         // L'empreinte suffit à l'idempotence, et elle ne rend rien.
         $this->assertSame(64, strlen((string) $generation->input_hash));
@@ -144,7 +144,7 @@ final class RunTaskTest extends TestCase
      */
     public function test_a_rejected_key_takes_the_account_out_on_the_spot(): void
     {
-        $mauvais = $this->account('mauvais', priority: 10);
+        $broken = $this->account('mauvais', priority: 10);
         $this->account('bon', priority: 20);
 
         FakeDriver::failOnce('AI_CREDENTIALS_REJECTED');
@@ -153,7 +153,7 @@ final class RunTaskTest extends TestCase
 
         $this->assertSame(AiGeneration::SUCCEEDED, $generation->status);
         $this->assertSame('bon', $generation->account->slug);
-        $this->assertSame(AiAccount::UNVERIFIED, $mauvais->refresh()->status);
+        $this->assertSame(AiAccount::UNVERIFIED, $broken->refresh()->status);
     }
 
     /**
@@ -165,7 +165,7 @@ final class RunTaskTest extends TestCase
      */
     public function test_an_exhausted_credit_takes_the_account_out_but_a_rate_limit_does_not(): void
     {
-        $sec = $this->account('a-sec', priority: 10);
+        $dry = $this->account('a-sec', priority: 10);
         $this->account('finance', priority: 20);
 
         FakeDriver::failOnce('AI_CREDIT_EXHAUSTED');
@@ -173,17 +173,17 @@ final class RunTaskTest extends TestCase
         $generation = $this->execute('prompt-fast', ['prompt' => 'Bonjour.']);
 
         $this->assertSame('finance', $generation->account->slug);
-        $this->assertSame(AiAccount::UNVERIFIED, $sec->refresh()->status);
-        $this->assertSame('quota_exhausted', $sec->verification_reason);
+        $this->assertSame(AiAccount::UNVERIFIED, $dry->refresh()->status);
+        $this->assertSame('quota_exhausted', $dry->verification_reason);
 
         // Le débit trop rapide, lui, ne retire rien : il se résout seul.
         FakeDriver::reset();
-        $charge = $this->account('charge', priority: 5);
+        $throttled = $this->account('charge', priority: 5);
         FakeDriver::failOnce('AI_RATE_LIMITED');
 
         $this->execute('prompt-fast', ['prompt' => 'Bonjour.']);
 
-        $this->assertSame(AiAccount::ACTIVE, $charge->refresh()->status);
+        $this->assertSame(AiAccount::ACTIVE, $throttled->refresh()->status);
     }
 
     /**
@@ -213,12 +213,12 @@ final class RunTaskTest extends TestCase
 
         FakeDriver::failOnce('AI_PROVIDER_TIMEOUT', 504);
 
-        $premiere = $this->execute('prompt-fast', ['prompt' => 'Bonjour.'], key: 'k-1');
-        $this->assertSame(AiGeneration::FAILED, $premiere->status);
+        $first = $this->execute('prompt-fast', ['prompt' => 'Bonjour.'], key: 'k-1');
+        $this->assertSame(AiGeneration::FAILED, $first->status);
 
-        $seconde = $this->execute('prompt-fast', ['prompt' => 'Bonjour.'], key: 'k-1');
+        $replay = $this->execute('prompt-fast', ['prompt' => 'Bonjour.'], key: 'k-1');
 
-        $this->assertTrue($seconde->is($premiere));
+        $this->assertTrue($replay->is($first));
         $this->assertSame(1, FakeDriver::$calls, 'Une clé déjà vue ne doit rien relancer.');
     }
 
@@ -235,12 +235,12 @@ final class RunTaskTest extends TestCase
         $this->account('a-lui', organizationId: $this->org);
         $this->execute('prompt-fast', ['prompt' => 'Bonjour.'], account: 'a-lui');
 
-        $ligne = DB::table('ai_spend')->where('organization_id', $this->org)->first();
+        $row = DB::table('ai_spend')->where('organization_id', $this->org)->first();
 
-        $this->assertSame(2, (int) $ligne->generations);
-        $this->assertGreaterThan(0, (int) $ligne->cost_micros);
-        $this->assertGreaterThan(0, (int) $ligne->cost_micros_byo);
-        $this->assertNotSame((int) $ligne->cost_micros + (int) $ligne->cost_micros_byo, (int) $ligne->cost_micros);
+        $this->assertSame(2, (int) $row->generations);
+        $this->assertGreaterThan(0, (int) $row->cost_micros);
+        $this->assertGreaterThan(0, (int) $row->cost_micros_byo);
+        $this->assertNotSame((int) $row->cost_micros + (int) $row->cost_micros_byo, (int) $row->cost_micros);
     }
 
     /**

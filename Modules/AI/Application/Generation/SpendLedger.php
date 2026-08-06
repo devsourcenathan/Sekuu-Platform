@@ -70,7 +70,7 @@ final class SpendLedger
             return;
         }
 
-        $limite = $this->billing->limit($organizationId, self::QUOTA_KEY);
+        $limit = $this->billing->limit($organizationId, self::QUOTA_KEY);
 
         /*
          * Non couvert ou illimité : rien à plafonner.
@@ -80,20 +80,20 @@ final class SpendLedger
          * l'activation du produit côté Identity. Refuser ici fermerait toute
          * organisation créée avant qu'un abonnement n'existe.
          */
-        if (! $limite->covered || $limite->isUnlimited()) {
+        if (! $limit->covered || $limit->isUnlimited()) {
             return;
         }
 
-        $depense = $this->spentThisMonth($organizationId);
+        $spent = $this->spentThisMonth($organizationId);
 
-        if ($limite->allows($depense)) {
+        if ($limit->allows($spent)) {
             return;
         }
 
         throw new DomainException('AI_QUOTA_EXCEEDED', __('ai::messages.quota_exceeded'), 429, [
             'limit' => self::QUOTA_KEY,
-            'credits' => $limite->value,
-            'used' => $depense,
+            'credits' => $limit->value,
+            'used' => $spent,
         ]);
     }
 
@@ -102,15 +102,15 @@ final class SpendLedger
      */
     private function assertPlatformCapNotReached(): void
     {
-        $plafond = (int) config('ai.spend_cap_micros', 0);
+        $cap = (int) config('ai.spend_cap_micros', 0);
 
-        if ($plafond <= 0) {
+        if ($cap <= 0) {
             return;
         }
 
-        $depense = (int) DB::table('ai_spend')->where('period', $this->period())->sum('cost_micros');
+        $spent = (int) DB::table('ai_spend')->where('period', $this->period())->sum('cost_micros');
 
-        if ($depense >= $plafond) {
+        if ($spent >= $cap) {
             throw new DomainException('AI_SPEND_CAP_REACHED', __('ai::messages.spend_cap_reached'), 429);
         }
     }
@@ -125,18 +125,18 @@ final class SpendLedger
      */
     private function assertAccountCapNotReached(AiAccount $account): void
     {
-        $plafond = $account->spend_cap_micros;
+        $cap = $account->spend_cap_micros;
 
-        if ($plafond === null || $plafond <= 0) {
+        if ($cap === null || $cap <= 0) {
             return;
         }
 
-        $depense = (int) DB::table('ai_generations')
+        $spent = (int) DB::table('ai_generations')
             ->where('account_id', $account->id)
             ->where('created_at', '>=', now()->startOfMonth())
             ->sum('cost_micros');
 
-        if ($depense >= $plafond) {
+        if ($spent >= $cap) {
             throw new DomainException('AI_ACCOUNT_CAP_REACHED', __('ai::messages.account_cap_reached'), 429);
         }
     }
@@ -164,8 +164,8 @@ final class SpendLedger
             return;
         }
 
-        $colonne = $account->belongsToPlatform() ? 'cost_micros' : 'cost_micros_byo';
-        $periode = $this->period();
+        $column = $account->belongsToPlatform() ? 'cost_micros' : 'cost_micros_byo';
+        $period = $this->period();
 
         /*
          * Deux temps, et pas un `upsert` porteur de valeur.
@@ -176,7 +176,7 @@ final class SpendLedger
          */
         DB::table('ai_spend')->insertOrIgnore([
             'organization_id' => $organizationId,
-            'period' => $periode,
+            'period' => $period,
             'cost_micros' => 0,
             'cost_micros_byo' => 0,
             'generations' => 0,
@@ -190,9 +190,9 @@ final class SpendLedger
          */
         DB::table('ai_spend')
             ->where('organization_id', $organizationId)
-            ->where('period', $periode)
+            ->where('period', $period)
             ->update([
-                $colonne => DB::raw($colonne.' + '.(int) $costMicros),
+                $column => DB::raw($column.' + '.(int) $costMicros),
                 'generations' => DB::raw('generations + 1'),
                 'updated_at' => now(),
             ]);
@@ -218,13 +218,13 @@ final class SpendLedger
             return null;
         }
 
-        $limite = $this->billing->limit($organizationId, self::QUOTA_KEY);
+        $limit = $this->billing->limit($organizationId, self::QUOTA_KEY);
 
-        if (! $limite->covered || $limite->isUnlimited()) {
+        if (! $limit->covered || $limit->isUnlimited()) {
             return null;
         }
 
-        return max(0, (int) $limite->value - $this->spentThisMonth($organizationId));
+        return max(0, (int) $limit->value - $this->spentThisMonth($organizationId));
     }
 
     public function period(): string

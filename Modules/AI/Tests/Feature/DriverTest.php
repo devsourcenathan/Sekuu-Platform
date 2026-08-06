@@ -50,7 +50,7 @@ final class DriverTest extends TestCase
             ]),
         ]);
 
-        $resultat = app(DriverRegistry::class)->get('anthropic')->generate(
+        $result = app(DriverRegistry::class)->get('anthropic')->generate(
             $this->account('anthropic', 'https://api.anthropic.com'),
             new GenerationRequest(
                 model: 'claude-sonnet-4-6',
@@ -62,21 +62,21 @@ final class DriverTest extends TestCase
             ),
         );
 
-        $this->assertSame('bonjour', $resultat->output);
-        $this->assertSame(42, $resultat->inputTokens);
-        $this->assertSame(7, $resultat->outputTokens);
+        $this->assertSame('bonjour', $result->output);
+        $this->assertSame(42, $result->inputTokens);
+        $this->assertSame(7, $result->outputTokens);
 
         Http::assertSent(function ($request): bool {
-            $corps = $request->data();
+            $body = $request->data();
 
             return $request->hasHeader('x-api-key')
                 && $request->hasHeader('anthropic-version')
                 && ! $request->hasHeader('Authorization')
 
                 // Les instructions à part, et un seul message utilisateur.
-                && $corps['system'] === 'Sois bref.'
-                && count($corps['messages']) === 1
-                && $corps['messages'][0]['role'] === 'user';
+                && $body['system'] === 'Sois bref.'
+                && count($body['messages']) === 1
+                && $body['messages'][0]['role'] === 'user';
         });
     }
 
@@ -96,12 +96,12 @@ final class DriverTest extends TestCase
             ]),
         ]);
 
-        $resultat = app(DriverRegistry::class)->get('anthropic')->generate(
+        $result = app(DriverRegistry::class)->get('anthropic')->generate(
             $this->account('anthropic', 'https://api.anthropic.com'),
             $this->request(),
         );
 
-        $this->assertSame('la réponse', $resultat->output);
+        $this->assertSame('la réponse', $result->output);
     }
 
     /**
@@ -118,7 +118,7 @@ final class DriverTest extends TestCase
             ]),
         ]);
 
-        $resultat = app(DriverRegistry::class)->get('openai')->generate(
+        $result = app(DriverRegistry::class)->get('openai')->generate(
             $this->account('openai', 'https://api.deepseek.com/v1'),
             new GenerationRequest(
                 model: 'deepseek-chat',
@@ -130,17 +130,17 @@ final class DriverTest extends TestCase
             ),
         );
 
-        $this->assertSame('salut', $resultat->output);
-        $this->assertSame(12, $resultat->inputTokens);
+        $this->assertSame('salut', $result->output);
+        $this->assertSame(12, $result->inputTokens);
 
         Http::assertSent(function ($request): bool {
-            $corps = $request->data();
+            $body = $request->data();
 
             return $request->hasHeader('Authorization')
                 && ! $request->hasHeader('x-api-key')
-                && $corps['messages'][0]['role'] === 'system'
-                && $corps['messages'][1]['role'] === 'user'
-                && $corps['response_format']['type'] === 'json_object';
+                && $body['messages'][0]['role'] === 'system'
+                && $body['messages'][1]['role'] === 'user'
+                && $body['response_format']['type'] === 'json_object';
         });
     }
 
@@ -156,10 +156,10 @@ final class DriverTest extends TestCase
             'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1],
         ])]);
 
-        $compte = $this->account('openai', 'https://exemple.openai.azure.com');
-        $compte->forceFill(['config' => ['base_url' => 'https://exemple.openai.azure.com', 'auth' => 'api-key']])->save();
+        $account = $this->account('openai', 'https://exemple.openai.azure.com');
+        $account->forceFill(['config' => ['base_url' => 'https://exemple.openai.azure.com', 'auth' => 'api-key']])->save();
 
-        app(DriverRegistry::class)->get('openai')->generate($compte->fresh(), $this->request('deepseek-chat'));
+        app(DriverRegistry::class)->get('openai')->generate($account->fresh(), $this->request('deepseek-chat'));
 
         Http::assertSent(fn ($request): bool => $request->hasHeader('api-key') && ! $request->hasHeader('Authorization'));
     }
@@ -183,23 +183,23 @@ final class DriverTest extends TestCase
             ->push(['error' => 'x'], 404)
             ->push(['error' => 'x'], 500)]);
 
-        $cas = [
+        $cases = [
             401 => 'AI_CREDENTIALS_REJECTED',
             429 => 'AI_RATE_LIMITED',
             404 => 'AI_MODEL_UNAVAILABLE',
             500 => 'AI_PROVIDER_ERROR',
         ];
 
-        foreach ($cas as $statut => $attendu) {
+        foreach ($cases as $status => $expected) {
             try {
                 app(DriverRegistry::class)->get('openai')->generate(
                     $this->account('openai', 'https://api.deepseek.com/v1'),
                     $this->request('deepseek-chat'),
                 );
 
-                $this->fail("Le statut {$statut} aurait dû lever.");
+                $this->fail("Le statut {$status} aurait dû lever.");
             } catch (DomainException $e) {
-                $this->assertSame($attendu, $e->errorCode, "Statut {$statut}");
+                $this->assertSame($expected, $e->errorCode, "Statut {$status}");
             }
         }
     }
@@ -218,7 +218,7 @@ final class DriverTest extends TestCase
      */
     public function test_a_transport_failure_says_whether_the_request_arrived(): void
     {
-        $cas = [
+        $cases = [
             'cURL error 6: Could not resolve host: api.exemple.cm' => 'AI_PROVIDER_UNREACHABLE',
             'cURL error 7: Failed to connect to api.exemple.cm port 443' => 'AI_PROVIDER_UNREACHABLE',
             'cURL error 35: SSL connect error' => 'AI_PROVIDER_UNREACHABLE',
@@ -228,9 +228,9 @@ final class DriverTest extends TestCase
             'quelque chose que personne n\'a prévu' => 'AI_PROVIDER_TIMEOUT',
         ];
 
-        foreach ($cas as $message => $attendu) {
+        foreach ($cases as $message => $expected) {
             $this->assertSame(
-                $attendu,
+                $expected,
                 ProviderFailure::from(new ConnectionException($message))->errorCode,
                 $message,
             );
@@ -262,11 +262,11 @@ final class DriverTest extends TestCase
      */
     public function test_credentials_never_leave_the_model(): void
     {
-        $compte = $this->account('anthropic', 'https://api.anthropic.com');
+        $account = $this->account('anthropic', 'https://api.anthropic.com');
 
-        $this->assertArrayNotHasKey('credentials', $compte->fresh()->toArray());
-        $this->assertStringContainsString('MPLE', (string) $compte->credentialFingerprint());
-        $this->assertStringNotContainsString('sk-ant-EXAMPLE', (string) $compte->credentialFingerprint());
+        $this->assertArrayNotHasKey('credentials', $account->fresh()->toArray());
+        $this->assertStringContainsString('MPLE', (string) $account->credentialFingerprint());
+        $this->assertStringNotContainsString('sk-ant-EXAMPLE', (string) $account->credentialFingerprint());
     }
 
     private function request(string $model = 'claude-sonnet-4-6'): GenerationRequest

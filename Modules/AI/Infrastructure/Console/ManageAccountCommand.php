@@ -174,9 +174,9 @@ final class ManageAccountCommand extends Command
          * vit qu'en base, c'est-à-dire hors de portée sur une offre sans shell,
          * la seule où ce chemin sert.
          */
-        foreach (preg_split('/\R/', (string) $account->verification_error) ?: [] as $ligne) {
-            if (trim($ligne) !== '') {
-                $this->line('[ai]   '.mb_substr(trim($ligne), 0, 300));
+        foreach (preg_split('/\R/', (string) $account->verification_error) ?: [] as $row) {
+            if (trim($row) !== '') {
+                $this->line('[ai]   '.mb_substr(trim($row), 0, 300));
             }
         }
 
@@ -188,9 +188,9 @@ final class ManageAccountCommand extends Command
 
     private function list(): int
     {
-        $comptes = AiAccount::query()->orderBy('priority')->orderBy('slug')->get();
+        $accounts = AiAccount::query()->orderBy('priority')->orderBy('slug')->get();
 
-        if ($comptes->isEmpty()) {
+        if ($accounts->isEmpty()) {
             $this->warn('Aucun compte. Aucune génération ne peut partir.');
             $this->newLine();
             $this->comment('Poser le premier :');
@@ -201,7 +201,7 @@ final class ManageAccountCommand extends Command
 
         $this->table(
             ['Nom', 'Service', 'Env.', 'État', 'Rang', 'Clé', 'Appartient à', 'Générations'],
-            $comptes->map(fn (AiAccount $c): array => [
+            $accounts->map(fn (AiAccount $c): array => [
                 $c->slug,
                 $c->preset ?? $c->driver,
                 $c->environment,

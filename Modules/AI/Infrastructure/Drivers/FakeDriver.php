@@ -71,9 +71,9 @@ final class FakeDriver implements AiDriver
 
     public function serves(AiAccount $account, string $model): bool
     {
-        $autorises = $account->models;
+        $allowed = $account->models;
 
-        return $autorises === null || $autorises === [] || in_array($model, $autorises, true);
+        return $allowed === null || $allowed === [] || in_array($model, $allowed, true);
     }
 
     public function generate(AiAccount $account, GenerationRequest $request): GenerationResult
@@ -82,10 +82,10 @@ final class FakeDriver implements AiDriver
         self::$seenModels[] = $request->model;
 
         if (self::$failure !== null) {
-            $panne = self::$failure;
+            $pending = self::$failure;
             self::$failure = null;
 
-            throw $panne;
+            throw $pending;
         }
 
         return new GenerationResult(
