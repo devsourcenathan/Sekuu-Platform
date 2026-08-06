@@ -60,6 +60,19 @@ if [ -n "${STORAGE_DEFAULT_SLUG:-}" ]; then
 fi
 
 # --------------------------------------------------------------------------
+# La cle d'IA par defaut
+# --------------------------------------------------------------------------
+# Meme geste, meme raison, et la meme absence de route : nos cles servent toutes
+# les organisations, et une cle d'IA fuitee **se depense**.
+#
+# Idempotent, et sans effet sur un compte qui fonctionne. Un compte jamais
+# eprouve est repris avec la configuration courante — sans quoi une premiere
+# tentative ratee serait definitive la ou il n'y a pas de shell.
+if [ -n "${AI_DEFAULT_SLUG:-}" ]; then
+    php artisan ai:account --from-env || true
+fi
+
+# --------------------------------------------------------------------------
 # Caches compilés
 # --------------------------------------------------------------------------
 # Au **démarrage**, pas à la construction : les variables d'environnement de

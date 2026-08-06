@@ -12,6 +12,13 @@ return [
     'no_base_url' => 'This account has no base URL.',
     'probe_needs_model' => 'The probe requires a model declared on the account.',
 
+    'driver_or_preset_required' => 'A preset or a driver is required.',
+    'preset_unknown' => 'No preset named ":preset".',
+    'preset_requires' => 'The preset ":preset" requires the field ":field".',
+    'slug_taken' => 'An account named ":slug" already exists.',
+    'environment_mismatch' => 'An account declared ":declared" cannot be registered from ":running".',
+    'rotation_rejected' => 'The new key failed the probe. The previous one stays in service.',
+
     'account_not_found' => 'This account does not exist.',
     'account_forbidden' => 'This account is not yours.',
     'account_unverified' => 'The account ":slug" has not passed the probe.',

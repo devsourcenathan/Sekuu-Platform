@@ -12,6 +12,13 @@ return [
     'no_base_url' => "Ce compte n'a pas d'URL de base.",
     'probe_needs_model' => "L'épreuve exige qu'un modèle soit déclaré sur le compte.",
 
+    'driver_or_preset_required' => 'Un préréglage ou un pilote est requis.',
+    'preset_unknown' => 'Aucun préréglage nommé « :preset ».',
+    'preset_requires' => 'Le préréglage « :preset » exige le champ « :field ».',
+    'slug_taken' => 'Un compte nommé « :slug » existe déjà.',
+    'environment_mismatch' => 'Un compte déclaré « :declared » ne peut pas être posé depuis « :running ».',
+    'rotation_rejected' => "La nouvelle clé n'a pas réussi l'épreuve. L'ancienne reste en service.",
+
     'account_not_found' => "Ce compte n'existe pas.",
     'account_forbidden' => "Ce compte n'est pas le vôtre.",
     'account_unverified' => "Le compte « :slug » n'a pas réussi l'épreuve.",

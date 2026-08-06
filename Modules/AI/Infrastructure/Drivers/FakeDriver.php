@@ -96,13 +96,22 @@ final class FakeDriver implements AiDriver
         );
     }
 
+    /**
+     * L'épreuve **génère**, comme chez les vrais pilotes.
+     *
+     * Un faux dont l'épreuve ne ferait rien laisserait passer une régression
+     * qu'aucun test ne verrait : celle d'un `VerifyAccount` qui marquerait un
+     * compte éprouvé sans avoir rien demandé au fournisseur.
+     */
     public function probe(AiAccount $account): void
     {
-        if (self::$failure !== null) {
-            $panne = self::$failure;
-            self::$failure = null;
-
-            throw $panne;
-        }
+        $this->generate($account, new GenerationRequest(
+            model: $account->models[0] ?? 'fake-model',
+            prompt: 'ping',
+            instructions: null,
+            maxOutputTokens: 1,
+            temperature: 0.0,
+            json: false,
+        ));
     }
 }

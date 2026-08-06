@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace Modules\AI;
 
 use App\Platform\Support\ModuleServiceProvider;
+use Illuminate\Console\Scheduling\Schedule;
 use Modules\AI\Application\Models\ModelDefinition;
 use Modules\AI\Application\Models\ModelRegistry;
 use Modules\AI\Application\Tasks\TaskDefinition;
 use Modules\AI\Application\Tasks\TaskRegistry;
+use Modules\AI\Infrastructure\Console\ManageAccountCommand;
+use Modules\AI\Infrastructure\Console\VerifyAccountsCommand;
 use Modules\AI\Infrastructure\Drivers\DriverRegistry;
 
 final class AiServiceProvider extends ModuleServiceProvider
@@ -60,6 +63,38 @@ final class AiServiceProvider extends ModuleServiceProvider
             }
 
             return $registry;
+        });
+    }
+
+    public function boot(): void
+    {
+        parent::boot();
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                ManageAccountCommand::class,
+                VerifyAccountsCommand::class,
+            ]);
+        }
+
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+            /*
+             * Quotidienne, et pas horaire.
+             *
+             * L'épreuve consomme de vrais jetons, contrairement à celle de
+             * Storage qui écrit trente octets gratuits. Elle attrape ce qui se
+             * casse **après** l'enregistrement — clé révoquée, crédit épuisé,
+             * modèle retiré — et elle est aussi la reprise : un compte corrigé
+             * se rallume seul, sans déploiement.
+             *
+             * 04:30, après Storage : deux épreuves qui se chevauchent sur une
+             * petite machine se disputeraient la même minute de processeur pour
+             * rien.
+             */
+            $schedule->command(VerifyAccountsCommand::class)
+                ->dailyAt('04:30')
+                ->withoutOverlapping()
+                ->onOneServer();
         });
     }
 }
