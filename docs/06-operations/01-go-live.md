@@ -238,10 +238,24 @@ STORAGE_DEFAULT_KEY=…
 STORAGE_DEFAULT_SECRET=…
 ```
 
+La clé d'IA suit le même chemin :
+
+```dotenv
+AI_DEFAULT_SLUG=plateforme-anthropic
+AI_DEFAULT_PRESET=anthropic
+AI_DEFAULT_MODELS=claude-haiku-4-5
+AI_DEFAULT_KEY=…
+```
+
 Idempotent, et **un échec ne bloque pas le démarrage** : la ligne reste
 `unverified`, la plateforme continue de servir, et l'épreuve quotidienne la fera
 basculer d'elle-même une fois les identifiants corrects. Le détail est dans
-[05-free-tier.md](05-free-tier.md) §4.2.
+[05-free-tier.md](05-free-tier.md) §4.2 et §4.3.
+
+Une différence entre les deux : l'épreuve du magasin écrit trente octets
+gratuits, celle de l'IA **génère réellement un jeton**. Le premier modèle de
+`AI_DEFAULT_MODELS` est celui qu'elle consommera chaque nuit — mettez-y le moins
+cher.
 
 ## 5.2 Pourquoi il n'y a pas de route pour cela
 

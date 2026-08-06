@@ -50,14 +50,24 @@ Une exécution, de sa demande à son issue.
 
 ## 1.1 Pourquoi `cost_micros` et pas un `Money`
 
-Un appel coûte des fractions de franc. `Money` porte un entier dans l'unité la
-plus petite d'une devise, et le franc CFA n'a pas de subdivision : tout appel
-arrondirait à zéro ou à un.
+Deux raisons, et la seconde est la moins évidente.
 
-Le coût est donc compté en **millionièmes d'unité**, converti en franc au moment
-de facturer. C'est la seule place du dépôt où un montant n'est pas un `Money`,
-et il faut savoir pourquoi : ce n'est pas de l'argent encaissé, c'est une
-consommation qui s'agrège avant de le devenir.
+**L'échelle.** Un appel coûte des fractions de centime. `Money` porte un entier
+dans l'unité la plus petite d'une devise, et le franc CFA n'a pas de
+subdivision : tout appel arrondirait à zéro.
+
+**La devise.** Les fournisseurs publient leurs tarifs en dollars par million de
+jetons, et c'est en dollars qu'ils facturent. `cost_micros` est donc en
+**millionièmes de dollar** — jamais de franc.
+
+Convertir à l'écriture figerait un taux de change dans un registre scellé, et le
+total d'un mois mêlerait autant de taux que de jours. La conversion appartiendra
+à Billing le jour où une facturation à l'usage sera décidée, avec un taux **daté**
+— qui est une décision commerciale, pas un détail d'implémentation.
+
+C'est la seule place du dépôt où un montant n'est pas un `Money`, et il faut
+savoir pourquoi : ce n'est pas de l'argent encaissé, c'est une consommation qui
+s'agrège avant de le devenir.
 
 ## 1.2 `cost_estimated`, et pourquoi un booléen mérite une colonne
 

@@ -146,7 +146,11 @@ SEKUU_DOMAIN_VERIFY=verify.sekuu.com
 | --- | --- |
 | **Identity** | **Complet** — authentification, OAuth, organisations, workspaces, invitations, sessions, mots de passe, vérification d'adresse, journal d'audit |
 | **Notify** | **Email, SMS, interne** — API d'envoi protégée par clé d'API, diffusion multi-canal, boîte de réception, désabonnement par lien, liste de suppression alimentée par les webhooks, purge planifiable. Email via **Resend**, SMS via passerelle locale |
-| Verify · Billing · Storage · AI · Search · Analytics | Non démarrés |
+| **Payments** | **Complet** — Notch Pay et Tranzak, bascule bornée, API externe pour produits hors monolithe, remboursements décaissés à la main et constatés |
+| **Billing** | **Complet** — plans, abonnements, factures et PDF figé, quotas publiés aux autres modules, administration centrale par opérateur de plateforme |
+| **Storage** | **Complet** — dépôt direct sans traverser l'API, plusieurs magasins par fournisseur, destination éprouvée avant de servir |
+| **AI** | **Complet** — tâches nommées par la plateforme, treize services pour deux pilotes, nos clés et celles du client, bascule bornée |
+| Verify · Search · Analytics | Non démarrés |
 
 ### OAuth
 

@@ -454,7 +454,7 @@ plutôt que de laisser l'opérateur le déduire :
   "success": true,
   "data": {
     "key": "business",
-    "limits": { "storage_gb": 20, "ai_credits_monthly": 2000000 },
+    "limits": { "storage_gb": 20, "ai_credits_monthly": 5000000 },
     "applied_now": ["ai_credits_monthly"],
     "applied_at_renewal": ["storage_gb"],
     "subscriptions_affected": 14

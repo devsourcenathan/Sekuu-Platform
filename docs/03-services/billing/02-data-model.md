@@ -100,9 +100,15 @@ Un plan **n'est jamais supprimé**, seulement archivé : des abonnements et des 
   "workspaces": 5,
   "storage_gb": 50,
   "sms_monthly": 500,
-  "ai_credits_monthly": 10000
+  "ai_credits_monthly": 5000000
 }
 ```
+
+Chaque clé porte **son** unité, et deux d'entre elles ne sont pas des
+compteurs : `storage_gb` est en gigaoctets, `ai_credits_monthly` en
+**millionièmes de dollar** — l'unité dans laquelle les fournisseurs d'IA
+facturent. Les 5 000 000 ci-dessus valent 5 $ par mois, pas cinq millions
+d'appels.
 
 `null` dans `limits` signifie *sans limite*. L'absence d'une clé signifie *non couvert par ce plan*. La distinction compte : elle sépare « illimité » de « pas d'accès ».
 

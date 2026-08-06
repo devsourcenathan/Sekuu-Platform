@@ -195,6 +195,35 @@ nouveau déploiement. Les journaux du démarrage le disent franchement :
 [storage] magasin « r2-principal » posé mais NON ÉPREUVÉ — credentials_rejected.
 ```
 
+## 4.3 La clé d'IA, pour la même raison
+
+Même mécanisme, et il a été écrit **parce que** celui du magasin avait manqué.
+
+```dotenv
+AI_DEFAULT_SLUG=plateforme-anthropic
+AI_DEFAULT_PRESET=anthropic
+AI_DEFAULT_MODELS=claude-haiku-4-5
+AI_DEFAULT_KEY=…
+```
+
+`AI_DEFAULT_MODELS` est une liste, et **le premier est celui de l'épreuve**.
+Mettez-y le moins cher : contrairement à celle du magasin, cette épreuve
+consomme de vrais jetons — c'est une génération réelle d'un jeton, parce qu'un
+compte peut lister ses modèles sans avoir de crédit.
+
+Elle est donc **quotidienne, à 4 h 30**, et non horaire.
+
+Les trois règles sont identiques à celles du magasin : idempotent, un échec ne
+bloque pas le démarrage, et l'environnement répare ce qui n'a jamais servi sans
+jamais toucher à un compte qui fonctionne.
+
+```
+[ai] compte « plateforme-anthropic » posé mais NON ÉPREUVÉ — credentials_rejected.
+```
+
+Il n'y aura **pas** de route pour cela non plus, et la raison est plus forte
+encore : un magasin fuité se lit, une clé d'IA fuitée **se dépense**.
+
 ### Le rattrapage des PDF n'a besoin de personne
 
 `billing:invoice-pdf` est ordonnancée chaque nuit à 3 h 15. Les factures émises

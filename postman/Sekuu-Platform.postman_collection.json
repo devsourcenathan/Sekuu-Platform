@@ -5245,6 +5245,50 @@
           "name": "Magasins",
           "item": [
             {
+              "name": "Sante des magasins",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/storage/health",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "storage",
+                    "health"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "Publique, comme la sante des agregateurs et celle des comptes d'IA.\n\n`can_store` repond a la seule question qui compte : un fichier peut-il etre depose ?\n\nSur une offre sans shell, c'est le **seul** moyen de constater qu'une destination est tombee. L'etat ne vit qu'en base, et le journal du demarrage passe puis disparait : une destination cassee apres coup serait invisible jusqu'au premier televersement refuse.\n\nElle ne dit ni le compartiment, ni le point d'acces, ni le message brut du fournisseur — une erreur S3 peut porter un identifiant de compte, un ARN, un nom de role. Seulement une **raison** d'un jeu ferme, qui suffit a agir."
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const d = pm.response.json().data;",
+                      "console.log('Depot possible : ' + d.can_store);",
+                      "d.destinations.forEach(s => console.log('  ' + s.slug + ' : ' + s.status + (s.reason ? ' (' + s.reason + ')' : '')));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
               "name": "Mes magasins",
               "request": {
                 "method": "GET",
