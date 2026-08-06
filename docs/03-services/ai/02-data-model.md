@@ -125,9 +125,17 @@ Le contenu, quand une tâche déclare le conserver.
 | Colonne | Type | Rôle |
 | --- | --- | --- |
 | `generation_id` | `uuid` | Clé primaire |
-| `input` | `text` | L'entrée telle qu'envoyée |
+| `input` | `text` **nullable** | L'entrée, **seulement si la tâche déclare une rétention** |
 | `output` | `text` nullable | La sortie telle que reçue |
 | `expires_at` | `timestamptz` | Après quoi la ligne est effacée |
+
+L'entrée et la sortie ne vont **pas ensemble**, contrairement à ce que la forme
+de la table suggère. La sortie doit survivre à l'appel — sans quoi un sondage
+`GET /ai/tasks/{id}` n'aurait rien à lire, et une clé d'idempotence rejouée ne
+rendrait que des métriques. L'entrée, elle, n'a aucune raison de survivre.
+
+`null` dit « on ne l'a pas gardée », ce qu'une chaîne vide ne dirait pas : elle
+se lirait comme une entrée vide.
 
 Table **séparée**, et c'est délibéré. Le registre des générations est consulté
 en permanence — quota, facturation, supervision — tandis que le contenu ne l'est
@@ -138,9 +146,18 @@ impossible sans réécrire un registre qui doit rester scellé.
 
 ## 2.1 L'effacement n'est pas optionnel
 
-`ai:sweep` efface chaque nuit les lignes expirées. Une durée de conservation qui
-ne serait pas appliquée est une promesse fausse, et c'est le genre de promesse
-qu'on découvre fausse lors d'un audit.
+`ai:sweep` efface les lignes expirées. Une durée de conservation qui ne serait
+pas appliquée est une promesse fausse, et c'est le genre de promesse qu'on
+découvre fausse lors d'un audit.
+
+Il tourne **toutes les heures**, et pas chaque nuit — non pour l'effacement, qui
+pourrait attendre, mais pour sa seconde cible : les générations que plus personne
+ne reprendra. `RunTaskJob::failed()` couvre un travail qui échoue ; il ne couvre
+pas un travailleur tué net. La ligne reste alors `queued` pour toujours, et
+l'appelant sonde indéfiniment quelque chose qui ne bougera plus.
+
+Elles passent à `failed` avec `AI_ABANDONED` — et `cost_micros` reste `null`,
+jamais zéro : la requête est peut-être partie et a peut-être été facturée.
 
 ---
 
@@ -217,8 +234,8 @@ comptes « par défaut » n'auraient pas fait.
 
 ## 4.2 Les raisons d'échec, jeu fermé
 
-`credentials_rejected`, `model_unavailable`, `quota_exhausted`, `unreachable`,
-`internal_error`.
+`credentials_rejected`, `model_unavailable`, `quota_exhausted`, `rate_limited`,
+`unreachable`, `internal_error`.
 
 La dernière existe parce que son absence a coûté un déploiement à Storage : une
 dépendance manquante y avait été rangée dans `unreachable`, et le diagnostic
@@ -228,6 +245,17 @@ le fournisseur ; une erreur interne se corrige dans le dépôt.**
 `quota_exhausted` est propre à l'IA : un compte parfaitement valide dont le
 crédit chez le fournisseur est épuisé. Ni une erreur d'identifiants, ni une
 panne — et la confusion enverrait régénérer une clé qui n'a rien.
+
+`rate_limited` est la seule raison qui **ne change pas l'état du compte**. Le
+fournisseur a dit « pas maintenant » : la clé est bonne, le modèle existe, le
+crédit est là. Un compte retiré du service pour ce motif le serait précisément
+aux heures de charge — c'est-à-dire quand on en a besoin — et la reprise
+n'aurait lieu que le lendemain. La raison est quand même écrite : un compte
+durablement saturé est une information d'exploitation.
+
+Les fournisseurs rendent souvent le **même statut** pour `rate_limited` et
+`quota_exhausted`. Les confondre fait réessayer indéfiniment chez un compte à
+sec : l'un se résout en quelques secondes, l'autre demande une carte bancaire.
 
 ---
 
@@ -259,7 +287,64 @@ pas un.
 
 ---
 
-# 6. Ce que le modèle ne porte pas
+# 6. `ai_endpoints` et `ai_deliveries`
+
+Où livrer l'issue d'une génération, et ce qui a été livré.
+
+| `ai_endpoints` | Type | Rôle |
+| --- | --- | --- |
+| `organization_id` | `uuid` unique | Une destination par organisation |
+| `url` | `varchar(500)` | `https` obligatoire |
+| `secret` / `previous_secret` | `varchar(120)` | Rotation sans coupure |
+| `previous_secret_expires_at` | `timestamptz` nullable | |
+| `status` | `varchar(20)` | `active`, `paused` |
+
+| `ai_deliveries` | Type | Rôle |
+| --- | --- | --- |
+| `event_id` | `varchar(60)` unique | La clé sur laquelle le produit déduplique |
+| `event_type` | `varchar(60)` | Quatre valeurs — voir [04-events.md](04-events.md) |
+| `generation_id` | `uuid` **nullable** | |
+| `payload` | `jsonb` | L'enveloppe signée, telle qu'envoyée |
+| `status` | `varchar(20)` | `pending`, `delivered`, `exhausted` |
+
+## 6.1 Ce ne sont pas les tables de Payments
+
+La forme est la même ; le contenu non. `generation_id` est **nullable**, et c'est
+ce qui les distingue : deux des quatre événements ne parlent pas d'une
+génération. `ai.account.unverified` parle d'un compte,
+`ai.spend.threshold_reached` parle d'un mois.
+
+Les faire converger avec `payment_deliveries` donnerait une table qui ne décrit
+bien ni l'une ni l'autre, et une colonne nulle dans la moitié des lignes.
+
+Ce qui **est** partagé est ailleurs : `SignedWebhook` porte la signature HMAC et
+le garde-fou d'hôte de test, pour les deux modules. Deux implémentations du même
+HMAC finiraient par diverger sur un détail — l'ordre des secrets, le
+séparateur — et un intégrateur ayant écrit son vérificateur pour Payments le
+verrait rejeté par AI sans comprendre.
+
+## 6.2 La charge utile ne porte jamais le contenu
+
+Ni le prompt, ni la sortie. Un webhook part vers une URL déclarée par le produit,
+en clair sur le réseau public : y mettre le contenu reviendrait à publier ce que
+l'[ADR-0016](../../04-decisions/adr-0016-ai-spend-and-privacy.md) refuse de
+stocker.
+
+Le produit apprend qu'une sortie l'attend, et vient la chercher authentifié.
+
+## 6.3 Les réessais épuisés ne ferment pas la destination
+
+La livraison passe `exhausted`, l'endpoint reste `active`. Le désactiver
+transformerait une panne de quelques heures chez le produit en silence
+permanent, et il faudrait qu'un humain s'en aperçoive pour le rouvrir.
+
+C'est le sondage qui rattrape — et ici plus qu'ailleurs, puisqu'il est la voie
+normale.
+
+
+---
+
+# 7. Ce que le modèle ne porte pas
 
 **Aucune table de conversation.** Un fil, son historique et ses droits sont de
 la logique produit — voir [01-overview.md](01-overview.md) §2.1.

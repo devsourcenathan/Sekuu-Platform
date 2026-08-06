@@ -126,6 +126,18 @@
     {
       "key": "refund_amount",
       "value": "4000"
+    },
+    {
+      "key": "generation_id",
+      "value": ""
+    },
+    {
+      "key": "ai_account_id",
+      "value": ""
+    },
+    {
+      "key": "ai_api_key",
+      "value": ""
     }
   ],
   "item": [
@@ -5612,6 +5624,558 @@
             "description": "Des montants et des etats. **`has_pdf` dit qu'un document existe ; rien ne permet de l'ouvrir.**\n\nUn operateur qui doit lire une facture en demande une copie au client. Une plateforme capable d'ouvrir n'importe quel document est une plateforme dont la promesse de confidentialite ne vaut que par sa discipline.\n\nHabilitation `platform.billing`."
           },
           "response": []
+        }
+      ]
+    },
+    {
+      "name": "17 - AI",
+      "description": "Executer des **taches** nommees par la plateforme. Pas des modeles.\n\nIl n'existe aucun champ `model` dans cette API, et il n'y en aura pas. Envoyer `model`, `temperature`, `max_tokens`, `top_p` ou `system` rend **422** : ils ne sont pas ignores. Un champ ignore en silence est un champ dont l'appelant croit qu'il agit.\n\n### Avant de commencer\n\nUn compte chez un fournisseur doit exister, et il se pose **en ligne de commande** — pas ici :\n\n```\nphp artisan ai:account plateforme-anthropic --preset=anthropic --models=claude-haiku-4-5 --priority=10\n```\n\nIl n'y a pas de route pour cela : un compte de la plateforme porte nos identifiants et sert toutes les organisations. L'exposer reviendrait a confier cette infrastructure a qui detient un jeton d'administration — et une cle d'IA fuitee **se depense**.\n\nLe dossier **Comptes** n'administre que les comptes d'un client.\n\n### Ce qu'il faut avoir compris\n\n1. **La sortie n'est lisible qu'une fois.** Ecrivez ce que vous recevez ; la relire coutera une seconde generation.\n2. **Le synchrone n'est pas une garantie.** Sachez traiter 202.\n3. **Sans cle d'idempotence**, un double-clic est une generation de plus, facturee.\n4. `AI_QUOTA_EXCEEDED` se resout en changeant de plan ; `AI_SPEND_CAP_REACHED` **non** — c'est une protection de la plateforme, et vous inviter a payer plus serait mensonger.",
+      "item": [
+        {
+          "name": "Catalogue & sante",
+          "item": [
+            {
+              "name": "Sante des comptes",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/ai/health",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "ai",
+                    "health"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "Publique, comme la sante des magasins et des agregateurs.\n\n`can_generate` repond a la seule question qui compte : une generation peut-elle partir ?\n\nSur une offre sans shell, c'est le **seul** moyen de constater qu'un compte est tombe. Sinon on l'apprend a la premiere generation refusee, c'est-a-dire par un client.\n\nElle ne dit ni l'empreinte de la cle, ni le point d'acces, ni le message brut du fournisseur."
+              },
+              "response": []
+            },
+            {
+              "name": "Le catalogue des taches",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/ai/tasks",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "ai",
+                    "tasks"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "Ce que la plateforme sait faire, et sous quelle forme.\n\n**Aucun modele n'y figure.** Un appelant demande `summarize` ou `prompt-deep` ; la plateforme choisit le modele, la temperature et le format de sortie, et peut en changer sans que personne ait rien a modifier.\n\nAvec une **cle d'API**, cette liste est reduite a ce que la cle peut demander : lui montrer le reste l'inviterait a ecrire du code contre une tache qui lui rendra 403.\n\n`estimated_cost_micros` est un ordre de grandeur, pas un prix. Il n'engage a rien : le cout reel depend de l'entree."
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const tasks = pm.response.json().data;",
+                      "console.log('Taches accessibles : ' + tasks.map(t => t.task).join(', '));",
+                      "",
+                      "// Aucune tache ne doit exposer de modele : c'est l'invariant du module.",
+                      "pm.test('Aucun modele expose', () => {",
+                      "    tasks.forEach(t => pm.expect(t).to.not.have.property('model'));",
+                      "});"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Generer",
+          "item": [
+            {
+              "name": "Un prompt libre (synchrone)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{$guid}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/ai/tasks",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "ai",
+                    "tasks"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "`prompt-fast` est declaree synchrone : la reponse porte la sortie, en 200.\n\n**Le synchrone est un confort, jamais une garantie.** Une tache declaree courte peut s'allonger, et le changement ne sera pas annonce. Un appelant qui le suppose casse ce jour-la : il faut savoir traiter 200 et 202.\n\n**La sortie n'est lisible qu'une fois.** Relancez la requete « L'issue » ci-dessous : elle rendra les metriques, sans le texte. Ecrivez ce que vous recevez.\n\n`Idempotency-Key` rend la generation existante plutot que d'en lancer une seconde, **meme si la premiere a echoue** : reessayer est une decision de cout, et la prendre a votre place vous ferait payer deux fois.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"task\": \"prompt-fast\",\n  \"inputs\": {\n    \"prompt\": \"Explique en trois phrases ce qu'est le Mobile Money.\"\n  }\n}"
+                }
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const d = pm.response.json().data;",
+                      "pm.environment.set('generation_id', d.id);",
+                      "",
+                      "console.log('Sortie : ' + (d.output || '(aucune)'));",
+                      "console.log('Cout : ' + d.usage.cost_micros + ' millioniemes de dollar');",
+                      "",
+                      "pm.test('La sortie est rendue une fois', () => pm.expect(d).to.have.property('output'));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Un prompt long (asynchrone)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{$guid}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/ai/tasks",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "ai",
+                    "tasks"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "`prompt` n'est pas synchrone : la reponse est **202**, jamais 201. Ce qui est cree est une **demande**, pas un resultat.\n\nSondez ensuite « L'issue ». Tant que le statut est `queued` ou `running`, la reponse porte `poll_after_ms` et pas de sortie.\n\nIl faut un worker pour que cela avance : `php artisan queue:work`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"task\": \"prompt\",\n  \"inputs\": {\n    \"prompt\": \"Redige une note de cadrage sur la facturation a l'usage.\"\n  }\n}"
+                }
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const d = pm.response.json().data;",
+                      "pm.environment.set('generation_id', d.id);",
+                      "",
+                      "pm.test('202, pas 201', () => pm.response.to.have.status(202));",
+                      "console.log('A sonder dans ' + d.poll_after_ms + ' ms');"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "L'issue, et la sortie",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/ai/tasks/{{generation_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "ai",
+                    "tasks",
+                    "{{generation_id}}"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "**La sortie n'est lisible qu'une fois.** La relire n'echoue pas — une erreur ferait croire a une generation perdue alors qu'elle a bien eu lieu, et a ete payee — mais le corps ne porte plus que les metriques.\n\n`usage` est rendu **meme en echec**, avec le cout reel : un modele qui a produit une reponse hors schema a consomme des jetons, et les cacher reviendrait a s'offrir les echecs.\n\n`cost_micros` est en millioniemes de **dollar** — la monnaie dans laquelle les fournisseurs facturent. `null` (distinct de zero) quand le modele n'a pas de prix public."
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const d = pm.response.json().data;",
+                      "console.log('Statut : ' + d.status);",
+                      "console.log('Sortie : ' + (d.output || '(deja lue, ou pas encore prete)'));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Annuler",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/ai/tasks/{{generation_id}}/cancel",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "ai",
+                    "tasks",
+                    "{{generation_id}}",
+                    "cancel"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "N'aboutit que sur `queued`.\n\nUne fois la requete partie chez un fournisseur, il n'y a **rien a annuler** : les jetons seront consommes et factures, que la reponse nous interesse encore ou non. Prétendre le contraire — rendre 200 et jeter le resultat — donnerait l'illusion d'economiser, et masquerait une depense reelle.\n\nSur une generation deja partie : 409 `AI_ALREADY_STARTED`."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Consommation",
+          "item": [
+            {
+              "name": "Ce que ce mois a coute",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/ai/usage",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "ai",
+                    "usage"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "Les deux natures de cout sont **separees, jamais additionnees**.\n\nCelui de nos comptes est exact et compte pour le quota ; celui de vos comptes est estime a partir des prix publics, et ne vous est pas oppose — vous le payez a votre fournisseur. Un total les melant ne voudrait rien dire, et servirait quand meme de base a une decision.\n\n`by_task` est le seul endroit ou vous voyez **ou** part votre budget. C'est ce qui permet de decouvrir qu'une tache appelee en boucle coute plus que tout le reste.\n\n`limit.covered` a faux signifie que le plan n'ouvre pas la ressource — ce qui n'est **pas** un refus. Un quota borne un usage autorise ; il ne decide pas de l'autorisation."
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const d = pm.response.json().data;",
+                      "console.log('Nos comptes : ' + d.platform.cost_micros + ' (exact)');",
+                      "console.log('Vos comptes : ' + d.own_accounts.cost_micros + ' (estime)');"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Comptes",
+          "item": [
+            {
+              "name": "Les comptes visibles",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/ai/accounts",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "ai",
+                    "accounts"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "Les votres, et ceux de la plateforme.\n\nCes derniers servent tout le monde mais **ne s'administrent pas ici** : ils portent nos identifiants, et une cle d'IA fuitee se depense. Ils se posent par `php artisan ai:account`."
+              },
+              "response": []
+            },
+            {
+              "name": "Deposer sa propre cle",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/ai/accounts",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "ai",
+                    "accounts"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "L'epreuve est immediate : **une generation reelle d'un jeton**, sur le premier modele declare.\n\nUne epreuve qui ne consommerait rien — lister les modeles — ne prouverait pas ce qui compte : un compte peut lister sans avoir de credit. Elle coute une fraction de centime, et elle est a notre charge : nous ne facturons pas le fait de verifier une configuration.\n\n**201 meme si l'epreuve echoue.** Le compte existe, il ne sert simplement pas encore : rendre une erreur vous obligerait a le recreer, et laisserait une ligne orpheline a chaque tentative. Lisez `verification_reason`.\n\nLa reponse ne rend **jamais** les identifiants — une empreinte, et l'etat.\n\n`spend_cap_micros` est votre seule borne sur votre propre cle : notre plafond protege notre argent, pas le votre, et votre plan ne compte pas ce que vous depensez chez vous.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"slug\": \"mon-anthropic\",\n  \"preset\": \"anthropic\",\n  \"credentials\": {\n    \"api_key\": \"sk-ant-...\"\n  },\n  \"models\": [\n    \"claude-haiku-4-5\"\n  ],\n  \"spend_cap_micros\": 50000000,\n  \"environment\": \"local\"\n}"
+                }
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const d = pm.response.json().data;",
+                      "pm.environment.set('ai_account_id', d.id);",
+                      "",
+                      "console.log('Etat : ' + d.status + (d.verification_reason ? ' (' + d.verification_reason + ')' : ''));",
+                      "",
+                      "pm.test('Les identifiants ne sortent jamais', () => {",
+                      "    pm.expect(d).to.not.have.property('credentials');",
+                      "});"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Rejouer l'epreuve",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/ai/accounts/{{ai_account_id}}/verify",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "ai",
+                    "accounts",
+                    "{{ai_account_id}}",
+                    "verify"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "Ce qui casse un compte arrive **apres** l'enregistrement : une cle revoquee, un credit epuise, un modele retire par le fournisseur.\n\nL'epreuve tourne aussi chaque nuit a 4 h 30, et elle est la **reprise** : un compte corrige se rallume de lui-meme, sans intervention."
+              },
+              "response": []
+            },
+            {
+              "name": "Faire tourner la cle",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/ai/accounts/{{ai_account_id}}/credentials",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "ai",
+                    "accounts",
+                    "{{ai_account_id}}",
+                    "credentials"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "L'epreuve porte sur la **nouvelle** cle avant que l'ancienne soit abandonnee.\n\nUne rotation ratee ne doit pas mettre hors service un compte qui fonctionnait : en cas d'echec, les anciens identifiants **et l'etat** sont restaures, et l'appel rend `AI_ACCOUNT_UNVERIFIED`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"credentials\": {\n    \"api_key\": \"sk-ant-nouvelle\"\n  }\n}"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Suspendre un compte",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/ai/accounts/{{ai_account_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "ai",
+                    "accounts",
+                    "{{ai_account_id}}"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "`paused` et `disabled` different par l'**intention**, pas par l'effet immediat : le premier est une suspension, le second dit que le compte n'est plus le votre. La distinction compte au moment de nettoyer — on relance un compte en pause, on ne relance pas un compte rendu.\n\nIl n'y a **aucune route de suppression** : un compte qui porte des generations ne se supprime pas, le registre dit qui a paye quoi.\n\nUn compte jamais eprouve ne peut pas etre rendu `active` : ce serait contourner l'epreuve par la porte de service.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"paused\"\n}"
+                }
+              },
+              "response": []
+            }
+          ]
         }
       ]
     }

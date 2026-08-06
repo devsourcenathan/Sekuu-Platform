@@ -128,8 +128,10 @@ rien. Cesser d'y appeler suffit à le retirer, sans rien rendre illisible.
 
 ## 2.2 L'épreuve coûte de l'argent
 
-Une génération réelle d'un jeton, sur le plus petit modèle du fournisseur. De
-l'ordre du millionième d'unité — mais pas zéro.
+Une génération réelle d'un jeton, sur le **premier modèle déclaré** par le
+compte. De l'ordre du millionième de dollar — mais pas zéro.
+
+Mettez-y le moins cher : c'est celui que l'épreuve consommera chaque nuit.
 
 D'où deux conséquences. L'épreuve est **quotidienne**, pas horaire. Et son coût
 est imputé à la plateforme, jamais au propriétaire du compte : nous ne facturons

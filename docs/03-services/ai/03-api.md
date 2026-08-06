@@ -59,20 +59,25 @@ GET /api/v1/ai/tasks
   "data": [
     {
       "task": "summarize",
-      "description": "Résume un texte dans la langue demandée.",
-      "inputs": { "input": "string", "language": "string|null", "max_words": "integer|null" },
+      "inputs": { "input": "required|string", "language": "nullable|string|size:2" },
       "output": "text",
       "synchronous": true,
+      "accepts_history": false,
       "retains_content": false,
-      "estimated_cost_micros": 1200
+      "max_input_tokens": 100000,
+      "max_output_tokens": 1000,
+      "estimated_cost_micros": 12500
     },
     {
       "task": "extract",
-      "inputs": { "input": "string", "fields": "object" },
+      "inputs": { "input": "required|string", "fields": "required|array" },
       "output": "json",
       "synchronous": false,
+      "accepts_history": false,
       "retains_content": false,
-      "estimated_cost_micros": 3500
+      "max_input_tokens": 100000,
+      "max_output_tokens": 4000,
+      "estimated_cost_micros": 60000
     }
   ]
 }
@@ -85,6 +90,20 @@ qu'une tâche a changé de forme en production.
 `estimated_cost_micros` est un ordre de grandeur, pas un prix. Il permet à un
 produit de décider s'il vaut la peine d'appeler — et il ne l'engage à rien : le
 coût réel dépend de l'entrée.
+
+**Il n'y a pas de champ `description`**, et l'absence est délibérée. Elle vivrait
+dans `config/ai.php`, donc en une seule langue, dans un catalogue consommé par
+des produits qui servent en français et en anglais. Les règles de validation
+sont rendues telles quelles : elles disent la même chose sans avoir de langue.
+
+**Aucun modèle n'apparaît**, pas même en lecture. L'exposer inviterait un produit
+à en dépendre — à brancher une condition dessus, à l'afficher à ses
+utilisateurs — et rendrait impossible d'en changer sans prévenir, ce qui est
+exactement ce que l'ADR-0015 achète.
+
+Avec une **clé d'API**, la liste est réduite à ce que la clé peut demander.
+Montrer le reste inviterait à écrire du code contre une tâche qui rendra
+`AI_TASK_OUT_OF_SCOPE`.
 
 ---
 

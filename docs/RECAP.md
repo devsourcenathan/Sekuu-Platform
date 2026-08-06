@@ -10,14 +10,14 @@
 | | |
 | --- | --- |
 | Application | Monolithe modulaire Laravel 13, PHP 8.3, PostgreSQL 18 |
-| Modules livrés | **Identity** · **Notify** (email, SMS, interne) · **Payments** (Notch Pay, Tranzak, API externe, remboursements) · **Billing** · **Storage** |
-| Modules non démarrés | Verify, AI, Search, Analytics |
+| Modules livrés | **Identity** · **Notify** (email, SMS, interne) · **Payments** (Notch Pay, Tranzak, API externe, remboursements) · **Billing** · **Storage** · **AI** |
+| Modules non démarrés | Verify, Search, Analytics |
 | Déploiement | **En ligne** — Render + Neon, `platform.sekuu.com` |
-| Endpoints | 104 sous `/api/v1` + `/.well-known/jwks.json` |
-| Migrations | 38 |
-| Tests | 582, sur PostgreSQL |
+| Endpoints | 115 sous `/api/v1` + `/.well-known/jwks.json` |
+| Migrations | 40 |
+| Tests | 682, sur PostgreSQL |
 | Contrats | `Modules/*/openapi.yaml`, vérifiés par test |
-| Collection de test | `postman/` — 17 dossiers, 137 requêtes |
+| Collection de test | `postman/` — 18 dossiers, 149 requêtes |
 
 ---
 
@@ -224,11 +224,36 @@ L'invariant de Payments s'y transpose : « seul le propriétaire de l'objet nomm
 
 **Un défaut trouvé en implémentant.** La mise en page du PDF est confiée à une file, et j'avais laissé son échec remonter jusqu'à l'appelant : sur une file synchrone — le cas en test, et possible en production — un magasin mal configuré empêchait de **facturer**. La tâche avale donc ses échecs, et la reprise est portée par `billing:invoice-pdf`, ordonnancée chaque nuit. Le défaut serait resté invisible tant qu'un magasin répond.
 
+## 2.7 Module AI
+
+**Une tâche, jamais un modèle** ([ADR-0015](04-decisions/adr-0015-ai-task-not-model.md)). Il n'existe aucun champ `model` dans l'API, et il n'y en aura pas : un appelant demande `summarize` ou `prompt-deep`, la plateforme choisit. Envoyer `model`, `temperature`, `max_tokens`, `top_p` ou `system` rend `422` — ils ne sont pas ignorés, parce qu'un champ ignoré en silence est un champ dont l'appelant croit qu'il agit.
+
+Le prix se paie ailleurs : c'est **nous** qui portons la dette de dépréciation. Quand un fournisseur annonce un retrait, on marque le modèle `deprecated`, `ai:models` dit quelles tâches le nomment — replis compris — puis on le passe `retired`, et aucun produit n'a rien à changer.
+
+**Les tâches libres existent, et ne contredisent pas l'invariant.** `prompt`, `prompt-fast` et `prompt-deep` acceptent un texte quelconque : ce qui est refusé est que l'appelant nomme le *modèle*, pas qu'il écrive librement. Ce qu'elles perdent est réel — aucun format de sortie promis, donc aucune validation — et ce sont les bornes de jetons qui tiennent le coût à la place du schéma.
+
+**Un pilote est un protocole, pas une entreprise.** `openai` sert OpenAI, Google, DeepSeek, Mistral, xAI, Groq, Together, Fireworks, DeepInfra, OpenRouter, Azure et les serveurs locaux : **treize services pour deux pilotes**. Ajouter un service est une ligne de configuration ; ajouter une famille d'authentification — Bedrock et sa signature SigV4 — demande une classe. C'est la limite exacte posée par [ADR-0017](04-decisions/adr-0017-ai-accounts.md), et c'est la même que celle du pilote S3 de Storage.
+
+**Nos clés et les leurs**, et c'est le cas nominal. Un client dépose sa clé ; son quota ne s'applique plus, notre coût devient une **estimation** — son tarif négocié donne autre chose — et **un compte de tiers ne bascule jamais vers un des nôtres**. Ce serait payer à sa place, sans que personne l'ait décidé, et la surprise arriverait un mois plus tard.
+
+**Un compte non éprouvé ne sert jamais.** L'épreuve est une **génération réelle d'un jeton** : une épreuve qui listerait les modèles ne prouverait rien, un compte pouvant lister sans avoir de crédit. Elle coûte, donc elle est quotidienne et non horaire — contrairement à celle de Storage, qui écrit trente octets gratuits — et son coût est imputé à la plateforme, jamais au propriétaire du compte.
+
+**La bascule est étroite** ([ADR-0016](04-decisions/adr-0016-ai-spend-and-privacy.md)). On ne réessaie ailleurs que si la requête n'a jamais atteint le modèle. Passé le premier jeton, les jetons sont facturés qu'on obtienne une réponse ou non : réessayer paie deux fois et rend une réponse différente de celle qui arrivait peut-être. C'est l'[ADR-0008](04-decisions/adr-0008-payment-aggregators-failover.md) transposée mot pour mot — *l'incertitude compte comme un appel abouti* — et la liste des motifs de bascule est **blanche** : un code inconnu ne bascule pas.
+
+**Rien n'est conservé du contenu.** Ni le prompt ni la sortie, sauf si la tâche le déclare. Une empreinte suffit à l'idempotence ; les métriques suffisent à la facturation. Trois raisons, dans l'ordre de gravité : le prompt d'un produit de santé porte des données de santé, un registre de prompts est la cible la plus intéressante de la plateforme, et il grossit sans limite. La sortie survit brièvement — sans quoi un sondage n'aurait rien à lire — et **la lecture la consomme**.
+
+**Deux bornes de dépense, et il en faut deux.** Le quota du plan (`ai_credits_monthly`, modifiable sans toucher au code) et le plafond absolu de la plateforme. Supprimer le second laisserait une organisation au plan illimité sans aucune borne — et une clé fuitée sur un plan « illimité » est précisément le scénario où l'on perd de l'argent.
+
+**Le webhook ne porte jamais le contenu.** Il part vers une URL déclarée par le produit, en clair sur le réseau public : y mettre la sortie reviendrait à publier ce qu'on refuse de stocker. Le produit apprend qu'une sortie l'attend, et vient la chercher authentifié.
+
+**Non implémenté, et écrit plutôt qu'à moitié fait** — le pilote Bedrock, les outils (*function calling*), la vision, le *streaming*, et l'API native de Gemini. Google passe par son point d'accès compatible OpenAI ; le jour où une capacité n'y passera pas, un pilote `gemini` s'ajoutera **à côté**, et les comptes existants continueront de fonctionner.
+
+
 ---
 
 # 3. Décisions structurantes
 
-Les quatorze ADR de [`04-decisions/`](04-decisions/) portent les décisions d'architecture. En complément, voici les arbitrages pris pendant l'implémentation.
+Les dix-neuf ADR de [`04-decisions/`](04-decisions/) portent les décisions d'architecture. En complément, voici les arbitrages pris pendant l'implémentation.
 
 ## 3.1 Frontières entre domaines
 
@@ -305,15 +330,33 @@ Les tests ne couvrent pas seulement le chemin nominal ; ils verrouillent les pro
 
 **La rétention l'emporte sur tout le monde** — le PDF d'une facture répond `409` à toute suppression pendant dix ans, quel que soit l'appelant.
 
+**Les deux vrais pilotes d'IA sont exécutés** — en-têtes, format des messages, lecture des jetons, classification des erreurs, contre `Http::fake`. Écrit avant le reste du module, en réponse directe au pilote S3 qui avait été écrit, documenté et recommandé sans jamais être instancié : 561 tests ne l'avaient pas vu, et le défaut est apparu au premier démarrage en production.
+
+**Chaque modèle d'une chaîne satisfait les exigences de sa tâche** — vérifié sur la déclaration, jamais à l'exécution. Un repli sans `json` sur une tâche qui en exige produirait une sortie invalide **sur le chemin le moins testé**, celui qui ne sert que quand le premier modèle est déjà tombé.
+
+**Un délai dépassé ne bascule jamais** — et la liste des motifs qui basculent est blanche, donc un code inconnu ne bascule pas. C'est l'endroit où une régression fait payer deux fois la même génération.
+
+**Le webhook ne porte ni le prompt ni la sortie** — le test cherche littéralement le contenu dans la charge utile livrée.
+
+**Tout scope qu'un module oppose à un appelant est émissible** — les constantes des traits `Resolves*Actor` sont confrontées à la liste fermée d'`IssueApiKey`. Ajouté après avoir découvert qu'aucune clé de Storage ne l'était.
+
+**Toute clé de traduction citée par le code existe** — le contrôle part du code, pas de la comparaison entre langues : deux fichiers cohérents mais tous deux incomplets satisfaisaient le test précédent.
+
 ---
 
-# 6. Deux bugs que les tests ont révélés
+# 6. Des défauts que les tests ont révélés
 
 Ils méritent d'être mentionnés parce qu'ils étaient invisibles à la lecture.
 
 **La révocation anti-vol était annulée par le rollback.** À la détection d'un rejeu de refresh token, la session était révoquée *à l'intérieur* de la transaction, puis l'exception provoquait un rollback qui effaçait la révocation. Le vol restait donc sans conséquence.
 
 **La clé étrangère auto-référencée ne se créait pas sur PostgreSQL.** Laravel émet les contraintes `FOREIGN KEY` avant la `PRIMARY KEY` ; Postgres refusait l'auto-référence. SQLite laissait passer, ce qui est précisément l'argument pour tester sur le moteur de production.
+
+**Aucune clé d'API de Storage n'était émissible.** `storage.write`, `storage.read` et `storage.destinations` étaient exigés à chaque appel, documentés, et absents de la liste fermée d'`IssueApiKey`. Rien ne l'a signalé : les tests de Storage écrivent leurs clés directement en base, et vérifiaient donc le contrôleur **en contournant précisément la voie cassée**. C'est la même forme que le pilote S3 jamais instancié — un chemin éprouvé, et le vrai chemin à côté.
+
+**Trois clés de traduction citées par du code n'existaient pas**, dont une sur une route d'opérateur livrée la semaine précédente. Laravel rend la clé brute quand la traduction manque : un client aurait reçu `ai::messages.already_started` en guise de phrase. Mes propres tests d'API ne l'avaient pas vu, parce qu'ils n'assertaient que le code d'erreur.
+
+**Un `upsert` porteur de valeur comptait deux fois.** Trouvé dans `StorageQuota::adjust`, et il ne se voyait que le premier jour du mois — la première écriture d'une période écrivait le montant puis l'incrémentait. Le registre de dépense d'AI écrit donc des zéros, puis incrémente.
 
 ---
 
@@ -426,6 +469,12 @@ Par ordre décroissant de valeur :
 
 Puis Verify.
 
+**Avant qu'AI serve un vrai client**, trois gestes qui ne sont pas du code :
+
+* poser `ai_credits_monthly` sur les plans, par `PATCH /platform/plans/{key}` — en **millionièmes de dollar**, l'unité dans laquelle les fournisseurs facturent ;
+* poser au moins un compte de la plateforme, par `ai:account` ou par `AI_DEFAULT_*` là où il n'y a pas de shell ;
+* vérifier que le fournisseur choisi garantit contractuellement le **non-entraînement** sur les données envoyées par l'API. C'est le cas des offres professionnelles d'Anthropic, d'OpenAI, de Google et de Mistral — pas de leurs offres grand public, ni de tous les intermédiaires. Rien dans le code ne peut le détecter.
+
 Le canal WhatsApp reste le plus attendu au Cameroun ; il suppose un compte Business vérifié et des modèles approuvés par Meta, donc un délai externe qu'il vaut mieux engager tôt.
 
 ## 8.3 Dette identifiée
@@ -433,4 +482,5 @@ Le canal WhatsApp reste le plus attendu au Cameroun ; il suppose un compte Busin
 * Aucun endpoint de listing des rôles globaux — la collection Postman doit lire l'identifiant en base.
 * `GET /users` et `PATCH /users/{id}` sont spécifiés mais pas implémentés.
 * Pas de MFA ni de passkeys — prévus au modèle, non développés.
+* Identifiants en français dans cinq modules — `$payeur`, `$bascule`, `$repli`, `$limites`. Le dépôt écrit son code en anglais et ses commentaires en français ; AI a été aligné, le reste attend.
 * Internationalisation limitée à `en` et `fr`. Ajouter une langue suppose de traduire les 93 clés et les 10 templates de Notify ; un test échoue tant qu'une clé manque.
